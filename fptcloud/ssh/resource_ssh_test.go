@@ -4,6 +4,6 @@ import (
 	"testing"
 )
 
-func TestDataSourceSSHKey_basic(t *testing.T) {
+func TestResourceSSHKey_basic(t *testing.T) {
 	return
 }

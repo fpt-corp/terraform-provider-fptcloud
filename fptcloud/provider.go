@@ -50,10 +50,11 @@ func Provider() *schema.Provider {
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"fptcloud_volume":  storage.DataSourceStorage(),
-			"fptcloud_ssh_key": ssh.DataSourceSSHKey(),
+			"fptcloud_ssh_key": fptcloud_ssh.DataSourceSSHKey(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"fptcloud_volume": storage.ResourceStorage(),
+			"fptcloud_volume":  storage.ResourceStorage(),
+			"fptcloud_ssh_key": fptcloud_ssh.ResourceSSHKey(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
