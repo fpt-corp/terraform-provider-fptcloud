@@ -61,7 +61,7 @@ func Provider() *schema.Provider {
 }
 
 // Provider configuration
-func providerConfigureContext(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+func providerConfigureContext(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	var regionValue, tokenValue, tenantNameValue, apiURL string
 	var client *common.Client
