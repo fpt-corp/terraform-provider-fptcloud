@@ -21,3 +21,10 @@
 # Go workspace file
 go.work
 
+# User-specific stuff
+.idea/*
+.idea
+
+# .tfstate files
+*.tfstate
+*.tfstate.*

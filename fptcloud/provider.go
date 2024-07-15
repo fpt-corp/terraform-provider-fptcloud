@@ -1,7 +1,8 @@
 package fptcloud
 
 import (
-	"fmt"
+	"context"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	common "terraform-provider-fptcloud/commons"
 
@@ -24,19 +25,19 @@ func Provider() *schema.Provider {
 		Schema: map[string]*schema.Schema{
 			"token": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Optional:    false,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TOKEN", ""),
 				Description: "This is the Fpt cloud API token. Alternatively, this can also be specified using `FPTCLOUD_TOKEN` environment variable.",
 			},
 			"tenant_name": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Optional:    false,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TENANT_NAME", ""),
 				Description: "The tenant name to use",
 			},
 			"region": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Optional:    false,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_REGION", ""),
 				Description: "The region to use",
 			},
@@ -54,12 +55,13 @@ func Provider() *schema.Provider {
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_volume": storage.ResourceStorage(),
 		},
-		ConfigureFunc: providerConfigure,
+		ConfigureContextFunc: providerConfigureContext,
 	}
 }
 
 // Provider configuration
-func providerConfigure(d *schema.ResourceData) (interface{}, error) {
+func providerConfigureContext(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+	var diags diag.Diagnostics
 	var regionValue, tokenValue, apiURL string
 	var client *common.Client
 	var err error
@@ -71,7 +73,7 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	if token, ok := d.GetOk("token"); ok {
 		tokenValue = token.(string)
 	} else {
-		return nil, fmt.Errorf("[ERR] token not found")
+		return nil, diag.Errorf("[ERR] token not found")
 	}
 
 	if apiEndpoint, ok := d.GetOk("api_endpoint"); ok {
@@ -81,7 +83,7 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	}
 	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue)
 	if err != nil {
-		return nil, err
+		return nil, diag.FromErr(err)
 	}
 
 	userAgent := &common.Component{
@@ -91,5 +93,5 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	client.SetUserAgent(userAgent)
 
 	log.Printf("[DEBUG] Fptcloud API URL: %s\n", apiURL)
-	return client, nil
+	return client, diags
 }
