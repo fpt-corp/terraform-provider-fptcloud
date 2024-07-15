@@ -16,7 +16,7 @@ var (
 	ProviderVersion = "dev"
 
 	// ProdAPI is the Base URL for Fptcloud Production API
-	ProdAPI = "https://console-api.fptcloud.com/api"
+	ProdAPI = common.DefaultApiUrl
 )
 
 // Provider fptcloud provider
@@ -25,19 +25,19 @@ func Provider() *schema.Provider {
 		Schema: map[string]*schema.Schema{
 			"token": {
 				Type:        schema.TypeString,
-				Optional:    false,
+				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TOKEN", ""),
 				Description: "This is the Fpt cloud API token. Alternatively, this can also be specified using `FPTCLOUD_TOKEN` environment variable.",
 			},
 			"tenant_name": {
 				Type:        schema.TypeString,
-				Optional:    false,
+				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TENANT_NAME", ""),
 				Description: "The tenant name to use",
 			},
 			"region": {
 				Type:        schema.TypeString,
-				Optional:    false,
+				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_REGION", ""),
 				Description: "The region to use",
 			},
@@ -62,12 +62,16 @@ func Provider() *schema.Provider {
 // Provider configuration
 func providerConfigureContext(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	var regionValue, tokenValue, apiURL string
+	var regionValue, tokenValue, tenantNameValue, apiURL string
 	var client *common.Client
 	var err error
 
 	if region, ok := d.GetOk("region"); ok {
 		regionValue = region.(string)
+	}
+
+	if tenantName, ok := d.GetOk("tenant_name"); ok {
+		tenantNameValue = tenantName.(string)
 	}
 
 	if token, ok := d.GetOk("token"); ok {
@@ -81,7 +85,7 @@ func providerConfigureContext(ctx context.Context, d *schema.ResourceData) (inte
 	} else {
 		apiURL = ProdAPI
 	}
-	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue)
+	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue, tenantNameValue)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
@@ -93,5 +97,6 @@ func providerConfigureContext(ctx context.Context, d *schema.ResourceData) (inte
 	client.SetUserAgent(userAgent)
 
 	log.Printf("[DEBUG] Fptcloud API URL: %s\n", apiURL)
+	log.Printf("[DEBUG] Fptcloud tenant name: %s\n", tenantNameValue)
 	return client, diags
 }

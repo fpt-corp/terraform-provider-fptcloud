@@ -14,6 +14,7 @@ type Client struct {
 	BaseURL          *url.URL
 	UserAgent        string
 	APIKey           string
+	TenantName       string
 	Region           string
 	LastJSONResponse string
 
@@ -65,7 +66,7 @@ func (e HTTPError) Error() string {
 }
 
 // NewClientWithURL initializes a Client with a specific API URL
-func NewClientWithURL(apiKey, apiUrl, region string) (*Client, error) {
+func NewClientWithURL(apiKey, apiUrl, region string, tenantName string) (*Client, error) {
 	parsedURL, err := url.Parse(apiUrl)
 	if err != nil {
 		return nil, err
@@ -76,9 +77,10 @@ func NewClientWithURL(apiKey, apiUrl, region string) (*Client, error) {
 	}
 
 	client := &Client{
-		BaseURL: parsedURL,
-		APIKey:  apiKey,
-		Region:  region,
+		BaseURL:    parsedURL,
+		APIKey:     apiKey,
+		Region:     region,
+		TenantName: tenantName,
 		httpClient: &http.Client{
 			Transport: httpTransport,
 		},
@@ -92,8 +94,8 @@ func (c *Client) prepareClientURL(requestURL string) *url.URL {
 }
 
 // InitClient initializes a Client connecting to the production API
-func InitClient(apiKey, region string) (*Client, error) {
-	return NewClientWithURL(apiKey, "https://console-api.fptcloud.com/api", region)
+func InitClient(apiKey, region string, tenantName string) (*Client, error) {
+	return NewClientWithURL(apiKey, DefaultApiUrl, region, tenantName)
 }
 
 func (c *Client) sendRequest(req *http.Request) ([]byte, error) {

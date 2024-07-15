@@ -7,7 +7,7 @@ terraform {
 }
 
 provider "fptcloud" {
-  region="your_region"
-  token="your_token"
-  tenant_name="your_tenant_name"
+  region      = "your_region"
+  token       = "your_token"
+  tenant_name = "your_tenant_name"
 }
