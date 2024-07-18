@@ -5,10 +5,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	common "terraform-provider-fptcloud/commons"
-
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"terraform-provider-fptcloud/fptcloud/ssh"
 	"terraform-provider-fptcloud/fptcloud/storage"
+	"terraform-provider-fptcloud/fptcloud/storage-policy"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 var (
@@ -49,11 +50,12 @@ func Provider() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"fptcloud_volume":  storage.DataSourceStorage(),
-			"fptcloud_ssh_key": fptcloud_ssh.DataSourceSSHKey(),
+			"fptcloud_storage_policy": fptcloud_storage_policy.DataSourceStoragePolicy(),
+			"fptcloud_storage":        fptcloud_storage.DataSourceStorage(),
+			"fptcloud_ssh_key":        fptcloud_ssh.DataSourceSSHKey(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"fptcloud_volume":  storage.ResourceStorage(),
+			"fptcloud_storage": fptcloud_storage.ResourceStorage(),
 			"fptcloud_ssh_key": fptcloud_ssh.ResourceSSHKey(),
 		},
 		ConfigureContextFunc: providerConfigureContext,

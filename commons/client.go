@@ -91,7 +91,7 @@ func (c *Client) sendRequest(req *http.Request) ([]byte, error) {
 	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
-	req.Header.Set("Authorization", fmt.Sprintf("bearer %s", c.APIKey))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
 
 	c.httpClient.Transport = &http.Transport{
 		DisableCompression: false,
