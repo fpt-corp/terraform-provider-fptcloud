@@ -38,7 +38,7 @@ func (s *SSHKeyServiceImpl) ListSSHKeys() ([]SSHKey, error) {
 	var apiPath = common.ApiPath.SSH + "?page=1&page_size=9999"
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return nil, err
+		return nil, common.DecodeError(err)
 	}
 
 	var sshResponse struct {

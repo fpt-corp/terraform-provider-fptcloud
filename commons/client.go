@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Client is the means of connecting to the Fpt cloud API service
@@ -76,6 +77,7 @@ func NewClientWithURL(apiKey, apiUrl, region string, tenantName string) (*Client
 		TenantName: tenantName,
 		httpClient: &http.Client{
 			Transport: httpTransport,
+			Timeout:   5 * time.Minute,
 		},
 	}
 	return client, nil

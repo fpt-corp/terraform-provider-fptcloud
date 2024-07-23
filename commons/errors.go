@@ -14,6 +14,7 @@ var (
 	UnknownError         = constError("UnknownError")
 	ZeroMatchesError     = constError("ZeroMatchesError")
 	MultipleMatchesError = constError("MultipleMatchesError")
+	HttpError            = constError("HttpError")
 )
 
 type constError string
@@ -30,6 +31,10 @@ func (err constError) Is(target error) bool {
 
 func (err constError) Wrap(inner error) error {
 	return wrapError{msg: string(err), err: inner}
+}
+
+func (err constError) WrapString(errorString string) error {
+	return wrapError{msg: string(err), err: errors.New(errorString)}
 }
 
 type wrapError struct {
@@ -55,6 +60,7 @@ func (err wrapError) Is(target error) bool {
 func DecodeError(err error) error {
 	var urlErr *url.Error
 	var netErr net.Error
+	var httpErr HTTPError
 
 	if errors.As(err, &urlErr) {
 		if errors.As(urlErr.Err, &netErr) {
@@ -62,5 +68,10 @@ func DecodeError(err error) error {
 		}
 	}
 
-	return UnknownError.Wrap(err)
+	if errors.As(err, &httpErr) {
+		if httpErr.Code == 400 {
+			return HttpError.WrapString(httpErr.Reason)
+		}
+	}
+	return UnknownError.WrapString("System error, please try again !")
 }

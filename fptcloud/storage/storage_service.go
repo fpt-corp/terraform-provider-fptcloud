@@ -18,7 +18,7 @@ type FindStorageDTO struct {
 	VpcId string `json:"vpc_id"`
 }
 
-// StorageDTO storage dto model to create or update storage
+// StorageDTO storage dto model to create storage
 type StorageDTO struct {
 	Name            string  `json:"name"`
 	Type            string  `json:"type"`
@@ -28,23 +28,33 @@ type StorageDTO struct {
 	VpcId           string  `json:"vpc_id"`
 }
 
+// UpdateStorageDTO storage dto model to update storage
+type UpdateStorageDTO struct {
+	Name            string `json:"name"`
+	SizeGb          int    `json:"size_gb"`
+	StoragePolicyId string `json:"storage_policy_id"`
+}
+
 // Storage represents a storage model
 type Storage struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	SizeGb        int    `json:"size_gb"`
-	StoragePolicy string `json:"storage_policy"`
-	InstanceId    string `json:"instance_id"`
-	VpcId         string `json:"vpc_id"`
-	CreatedAt     string `json:"created_at"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Type            string `json:"type"`
+	SizeGb          int    `json:"size_gb"`
+	StoragePolicy   string `json:"storage_policy"`
+	StoragePolicyId string `json:"storage_policy_id"`
+	InstanceId      string `json:"instance_id"`
+	Status          string `json:"status"`
+	VpcId           string `json:"vpc_id"`
+	CreatedAt       string `json:"created_at"`
 }
 
 // StorageService defines the interface for storage service
 type StorageService interface {
 	FindStorage(searchModel FindStorageDTO) (*Storage, error)
 	CreateStorage(createdModel StorageDTO) (string, error)
-	UpdateStorage(storageId string, updatedModel StorageDTO) (*common.SimpleResponse, error)
+	UpdateStorage(vpcId string, storageId string, updatedModel UpdateStorageDTO) (*common.SimpleResponse, error)
+	UpdateAttachedInstance(vpcId string, storageId string, instanceId *string) (*common.SimpleResponse, error)
 	DeleteStorage(vpcId string, storageId string) (*common.SimpleResponse, error)
 }
 
@@ -63,7 +73,7 @@ func (s *StorageServiceImpl) FindStorage(searchModel FindStorageDTO) (*Storage, 
 	var apiPath = common.ApiPath.Storage(searchModel.VpcId) + utils.ToQueryParams(searchModel)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return nil, err
+		return nil, common.DecodeError(err)
 	}
 
 	result := Storage{}
@@ -81,7 +91,7 @@ func (s *StorageServiceImpl) CreateStorage(createdModel StorageDTO) (string, err
 	resp, err := s.client.SendPostRequest(apiPath, createdModel)
 
 	if err != nil {
-		return "", err
+		return "", common.DecodeError(err)
 	}
 
 	var createStorageResponse struct {
@@ -98,8 +108,8 @@ func (s *StorageServiceImpl) CreateStorage(createdModel StorageDTO) (string, err
 }
 
 // UpdateStorage update a storage
-func (s *StorageServiceImpl) UpdateStorage(storageId string, updatedModel StorageDTO) (*common.SimpleResponse, error) {
-	var apiPath = common.ApiPath.Storage(updatedModel.VpcId) + "/" + storageId
+func (s *StorageServiceImpl) UpdateStorage(vpcId string, storageId string, updatedModel UpdateStorageDTO) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.Storage(vpcId) + "/" + storageId
 	_, err := s.client.SendPutRequest(apiPath, updatedModel)
 
 	if err != nil {
@@ -118,6 +128,25 @@ func (s *StorageServiceImpl) UpdateStorage(storageId string, updatedModel Storag
 func (s *StorageServiceImpl) DeleteStorage(vpcId string, storageId string) (*common.SimpleResponse, error) {
 	var apiPath = common.ApiPath.Storage(vpcId) + "/" + storageId
 	_, err := s.client.SendDeleteRequest(apiPath)
+
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data:   "Successfully",
+		Status: "200",
+	}
+
+	return result, nil
+}
+
+func (s *StorageServiceImpl) UpdateAttachedInstance(vpcId string, storageId string, instanceId *string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.StorageUpdateAttached(vpcId, storageId)
+
+	_, err := s.client.SendPutRequest(apiPath, map[string]interface{}{
+		"instance_id": instanceId,
+	})
 
 	if err != nil {
 		return nil, common.DecodeError(err)

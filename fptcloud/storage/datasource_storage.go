@@ -53,6 +53,11 @@ func DataSourceStorage() *schema.Resource {
 				Computed:    true,
 				Description: "The policy name of the storage",
 			},
+			"storage_policy_id": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The policy id of the storage",
+			},
 			"instance_id": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -95,6 +100,7 @@ func dataSourceStorageRead(_ context.Context, d *schema.ResourceData, m interfac
 	setError = d.Set("name", foundStorage.Name)
 	setError = d.Set("size_gb", foundStorage.SizeGb)
 	setError = d.Set("storage_policy", foundStorage.StoragePolicy)
+	setError = d.Set("storage_policy_id", foundStorage.StoragePolicyId)
 	setError = d.Set("type", foundStorage.Type)
 	setError = d.Set("instance_id", foundStorage.InstanceId)
 	setError = d.Set("vpc_id", foundStorage.VpcId)
