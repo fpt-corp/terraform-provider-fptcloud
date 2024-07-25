@@ -16,7 +16,7 @@ type StoragePolicyService interface {
 	ListStoragePolicy(vpcId string) (*[]StoragePolicy, error)
 }
 
-// StoragePolicyServiceImpl is the implementation of StoragePolicyServiceImpl
+// StoragePolicyServiceImpl is the implementation of StoragePolicyService
 type StoragePolicyServiceImpl struct {
 	client *common.Client
 }

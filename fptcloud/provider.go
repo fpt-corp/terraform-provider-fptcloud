@@ -5,10 +5,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	common "terraform-provider-fptcloud/commons"
+	"terraform-provider-fptcloud/fptcloud/flavor"
+	"terraform-provider-fptcloud/fptcloud/image"
 	"terraform-provider-fptcloud/fptcloud/ssh"
 	"terraform-provider-fptcloud/fptcloud/storage"
 	"terraform-provider-fptcloud/fptcloud/storage-policy"
-	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
+	"terraform-provider-fptcloud/fptcloud/vpc"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -55,6 +57,8 @@ func Provider() *schema.Provider {
 			"fptcloud_storage":        fptcloud_storage.DataSourceStorage(),
 			"fptcloud_ssh_key":        fptcloud_ssh.DataSourceSSHKey(),
 			"fptcloud_vpc":            fptcloud_vpc.NewDataSource(),
+			"fptcloud_flavor":         fptcloud_flavor.DataSourceFlavor(),
+			"fptcloud_image":          fptcloud_image.DataSourceImage(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage": fptcloud_storage.ResourceStorage(),

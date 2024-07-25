@@ -12,7 +12,7 @@ import (
 // This can be used to query and retrieve details about a specific Storage in the infrastructure using its id or name.
 func DataSourceStoragePolicy() *schema.Resource {
 	dataListConfig := &data_list.ResourceConfig{
-		Description:         "Retrieves information about the sizes that fpt cloud supports, with the ability to filter the results.",
+		Description:         "Retrieves information about the storage policy that fpt cloud supports, with the ability to filter the results.",
 		RecordSchema:        storagePolicySchema(),
 		ResultAttributeName: "storage_policies",
 		FlattenRecord:       flattenStoragePolicy,
@@ -49,11 +49,11 @@ func flattenStoragePolicy(storagePolicy, _ interface{}, _ map[string]interface{}
 
 	s := storagePolicy.(StoragePolicy)
 
-	flattenedSize := map[string]interface{}{}
-	flattenedSize["name"] = s.Name
-	flattenedSize["id"] = s.ID
+	flattened := map[string]interface{}{}
+	flattened["name"] = s.Name
+	flattened["id"] = s.ID
 
-	return flattenedSize, nil
+	return flattened, nil
 }
 
 func getStoragePolicies(m interface{}, extra map[string]interface{}) ([]interface{}, error) {
@@ -71,8 +71,8 @@ func getStoragePolicies(m interface{}, extra map[string]interface{}) ([]interfac
 	}
 
 	var templates []interface{}
-	for _, partialSize := range *storagePolicies {
-		templates = append(templates, partialSize)
+	for _, storagePolicy := range *storagePolicies {
+		templates = append(templates, storagePolicy)
 	}
 
 	return templates, nil
