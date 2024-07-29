@@ -3,16 +3,16 @@ package fptcloud
 import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/fptcloud/flavor"
 	"terraform-provider-fptcloud/fptcloud/image"
+	"terraform-provider-fptcloud/fptcloud/instance-group-policy"
 	"terraform-provider-fptcloud/fptcloud/ssh"
 	"terraform-provider-fptcloud/fptcloud/storage"
 	"terraform-provider-fptcloud/fptcloud/storage-policy"
 	"terraform-provider-fptcloud/fptcloud/vpc"
-
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 var (
@@ -53,12 +53,13 @@ func Provider() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"fptcloud_storage_policy": fptcloud_storage_policy.DataSourceStoragePolicy(),
-			"fptcloud_storage":        fptcloud_storage.DataSourceStorage(),
-			"fptcloud_ssh_key":        fptcloud_ssh.DataSourceSSHKey(),
-			"fptcloud_vpc":            fptcloud_vpc.NewDataSource(),
-			"fptcloud_flavor":         fptcloud_flavor.DataSourceFlavor(),
-			"fptcloud_image":          fptcloud_image.DataSourceImage(),
+			"fptcloud_storage_policy":        fptcloud_storage_policy.DataSourceStoragePolicy(),
+			"fptcloud_storage":               fptcloud_storage.DataSourceStorage(),
+			"fptcloud_ssh_key":               fptcloud_ssh.DataSourceSSHKey(),
+			"fptcloud_vpc":                   fptcloud_vpc.NewDataSource(),
+			"fptcloud_flavor":                fptcloud_flavor.DataSourceFlavor(),
+			"fptcloud_image":                 fptcloud_image.DataSourceImage(),
+			"fptcloud_instance_group_policy": fptcloud_instance_group_policy.DataSourceInstanceGroupPolicy(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage": fptcloud_storage.ResourceStorage(),

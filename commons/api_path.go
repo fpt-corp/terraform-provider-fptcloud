@@ -9,6 +9,7 @@ var ApiPath = struct {
 	StoragePolicy         func(vpcId string) string
 	Flavor                func(vpcId string) string
 	Image                 func(vpcId string) string
+	VMGroupPolicies       func(vpcId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -25,5 +26,8 @@ var ApiPath = struct {
 	},
 	Image: func(vpcId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/images", vpcId)
+	},
+	VMGroupPolicies: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group-policies", vpcId)
 	},
 }
