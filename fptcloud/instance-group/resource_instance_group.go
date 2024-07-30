@@ -57,7 +57,7 @@ func ResourceInstanceGroup() *schema.Resource {
 // function to create a new instance group
 func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
-	instanceGroupService := NewInstanceGroupService(apiClient)
+	service := NewInstanceGroupService(apiClient)
 
 	createModel := CreateInstanceGroupDTO{}
 	vpcId, okVpcId := d.GetOk("vpc_id")
@@ -76,12 +76,13 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 		createModel.VmIds = vmIds.([]string)
 	}
 
-	isSuccess, err := instanceGroupService.CreateInstanceGroup(createModel)
+	isSuccess, err := service.CreateInstanceGroup(createModel)
 	if err != nil || !isSuccess {
 		return diag.Errorf("[ERR] Failed to create a new instance group: %s", err)
 	}
 
 	var setError error
+	d.SetId("")
 	setError = d.Set("vpc_id", vpcId)
 	setError = d.Set("policy_name", name)
 	if setError != nil {
@@ -93,15 +94,15 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 		Pending: []string{"PENDING"},
 		Target:  []string{"COMPLETE"},
 		Refresh: func() (interface{}, string, error) {
-			findStorageModel := FindInstanceGroupDTO{
+			findModel := FindInstanceGroupDTO{
 				Name:  name.(string),
 				VpcId: vpcId.(string),
 			}
-			resp, err := instanceGroupService.FindInstanceGroup(findStorageModel)
-			if err != nil || resp == nil || resp.ID != "" {
-				return nil, "PENDING", common.DecodeError(err)
+			resp, err := service.FindInstanceGroup(findModel)
+			if err != nil || len(*resp) == 0 {
+				return nil, "", common.DecodeError(err)
 			}
-			return resp, "COMPLETE", nil
+			return (*resp)[0], "COMPLETE", nil
 		},
 		Timeout:        5 * time.Minute,
 		Delay:          3 * time.Second,
@@ -119,43 +120,64 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 // function to read the instance group
 func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
-	storageService := NewStorageService(apiClient)
+	service := NewInstanceGroupService(apiClient)
 
-	log.Printf("[INFO] Retrieving the storage %s", d.Id())
+	log.Printf("[INFO] Retrieving the instance group %s", d.Id())
 
-	findStorageModel := FindStorageDTO{}
-	findStorageModel.ID = d.Id()
+	findModel := FindInstanceGroupDTO{}
+	findModel.ID = d.Id()
 	if vpcId, ok := d.GetOk("vpc_id"); ok {
-		findStorageModel.VpcId = vpcId.(string)
+		findModel.VpcId = vpcId.(string)
+	}
+	if policyName, ok := d.GetOk("name"); ok {
+		findModel.Name = policyName.(string)
 	}
 
-	foundStorage, err := storageService.FindStorage(findStorageModel)
+	result, err := service.FindInstanceGroup(findModel)
 	if err != nil {
-		if foundStorage == nil {
+		if result == nil {
 			d.SetId("")
 			return nil
 		}
 		return diag.Errorf("[ERR] failed retrieving the storage: %s", err)
 	}
-	if foundStorage.Status != "ENABLED" {
+	if result == nil || len(*result) == 0 {
 		d.SetId("")
 		return nil
 	}
 
 	var setError error
-	d.SetId(foundStorage.ID)
-	setError = d.Set("name", foundStorage.Name)
-	setError = d.Set("size_gb", foundStorage.SizeGb)
-	setError = d.Set("storage_policy_id", foundStorage.StoragePolicyId)
-	setError = d.Set("storage_policy", foundStorage.StoragePolicy)
-	setError = d.Set("type", foundStorage.Type)
-	setError = d.Set("instance_id", foundStorage.InstanceId)
-	setError = d.Set("vpc_id", foundStorage.VpcId)
-	setError = d.Set("created_at", foundStorage.CreatedAt)
+	data := &(*result)[0]
+	d.SetId(data.ID)
+	setError = d.Set("name", data.Name)
+	setError = d.Set("policy", data.Policy)
+	setError = d.Set("vms", data.Vms)
+	setError = d.Set("vpc_id", data.VpcId)
+	setError = d.Set("created_at", data.CreatedAt)
 
 	if setError != nil {
-		return diag.Errorf("[ERR] Storage could not be found")
+		return diag.Errorf("[ERR] Instance group could not be found")
 	}
 
+	return nil
+}
+
+// function to delete the instance group
+func resourceInstanceGroupDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	apiClient := m.(*common.Client)
+	service := NewInstanceGroupService(apiClient)
+
+	log.Printf("[INFO] Deleting the instance group %s", d.Id())
+
+	vpcId, okVpcId := d.GetOk("vpc_id")
+	if !okVpcId {
+		return diag.Errorf("[ERR] Vpc id is required")
+	}
+
+	_, err := service.DeleteInstanceGroup(vpcId.(string), d.Id())
+
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while trying to delete the instance group %s", err)
+	}
 	return nil
 }

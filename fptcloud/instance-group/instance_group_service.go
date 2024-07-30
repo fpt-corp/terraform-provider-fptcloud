@@ -2,6 +2,7 @@ package fptcloud_instance_group
 
 import (
 	"encoding/json"
+	"errors"
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/commons/utils"
 )
@@ -46,7 +47,7 @@ type InstanceGroup struct {
 
 // InstanceGroupService defines the interface for instance group service
 type InstanceGroupService interface {
-	FindInstanceGroup(searchModel FindInstanceGroupDTO) (*InstanceGroup, error)
+	FindInstanceGroup(searchModel FindInstanceGroupDTO) (*[]InstanceGroup, error)
 	CreateInstanceGroup(createdModel CreateInstanceGroupDTO) (bool, error)
 	DeleteInstanceGroup(vpcId string, instanceGroupId string) (bool, error)
 }
@@ -62,20 +63,27 @@ func NewInstanceGroupService(client *common.Client) InstanceGroupService {
 }
 
 // FindInstanceGroup finds an instance group by either part of the ID or part of the name
-func (s *InstanceGroupServiceImpl) FindInstanceGroup(searchModel FindInstanceGroupDTO) (*InstanceGroup, error) {
+func (s *InstanceGroupServiceImpl) FindInstanceGroup(searchModel FindInstanceGroupDTO) (*[]InstanceGroup, error) {
 	var apiPath = common.ApiPath.FindInstanceGroup(searchModel.VpcId) + utils.ToQueryParams(searchModel)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
 
-	result := InstanceGroup{}
-	err = json.Unmarshal(resp, &result)
+	var instanceGroupResponse struct {
+		Status  bool            `json:"status"`
+		Message string          `json:"message"`
+		Data    []InstanceGroup `json:"data"`
+	}
+	err = json.Unmarshal(resp, &instanceGroupResponse)
 	if err != nil {
 		return nil, err
 	}
+	if false == instanceGroupResponse.Status {
+		return nil, errors.New(instanceGroupResponse.Message)
+	}
 
-	return &result, nil
+	return &instanceGroupResponse.Data, nil
 }
 
 // CreateInstanceGroup create a new instance group
