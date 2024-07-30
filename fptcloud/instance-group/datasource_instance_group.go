@@ -1,114 +1,115 @@
 package fptcloud_instance_group
 
 import (
-	"context"
+	"fmt"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
+	data_list "terraform-provider-fptcloud/commons/data-list"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-// DataSourceStorage function returns a schema.Resource that represents a Storage.
-// This can be used to query and retrieve details about a specific Storage in the infrastructure using its id or name.
-func DataSourceStorage() *schema.Resource {
-	return &schema.Resource{
+// DataSourceInstanceGroup function returns a schema.Resource that represents an instance group.
+// This can be used to query and retrieve details about a specific instance group in the infrastructure using its id or name.
+func DataSourceInstanceGroup() *schema.Resource {
+	dataListConfig := &data_list.ResourceConfig{
 		Description: strings.Join([]string{
-			"Get information on a storage for use in other resources. This data source provides all of the storage properties as configured on your account.",
-			"An error will be raised if the provided storage name does not exist in your account.",
+			"Get information on a instance group for use in other resources. This data source provides all of the instance group properties as configured on your account.",
+			"An error will be raised if the provided instance group name does not exist in your account.",
 		}, "\n\n"),
-		ReadContext: dataSourceStorageRead,
-		Schema: map[string]*schema.Schema{
+		RecordSchema:        instanceGroupSchema(),
+		ResultAttributeName: "instance_groups",
+		FlattenRecord:       flattenInstanceGroup,
+		GetRecords:          getInstanceGroups,
+		ExtraQuerySchema: map[string]*schema.Schema{
 			"vpc_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The vpc id of the storage",
-			},
-			"id": {
 				Type:         schema.TypeString,
-				Optional:     true,
+				Required:     true,
 				ValidateFunc: validation.NoZeroValues,
-				ExactlyOneOf: []string{"id", "name"},
+				Description:  "The vpc id of the instance group",
 			},
-			"name": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.NoZeroValues,
-				ExactlyOneOf: []string{"id", "name"},
-				Description:  "The name of the storage",
-			},
-			"type": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The type of the storage",
-			},
-			"size_gb": {
-				Type:        schema.TypeInt,
-				Computed:    true,
-				Description: "The size of the storage (in GB)",
-			},
-			"storage_policy": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The policy name of the storage",
-			},
-			"storage_policy_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The policy id of the storage",
-			},
-			"instance_id": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The vpc id of the storage",
-			},
-			"created_at": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The created at of the storage",
-			},
+		},
+	}
+
+	return data_list.NewResource(dataListConfig)
+}
+
+func instanceGroupSchema() map[string]*schema.Schema {
+	return map[string]*schema.Schema{
+		"vpc_id": {
+			Type:        schema.TypeString,
+			Required:    true,
+			Description: "The vpc id of the instance group",
+		},
+		"id": {
+			Type:         schema.TypeString,
+			Optional:     true,
+			ValidateFunc: validation.NoZeroValues,
+			ExactlyOneOf: []string{"id", "name"},
+		},
+		"name": {
+			Type:         schema.TypeString,
+			Optional:     true,
+			ValidateFunc: validation.NoZeroValues,
+			ExactlyOneOf: []string{"id", "name"},
+			Description:  "The name of the instance group",
+		},
+		"policy": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Description: "The policy of the instance group",
+		},
+		"vm_ids": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Description: "The instance of the instance group",
+		},
+		"created_at": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The created at of the instance group",
 		},
 	}
 }
 
-func dataSourceStorageRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func flattenInstanceGroup(instanceGroup, _ interface{}, _ map[string]interface{}) (map[string]interface{}, error) {
+	s := instanceGroup.(InstanceGroup)
+
+	flattened := map[string]interface{}{}
+	flattened["name"] = s.Name
+	flattened["id"] = s.ID
+
+	return flattened, nil
+}
+
+func getInstanceGroups(m interface{}, extra map[string]interface{}) ([]interface{}, error) {
 	apiClient := m.(*common.Client)
-	storageService := NewStorageService(apiClient)
+	service := NewInstanceGroupService(apiClient)
 
-	findStorageModel := FindStorageDTO{}
+	findModel := FindInstanceGroupDTO{}
 
-	if id, ok := d.GetOk("id"); ok {
-		findStorageModel.ID = id.(string)
+	if id, ok := extra["id"].(string); ok {
+		findModel.ID = id
 	}
 
-	if name, ok := d.GetOk("name"); ok {
-		findStorageModel.Name = name.(string)
+	if name, ok := extra["name"].(string); ok {
+		findModel.Name = name
 	}
 
-	if vpcId, ok := d.GetOk("vpc_id"); ok {
-		findStorageModel.VpcId = vpcId.(string)
+	if vpcId, ok := extra["vpc_id"].(string); ok {
+		findModel.VpcId = vpcId
 	}
 
-	foundStorage, err := storageService.FindStorage(findStorageModel)
-	if err != nil {
-		return diag.Errorf("[ERR] Failed to retrieve storage: %s", err)
+	result, err := service.FindInstanceGroup(findModel)
+	if err != nil || len(*result) == 0 {
+		return nil, fmt.Errorf("[ERR] Failed to retrieve instance group: %s", err)
 	}
 
-	var setError error
-	d.SetId(foundStorage.ID)
-	setError = d.Set("name", foundStorage.Name)
-	setError = d.Set("size_gb", foundStorage.SizeGb)
-	setError = d.Set("storage_policy", foundStorage.StoragePolicy)
-	setError = d.Set("storage_policy_id", foundStorage.StoragePolicyId)
-	setError = d.Set("type", foundStorage.Type)
-	setError = d.Set("instance_id", foundStorage.InstanceId)
-	setError = d.Set("vpc_id", foundStorage.VpcId)
-	setError = d.Set("created_at", foundStorage.CreatedAt)
-
-	if setError != nil {
-		return diag.Errorf("[ERR]Storage could not be found")
+	var templates []interface{}
+	for _, item := range *result {
+		templates = append(templates, item)
 	}
 
-	return nil
+	return templates, nil
 }

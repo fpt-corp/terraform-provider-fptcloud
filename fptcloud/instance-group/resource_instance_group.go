@@ -139,7 +139,7 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 			d.SetId("")
 			return nil
 		}
-		return diag.Errorf("[ERR] failed retrieving the storage: %s", err)
+		return diag.Errorf("[ERR] failed retrieving the instance group: %s", err)
 	}
 	if result == nil || len(*result) == 0 {
 		d.SetId("")
@@ -148,6 +148,7 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 
 	var setError error
 	data := &(*result)[0]
+
 	d.SetId(data.ID)
 	setError = d.Set("name", data.Name)
 	setError = d.Set("policy", data.Policy)
