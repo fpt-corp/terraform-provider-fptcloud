@@ -7,6 +7,8 @@ import (
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/fptcloud/flavor"
 	"terraform-provider-fptcloud/fptcloud/image"
+	"terraform-provider-fptcloud/fptcloud/security-group"
+	"terraform-provider-fptcloud/fptcloud/security-group-rule"
 	"terraform-provider-fptcloud/fptcloud/ssh"
 	"terraform-provider-fptcloud/fptcloud/storage"
 	"terraform-provider-fptcloud/fptcloud/storage-policy"
@@ -59,10 +61,13 @@ func Provider() *schema.Provider {
 			"fptcloud_vpc":            fptcloud_vpc.NewDataSource(),
 			"fptcloud_flavor":         fptcloud_flavor.DataSourceFlavor(),
 			"fptcloud_image":          fptcloud_image.DataSourceImage(),
+			"fptcloud_security_group": fptcloud_security_group.DataSourceSecurityGroup(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"fptcloud_storage": fptcloud_storage.ResourceStorage(),
-			"fptcloud_ssh_key": fptcloud_ssh.ResourceSSHKey(),
+			"fptcloud_storage":             fptcloud_storage.ResourceStorage(),
+			"fptcloud_ssh_key":             fptcloud_ssh.ResourceSSHKey(),
+			"fptcloud_security_group":      fptcloud_security_group.ResourceSecurityGroup(),
+			"fptcloud_security_group_rule": fptcloud_security_group_rule.ResourceSecurityGroupRule(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
