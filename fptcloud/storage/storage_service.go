@@ -80,7 +80,7 @@ func (s *StorageServiceImpl) FindStorage(searchModel FindStorageDTO) (*Storage, 
 	err = json.Unmarshal(resp, &result)
 
 	if err != nil {
-		return nil, err
+		return nil, common.DecodeError(err)
 	}
 	return &result, nil
 }
@@ -101,7 +101,7 @@ func (s *StorageServiceImpl) CreateStorage(createdModel StorageDTO) (string, err
 	err = json.Unmarshal(resp, &createStorageResponse)
 
 	if err != nil {
-		return "", err
+		return "", common.DecodeError(err)
 	}
 
 	return createStorageResponse.StorageId, nil
