@@ -23,11 +23,13 @@ func TestProviderImp(t *testing.T) {
 	var _ *schema.Provider = Provider()
 }
 
-// TestToken tests the token configuration
-func TestToken(t *testing.T) {
+// TestConfig tests the configuration
+func TestConfig(t *testing.T) {
 	rawProvider := Provider()
 	raw := map[string]interface{}{
-		"token": "123456789",
+		"token":       "example_token",
+		"tenant_name": "example_tenant_name",
+		"region":      "example_region",
 	}
 
 	diags := rawProvider.Configure(context.Background(), terraform.NewResourceConfigRaw(raw))
