@@ -3,12 +3,17 @@ package commons
 import "fmt"
 
 var ApiPath = struct {
-	SSH                   string
-	Storage               func(vpcId string) string
-	StorageUpdateAttached func(vpcId string, storageId string) string
-	StoragePolicy         func(vpcId string) string
-	Flavor                func(vpcId string) string
-	Image                 func(vpcId string) string
+	SSH                        string
+	Storage                    func(vpcId string) string
+	StorageUpdateAttached      func(vpcId string, storageId string) string
+	StoragePolicy              func(vpcId string) string
+	Flavor                     func(vpcId string) string
+	Image                      func(vpcId string) string
+	SecurityGroup              func(vpcId string) string
+	RenameSecurityGroup        func(vpcId string, securityGroupId string) string
+	UpdateApplyToSecurityGroup func(vpcId string, securityGroupId string) string
+	SecurityGroupRule          func(vpcId string, securityGroupRuleId string) string
+	CreateSecurityGroupRule    func(vpcId string) string
 	VMGroupPolicies       func(vpcId string) string
 	CreateInstanceGroup   func(vpcId string) string
 	FindInstanceGroup     func(vpcId string) string
@@ -29,6 +34,21 @@ var ApiPath = struct {
 	},
 	Image: func(vpcId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/images", vpcId)
+	},
+	SecurityGroup: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/security-group", vpcId)
+	},
+	RenameSecurityGroup: func(vpcId string, securityGroupId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/security-group/%s/rename", vpcId, securityGroupId)
+	},
+	UpdateApplyToSecurityGroup: func(vpcId string, securityGroupId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/security-group/%s/apply-to", vpcId, securityGroupId)
+	},
+	SecurityGroupRule: func(vpcId string, securityGroupRuleId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/security-group-rule/%s", vpcId, securityGroupRuleId)
+	},
+	CreateSecurityGroupRule: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/security-group-rule", vpcId)
 	},
 	VMGroupPolicies: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group-policies", vpcId)
