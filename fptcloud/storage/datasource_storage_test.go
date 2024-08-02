@@ -1,4 +1,4 @@
-package storage_test
+package fptcloud_storage_test
 
 import (
 	"testing"

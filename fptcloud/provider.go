@@ -1,13 +1,20 @@
 package fptcloud
 
 import (
-	"fmt"
+	"context"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"log"
 	common "terraform-provider-fptcloud/commons"
-
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"terraform-provider-fptcloud/fptcloud/flavor"
+	"terraform-provider-fptcloud/fptcloud/image"
+	"terraform-provider-fptcloud/fptcloud/security-group"
+	"terraform-provider-fptcloud/fptcloud/security-group-rule"
 	"terraform-provider-fptcloud/fptcloud/ssh"
 	"terraform-provider-fptcloud/fptcloud/storage"
+	"terraform-provider-fptcloud/fptcloud/storage-policy"
+	"terraform-provider-fptcloud/fptcloud/vpc"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 var (
@@ -15,7 +22,7 @@ var (
 	ProviderVersion = "dev"
 
 	// ProdAPI is the Base URL for Fptcloud Production API
-	ProdAPI = "https://console-api.fptcloud.com/api"
+	ProdAPI = common.DefaultApiUrl
 )
 
 // Provider fptcloud provider
@@ -24,19 +31,19 @@ func Provider() *schema.Provider {
 		Schema: map[string]*schema.Schema{
 			"token": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TOKEN", ""),
 				Description: "This is the Fpt cloud API token. Alternatively, this can also be specified using `FPTCLOUD_TOKEN` environment variable.",
 			},
 			"tenant_name": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TENANT_NAME", ""),
 				Description: "The tenant name to use",
 			},
 			"region": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_REGION", ""),
 				Description: "The region to use",
 			},
@@ -48,19 +55,28 @@ func Provider() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"fptcloud_volume":  storage.DataSourceStorage(),
-			"fptcloud_ssh_key": ssh.DataSourceSSHKey(),
+			"fptcloud_storage_policy": fptcloud_storage_policy.DataSourceStoragePolicy(),
+			"fptcloud_storage":        fptcloud_storage.DataSourceStorage(),
+			"fptcloud_ssh_key":        fptcloud_ssh.DataSourceSSHKey(),
+			"fptcloud_vpc":            fptcloud_vpc.NewDataSource(),
+			"fptcloud_flavor":         fptcloud_flavor.DataSourceFlavor(),
+			"fptcloud_image":          fptcloud_image.DataSourceImage(),
+			"fptcloud_security_group": fptcloud_security_group.DataSourceSecurityGroup(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"fptcloud_volume": storage.ResourceStorage(),
+			"fptcloud_storage":             fptcloud_storage.ResourceStorage(),
+			"fptcloud_ssh_key":             fptcloud_ssh.ResourceSSHKey(),
+			"fptcloud_security_group":      fptcloud_security_group.ResourceSecurityGroup(),
+			"fptcloud_security_group_rule": fptcloud_security_group_rule.ResourceSecurityGroupRule(),
 		},
-		ConfigureFunc: providerConfigure,
+		ConfigureContextFunc: providerConfigureContext,
 	}
 }
 
 // Provider configuration
-func providerConfigure(d *schema.ResourceData) (interface{}, error) {
-	var regionValue, tokenValue, apiURL string
+func providerConfigureContext(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	var regionValue, tokenValue, tenantNameValue, apiURL string
 	var client *common.Client
 	var err error
 
@@ -68,10 +84,14 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		regionValue = region.(string)
 	}
 
+	if tenantName, ok := d.GetOk("tenant_name"); ok {
+		tenantNameValue = tenantName.(string)
+	}
+
 	if token, ok := d.GetOk("token"); ok {
 		tokenValue = token.(string)
 	} else {
-		return nil, fmt.Errorf("[ERR] token not found")
+		return nil, diag.Errorf("[ERR] token not found")
 	}
 
 	if apiEndpoint, ok := d.GetOk("api_endpoint"); ok {
@@ -79,9 +99,9 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	} else {
 		apiURL = ProdAPI
 	}
-	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue)
+	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue, tenantNameValue)
 	if err != nil {
-		return nil, err
+		return nil, diag.FromErr(err)
 	}
 
 	userAgent := &common.Component{
@@ -91,5 +111,6 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	client.SetUserAgent(userAgent)
 
 	log.Printf("[DEBUG] Fptcloud API URL: %s\n", apiURL)
-	return client, nil
+	log.Printf("[DEBUG] Fptcloud tenant name: %s\n", tenantNameValue)
+	return client, diags
 }

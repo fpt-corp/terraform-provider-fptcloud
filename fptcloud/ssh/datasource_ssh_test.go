@@ -1,4 +1,4 @@
-package ssh_test
+package fptcloud_ssh_test
 
 import (
 	"testing"

@@ -1,8 +1,10 @@
-package ssh
+package fptcloud_ssh
 
 import (
 	"context"
+	"log"
 	"strings"
+	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -37,5 +39,34 @@ func DataSourceSSHKey() *schema.Resource {
 }
 
 func dataSourceSSHKeyRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	apiClient := m.(*common.Client)
+	sshService := NewSSHKeyService(apiClient)
+	var searchBy string
+
+	if id, ok := d.GetOk("id"); ok {
+		log.Printf("[INFO] Getting the ssh key by id")
+		searchBy = id.(string)
+	} else if name, ok := d.GetOk("name"); ok {
+		log.Printf("[INFO] Getting the ssh key by name")
+		searchBy = name.(string)
+	}
+
+	sshKey, err := sshService.FindSSHKey(searchBy)
+	log.Printf("[INFO] search by : %s", searchBy)
+
+	if err != nil {
+		return diag.Errorf("[ERR] SSH key not found")
+	}
+
+	d.SetId(sshKey.ID)
+
+	var setError error
+	setError = d.Set("name", sshKey.Name)
+	setError = d.Set("public_key", sshKey.PublicKey)
+	setError = d.Set("created_at", sshKey.CreatedAt)
+	if setError != nil {
+		return diag.Errorf("[ERR] SSH key could not be found")
+	}
+
 	return nil
 }
