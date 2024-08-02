@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	var debugMode bool
+	var debugMode bool = true
 
 	flag.BoolVar(
 		&debugMode,
