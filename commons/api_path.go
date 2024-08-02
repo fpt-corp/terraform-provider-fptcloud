@@ -14,10 +14,13 @@ var ApiPath = struct {
 	UpdateApplyToSecurityGroup func(vpcId string, securityGroupId string) string
 	SecurityGroupRule          func(vpcId string, securityGroupRuleId string) string
 	CreateSecurityGroupRule    func(vpcId string) string
-	VMGroupPolicies       func(vpcId string) string
-	CreateInstanceGroup   func(vpcId string) string
-	FindInstanceGroup     func(vpcId string) string
-	DeleteInstanceGroup   func(vpcId string, instanceGroupId string) string
+	VMGroupPolicies            func(vpcId string) string
+	CreateInstanceGroup        func(vpcId string) string
+	FindInstanceGroup          func(vpcId string) string
+	DeleteInstanceGroup        func(vpcId string, instanceGroupId string) string
+	CreateFloatingIp           func(vpcId string) string
+	FindFloatingIp             func(vpcId string, floatingIpId string) string
+	DeleteFloatingIp           func(vpcId string, floatingIpId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -61,5 +64,14 @@ var ApiPath = struct {
 	},
 	DeleteInstanceGroup: func(vpcId string, instanceGroupId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group/%s", vpcId, instanceGroupId)
+	},
+	CreateFloatingIp: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ip", vpcId)
+	},
+	FindFloatingIp: func(vpcId string, floatingIpId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ip/%s", vpcId, floatingIpId)
+	},
+	DeleteFloatingIp: func(vpcId string, floatingIpId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ip/%s/release", vpcId, floatingIpId)
 	},
 }

@@ -1,1 +1,1 @@
-package floating_ip
+package fptcloud_floating_ip
