@@ -7,6 +7,7 @@ import (
 	"log"
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/fptcloud/flavor"
+	fptcloud_floating_ip "terraform-provider-fptcloud/fptcloud/floating-ip"
 	"terraform-provider-fptcloud/fptcloud/image"
 	"terraform-provider-fptcloud/fptcloud/instance-group"
 	"terraform-provider-fptcloud/fptcloud/instance-group-policy"
@@ -71,6 +72,7 @@ func Provider() *schema.Provider {
 			"fptcloud_security_group":      fptcloud_security_group.ResourceSecurityGroup(),
 			"fptcloud_security_group_rule": fptcloud_security_group_rule.ResourceSecurityGroupRule(),
 			"fptcloud_instance_group":      fptcloud_instance_group.ResourceInstanceGroup(),
+			"fptcloud_floating_ip":         fptcloud_floating_ip.ResourceFloatingIp(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}

@@ -9,10 +9,23 @@ import (
 
 // CreateFloatingIpDTO
 type CreateFloatingIpDTO struct {
+	VpcId          string `json:"vpc_id"`
 	FloatingIpId   string `json:"floating_ip_id"`
-	FloatingIpPort int8   `json:"floating_ip_port"`
+	FloatingIpPort string `json:"floating_ip_port"`
 	InstanceId     string `json:"instance_id"`
-	InstancePort   int8   `json:"instance_port"`
+	InstancePort   string `json:"instance_port"`
+}
+
+type FindFloatingIpDTO struct {
+	FloatingIpID string `json:"floating_ip_id"`
+	IpAddress    string `json:"ip_address"`
+	VpcId        string `json:"vpc_id"`
+}
+
+type FloatingIpResponseDto struct {
+	Status  bool       `json:"status"`
+	Message string     `json:"message"`
+	Data    FloatingIp `json:"data"`
 }
 
 // FloatingIp represents a instance group model
@@ -34,8 +47,9 @@ type FloatingIpInstance struct {
 
 // FloatingIpService defines the interface for floating ip service
 type FloatingIpService interface {
-	FindFloatingIp(vpcId string, floatingIpId string) (*[]FloatingIp, error)
-	CreateFloatingIp(createdModel CreateFloatingIpDTO) (bool, error)
+	FindFloatingIp(findDto FindFloatingIpDTO) (*FloatingIp, error)
+	FindFloatingIpByAddress(findDto FindFloatingIpDTO) (*FloatingIp, error)
+	CreateFloatingIp(createDto CreateFloatingIpDTO) (*FloatingIp, error)
 	DeleteFloatingIp(vpcId string, floatingIpId string) (bool, error)
 }
 
@@ -49,62 +63,79 @@ func NewFloatingIpService(client *common.Client) FloatingIpService {
 	return &FloatingIpServiceImpl{client: client}
 }
 
-func (s *FloatingIpServiceImpl) FindFloatingIp(vpcId string, floatingIpId string) (*[]FloatingIp, error) {
-	var apiPath = common.ApiPath.FindFloatingIp(searchModel.VpcId) + utils.ToQueryParams(searchModel)
+func (s *FloatingIpServiceImpl) FindFloatingIp(findDto FindFloatingIpDTO) (*FloatingIp, error) {
+	var apiPath = common.ApiPath.FindFloatingIp(findDto.VpcId, findDto.FloatingIpID)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
 
-	var floatingIpResponse struct {
-		Status  bool         `json:"status"`
-		Message string       `json:"message"`
-		Data    []FloatingIp `json:"data"`
-	}
-	err = json.Unmarshal(resp, &floatingIpResponse)
+	response := FloatingIpResponseDto{}
+	err = json.Unmarshal(resp, &response)
 	if err != nil {
 		return nil, err
 	}
-	if false == floatingIpResponse.Status {
-		return nil, errors.New(instanceGroupResponse.Message)
+	if false == response.Status {
+		return nil, errors.New(response.Message)
 	}
 
-	return &instanceGroupResponse.Data, nil
+	return &response.Data, nil
 }
 
-func (s *InstanceGroupServiceImpl) CreateInstanceGroup(createdModel CreateInstanceGroupDTO) (bool, error) {
-	var apiPath = common.ApiPath.CreateInstanceGroup(createdModel.VpcId)
-	resp, err := s.client.SendPostRequest(apiPath, createdModel)
+func (s *FloatingIpServiceImpl) FindFloatingIpByAddress(findDto FindFloatingIpDTO) (*FloatingIp, error) {
+	var apiPath = common.ApiPath.FindFloatingIpByAddress(findDto.VpcId) + utils.ToQueryParams(findDto)
+	resp, err := s.client.SendGetRequest(apiPath)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	response := FloatingIpResponseDto{}
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	if false == response.Status {
+		return nil, errors.New(response.Message)
+	}
+
+	return &response.Data, nil
+}
+
+func (s *FloatingIpServiceImpl) CreateFloatingIp(createDto CreateFloatingIpDTO) (*FloatingIp, error) {
+	var apiPath = common.ApiPath.CreateFloatingIp(createDto.VpcId)
+	resp, err := s.client.SendPostRequest(apiPath, createDto)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	response := FloatingIpResponseDto{}
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	if false == response.Status {
+		return nil, errors.New(response.Message)
+	}
+
+	return &response.Data, nil
+}
+
+// DeleteFloatingIp delete an floating ip
+func (s *FloatingIpServiceImpl) DeleteFloatingIp(vpcId string, floatingIpId string) (bool, error) {
+	var apiPath = common.ApiPath.DeleteFloatingIp(vpcId, floatingIpId)
+	resp, err := s.client.SendPostRequest(apiPath, nil)
 	if err != nil {
 		return false, common.DecodeError(err)
 	}
 
-	var result struct {
-		Status bool `json:"status"`
-	}
-	err = json.Unmarshal(resp, &result)
+	response := FloatingIpResponseDto{}
+	err = json.Unmarshal(resp, &response)
 	if err != nil {
 		return false, err
 	}
-
-	return result.Status, nil
-}
-
-// DeleteInstanceGroup delete an instance group
-func (s *InstanceGroupServiceImpl) DeleteInstanceGroup(vpcId string, instanceGroupId string) (bool, error) {
-	var apiPath = common.ApiPath.DeleteInstanceGroup(vpcId, instanceGroupId)
-	resp, err := s.client.SendDeleteRequest(apiPath)
-	if err != nil {
-		return false, common.DecodeError(err)
+	if false == response.Status {
+		return false, errors.New(response.Message)
 	}
 
-	var result struct {
-		Status bool `json:"status"`
-	}
-	err = json.Unmarshal(resp, &result)
-	if err != nil {
-		return false, err
-	}
-
-	return result.Status, nil
+	return response.Status, nil
 }

@@ -13,6 +13,10 @@ provider "fptcloud" {
 }
 
 
+resource "fptcloud_floating_ip" "example" {
+  vpc_id = "934a79d8-8de9-40a2-a5e6-cca500132f15"
+  floating_ip_id = "new"
+}
 
 
 # ==============================================================

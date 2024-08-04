@@ -20,6 +20,7 @@ var ApiPath = struct {
 	DeleteInstanceGroup        func(vpcId string, instanceGroupId string) string
 	CreateFloatingIp           func(vpcId string) string
 	FindFloatingIp             func(vpcId string, floatingIpId string) string
+	FindFloatingIpByAddress    func(vpcId string) string
 	DeleteFloatingIp           func(vpcId string, floatingIpId string) string
 }{
 	SSH: "/v1/user/sshs",
@@ -70,6 +71,9 @@ var ApiPath = struct {
 	},
 	FindFloatingIp: func(vpcId string, floatingIpId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ip/%s", vpcId, floatingIpId)
+	},
+	FindFloatingIpByAddress: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ip-address", vpcId)
 	},
 	DeleteFloatingIp: func(vpcId string, floatingIpId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ip/%s/release", vpcId, floatingIpId)
