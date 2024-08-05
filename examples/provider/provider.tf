@@ -18,14 +18,21 @@ provider "fptcloud" {
   region      = "VN/HAN"
 }
 
-
-resource "fptcloud_instance_group" "example" {
+data "fptcloud_instance_group" "example" {
   vpc_id = "6daffc98-fc17-4e5d-aa5d-a221517785f6"
-  name = "instance-test"
-  policy_id = "6e1c5151-39cd-4735-ae27-dfd77233630a"
-#   vm_ids = "vm_ids"
+#   filter {
+#     key = "id"
+#     values = ["b18a55c5-039d-44c5-9871-bbfb2f0fb09f"]
+#   }
+#   filter {
+#     key = "name"
+#     values = ["103.160.80.101"]
+#   }
 }
 
+output "show_value" {
+  value = data.fptcloud_instance_group.example
+}
 
 # ==============================================================
 # ==============================================================

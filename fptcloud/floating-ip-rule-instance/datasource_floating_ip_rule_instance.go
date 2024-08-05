@@ -9,13 +9,13 @@ import (
 	data_list "terraform-provider-fptcloud/commons/data-list"
 )
 
-// DataSourceFloatingIpRuleInstance function returns a schema.Resource that represents a floating ip.
-// This can be used to query and retrieve details about a specific floating ip in the infrastructure using its id or name.
+// DataSourceFloatingIpRuleInstance function returns a schema.Resource that represents a floating ip rule instance.
+// This can be used to query and retrieve details about a specific floating ip rule instance in the infrastructure using its id or name.
 func DataSourceFloatingIpRuleInstance() *schema.Resource {
 	dataListConfig := &data_list.ResourceConfig{
 		Description: strings.Join([]string{
-			"Get information on a floating ip for use in other resources. This data source provides all of the floating ip properties as configured on your account.",
-			"An error will be raised if the provided floating ip name does not exist in your account.",
+			"Get information on a floating ip rule instance for use in other resources. This data source provides all of the floating ip rule instance properties as configured on your account.",
+			"An error will be raised if the provided floating ip rule instance does not exist in your account.",
 		}, "\n\n"),
 		RecordSchema:        floatingIpRuleInstanceSchema(),
 		ResultAttributeName: "floating_ip_rule_instance_att",
@@ -26,7 +26,7 @@ func DataSourceFloatingIpRuleInstance() *schema.Resource {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validation.NoZeroValues,
-				Description:  "The vpc id of the floating ip rule ip address",
+				Description:  "The vpc id of the floating ip rule instance",
 			},
 		},
 	}
@@ -39,27 +39,27 @@ func floatingIpRuleInstanceSchema() map[string]*schema.Schema {
 		"vpc_id": {
 			Type:        schema.TypeString,
 			Required:    true,
-			Description: "The vpc id of the ip address",
+			Description: "The vpc id of the instance rule",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "The id of the ip address",
+			Description: "The id of the instance rule",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "The name of the ip address",
+			Description: "The name of the instance rule",
 		},
 		"ip_address": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "The ip address of the instance",
+			Description: "The ip address of the instance rule",
 		},
 		"type": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "The type of the instance",
+			Description: "The type of the instance rule",
 		},
 	}
 }

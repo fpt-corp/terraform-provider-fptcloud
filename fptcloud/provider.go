@@ -67,6 +67,7 @@ func Provider() *schema.Provider {
 			"fptcloud_image":                       fptcloud_image.DataSourceImage(),
 			"fptcloud_security_group":              fptcloud_security_group.DataSourceSecurityGroup(),
 			"fptcloud_instance_group_policy":       fptcloud_instance_group_policy.DataSourceInstanceGroupPolicy(),
+			"fptcloud_instance_group":              fptcloud_instance_group.DataSourceInstanceGroup(),
 			"fptcloud_floating_ip":                 fptcloud_floating_ip.DataSourceFloatingIp(),
 			"fptcloud_floating_ip_rule_ip_address": fptcloud_floating_ip_rule_ip_address.DataSourceFloatingIpRuleIpAddress(),
 			"fptcloud_floating_ip_rule_instance":   fptcloud_floating_ip_rule_instance.DataSourceFloatingIpRuleInstance(),

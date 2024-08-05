@@ -32,20 +32,7 @@ type InstanceGroup struct {
 	CreatedAt string        `json:"created_at"`
 }
 
-//// Instance Group Policy represents an instance group policy model
-//type InstanceGroupPolicy struct {
-//	ID       string `json:"id"`
-//	Name     string `json:"name"`
-//	IsActive bool   `json:"is_active"`
-//}
-//
-//// Vm represents a vm model
-//type Vm struct {
-//	ID   string `json:"id"`
-//	Name string `json:"name"`
-//}
-
-// InstanceGroupService defines the interface for instance group service
+// InstanceGroupService defines the interface for the instance group service
 type InstanceGroupService interface {
 	FindInstanceGroup(searchModel FindInstanceGroupDTO) (*[]InstanceGroup, error)
 	CreateInstanceGroup(createdModel CreateInstanceGroupDTO) (bool, error)
@@ -57,7 +44,7 @@ type InstanceGroupServiceImpl struct {
 	client *common.Client
 }
 
-// NewInstanceGroupService creates a new instance group with the given client
+// NewInstanceGroupService creates a new instance of instance group with the given client
 func NewInstanceGroupService(client *common.Client) InstanceGroupService {
 	return &InstanceGroupServiceImpl{client: client}
 }

@@ -7,7 +7,6 @@ import (
 	"terraform-provider-fptcloud/commons/utils"
 )
 
-// CreateFloatingIpDTO
 type CreateFloatingIpDTO struct {
 	VpcId          string `json:"vpc_id"`
 	FloatingIpId   string `json:"floating_ip_id"`
@@ -39,7 +38,7 @@ type ListFloatingIpData struct {
 	Total int16        `json:"total"`
 }
 
-// FloatingIp represents a instance group model
+// FloatingIp represents a floating ip model
 type FloatingIp struct {
 	ID        string             `json:"id"`
 	IpAddress string             `json:"ip_address"`
@@ -70,7 +69,7 @@ type FloatingIpServiceImpl struct {
 	client *common.Client
 }
 
-// NewFloatingIpService creates a new instance group with the given client
+// NewFloatingIpService creates a new floating ip with the given client
 func NewFloatingIpService(client *common.Client) FloatingIpService {
 	return &FloatingIpServiceImpl{client: client}
 }
@@ -94,6 +93,7 @@ func (s *FloatingIpServiceImpl) FindFloatingIp(findDto FindFloatingIpDTO) (*Floa
 	return &response.Data, nil
 }
 
+// FindFloatingIpByAddress find a floating ip
 func (s *FloatingIpServiceImpl) FindFloatingIpByAddress(findDto FindFloatingIpDTO) (*FloatingIp, error) {
 	var apiPath = common.ApiPath.FindFloatingIpByAddress(findDto.VpcId) + utils.ToQueryParams(findDto)
 	resp, err := s.client.SendGetRequest(apiPath)
@@ -113,6 +113,7 @@ func (s *FloatingIpServiceImpl) FindFloatingIpByAddress(findDto FindFloatingIpDT
 	return &response.Data, nil
 }
 
+// ListFloatingIp list floating ip
 func (s *FloatingIpServiceImpl) ListFloatingIp(vpcId string) (*[]FloatingIp, error) {
 	var apiPath = common.ApiPath.ListFloatingIp(vpcId)
 	resp, err := s.client.SendGetRequest(apiPath)
@@ -135,6 +136,7 @@ func (s *FloatingIpServiceImpl) ListFloatingIp(vpcId string) (*[]FloatingIp, err
 	return &response.Data.Data, nil
 }
 
+// CreateFloatingIp create a floating ip
 func (s *FloatingIpServiceImpl) CreateFloatingIp(createDto CreateFloatingIpDTO) (*FloatingIp, error) {
 	var apiPath = common.ApiPath.CreateFloatingIp(createDto.VpcId)
 	resp, err := s.client.SendPostRequest(apiPath, createDto)

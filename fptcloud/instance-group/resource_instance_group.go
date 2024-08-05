@@ -11,11 +11,11 @@ import (
 	"time"
 )
 
-// ResourceInstanceGroup function returns a schema.Resource that represents an instance group.
+// ResourceInstanceGroup function returns a schema. Resource that represents an instance group.
 // This can be used to create, read, update, and delete operations for an instance group in the infrastructure.
 func ResourceInstanceGroup() *schema.Resource {
 	return &schema.Resource{
-		Description: "Provides a Fpt cloud instance group which can be attached to an instance in order to provide expanded instance group.",
+		Description: "Provides a FPT cloud instance group that can be attached to an instance in order to provide an expanded instance group.",
 		Schema: map[string]*schema.Schema{
 			"vpc_id": {
 				Type:        schema.TypeString,
@@ -124,6 +124,7 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 			if err != nil || len(*resp) == 0 {
 				return nil, "", common.DecodeError(err)
 			}
+
 			rsInstanceGroup := (*resp)[0]
 			d.SetId(rsInstanceGroup.ID)
 			return (*resp)[0], "COMPLETE", nil
@@ -163,7 +164,7 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 			d.SetId("")
 			return nil
 		}
-		return diag.Errorf("[ERR] failed retrieving the instance group: %s", err)
+		return diag.Errorf("[ERR] Failed retrieving the instance group: %s", err)
 	}
 	if result == nil || len(*result) == 0 {
 		d.SetId("")

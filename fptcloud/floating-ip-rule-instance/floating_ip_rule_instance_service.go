@@ -19,7 +19,7 @@ type InstanceRuleFloatingIp struct {
 	Type      string `json:"type"`
 }
 
-// FloatingIpRuleInstanceService defines the interface for floating ip service
+// FloatingIpRuleInstanceService defines the interface for floating ip rule instance service
 type FloatingIpRuleInstanceService interface {
 	ListExistingInstanceOfFloatingIp(vpcId string) (*[]InstanceRuleFloatingIp, error)
 }
@@ -29,7 +29,7 @@ type FloatingIpRuleInstanceServiceImpl struct {
 	client *common.Client
 }
 
-// NewFloatingIpRuleInstanceService creates a new instance group with the given client
+// NewFloatingIpRuleInstanceService creates a new instance of floating ip rule instance with the given client
 func NewFloatingIpRuleInstanceService(client *common.Client) FloatingIpRuleInstanceService {
 	return &FloatingIpRuleInstanceServiceImpl{client: client}
 }
@@ -50,7 +50,7 @@ func (s *FloatingIpRuleInstanceServiceImpl) ListExistingInstanceOfFloatingIp(vpc
 		return nil, errors.New(response.Message)
 	}
 	if len(response.Data) == 0 {
-		return nil, errors.New("Instance rule not found")
+		return nil, errors.New("Instance rules were not found")
 	}
 
 	return &response.Data, nil

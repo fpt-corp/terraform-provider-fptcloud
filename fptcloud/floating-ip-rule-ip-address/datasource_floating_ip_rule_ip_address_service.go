@@ -10,13 +10,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-// DataSourceFloatingIpRuleIpAddress function returns a schema.Resource that represents a floating ip.
-// This can be used to query and retrieve details about a specific floating ip in the infrastructure using its id or name.
+// DataSourceFloatingIpRuleIpAddress function returns a schema.Resource that represents a floating ip rule address.
+// This can be used to query and retrieve details about a specific floating ip rule address in the infrastructure using its id or name.
 func DataSourceFloatingIpRuleIpAddress() *schema.Resource {
 	dataListConfig := &data_list.ResourceConfig{
 		Description: strings.Join([]string{
-			"Get information on a floating ip for use in other resources. This data source provides all of the floating ip properties as configured on your account.",
-			"An error will be raised if the provided floating ip name does not exist in your account.",
+			"Get information on a floating ip rule address for use in other resources. This data source provides all of the floating ip rule address properties as configured on your account.",
+			"An error will be raised if the provided floating ip rule address does not exist in your account.",
 		}, "\n\n"),
 		RecordSchema:        floatingIpRuleIpAddressSchema(),
 		ResultAttributeName: "floating_ip_rule_ip_address_att",
@@ -40,17 +40,17 @@ func floatingIpRuleIpAddressSchema() map[string]*schema.Schema {
 		"vpc_id": {
 			Type:        schema.TypeString,
 			Required:    true,
-			Description: "The vpc id of the ip address",
+			Description: "The vpc id of the ip address rule",
 		},
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "The id of the ip address",
+			Description: "The id of the ip address rule",
 		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
-			Description: "The name of the ip address",
+			Description: "The name of the ip address rule",
 		},
 	}
 }

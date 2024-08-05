@@ -43,17 +43,13 @@ func floatingIpSchema() map[string]*schema.Schema {
 			Description: "The vpc id of the floating ip",
 		},
 		"id": {
-			Type:     schema.TypeString,
-			Computed: true,
-			//ValidateFunc: validation.NoZeroValues,
-			//ExactlyOneOf: []string{"id", "ip_address"},
+			Type:        schema.TypeString,
+			Computed:    true,
 			Description: "The id of the floating ip",
 		},
 		"ip_address": {
-			Type:     schema.TypeString,
-			Computed: true,
-			//ValidateFunc: validation.NoZeroValues,
-			//ExactlyOneOf: []string{"id", "ip_address"},
+			Type:        schema.TypeString,
+			Computed:    true,
 			Description: "The ip address of the floating ip",
 		},
 		"nat_type": {
@@ -61,11 +57,6 @@ func floatingIpSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The nat type of the floating ip",
 		},
-		//"instance": {
-		//	Type:        schema.TypeList,
-		//	Computed:    true,
-		//	Description: "The instance of the floating ip",
-		//},
 		"status": {
 			Type:        schema.TypeString,
 			Computed:    true,

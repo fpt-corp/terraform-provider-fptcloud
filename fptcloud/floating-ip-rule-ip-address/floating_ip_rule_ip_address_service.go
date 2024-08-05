@@ -17,7 +17,7 @@ type IpAddress struct {
 	Name string `json:"name"`
 }
 
-// FloatingIpRuleIpAddressService defines the interface for floating ip service
+// FloatingIpRuleIpAddressService defines the interface for floating ip rule address service
 type FloatingIpRuleIpAddressService interface {
 	ListExistingIpOfFloatingIp(vpcId string) (*[]IpAddress, error)
 }
@@ -27,7 +27,7 @@ type FloatingIpRuleIpAddressServiceImpl struct {
 	client *common.Client
 }
 
-// NewFloatingIpRuleIpAddressService creates a new instance group with the given client
+// NewFloatingIpRuleIpAddressService creates a new instance of floating ip rule address with the given client
 func NewFloatingIpRuleIpAddressService(client *common.Client) FloatingIpRuleIpAddressService {
 	return &FloatingIpRuleIpAddressServiceImpl{client: client}
 }
@@ -48,7 +48,7 @@ func (s *FloatingIpRuleIpAddressServiceImpl) ListExistingIpOfFloatingIp(vpcId st
 		return nil, errors.New(response.Message)
 	}
 	if len(response.Data) == 0 {
-		return nil, errors.New("Ip address rule not found")
+		return nil, errors.New("Ip addresses rule not found")
 	}
 
 	return &response.Data, nil

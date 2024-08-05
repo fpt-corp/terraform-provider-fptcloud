@@ -8,8 +8,8 @@ import (
 	"terraform-provider-fptcloud/commons/data-list"
 )
 
-// DataSourceInstanceGroupPolicy function returns a schema.Resource that represents an Instance Group Policy.
-// This can be used to query and retrieve details about a specific Instance Group Policy in the infrastructure using its id or name.
+// DataSourceInstanceGroupPolicy function returns a schema.Resource that represents an instance group policy.
+// This can be used to query and retrieve details about a specific instance group policy in the infrastructure using its id or name.
 func DataSourceInstanceGroupPolicy() *schema.Resource {
 	dataListConfig := &data_list.ResourceConfig{
 		Description:         "Retrieves information about the instance group policy that fpt cloud supports, with the ability to filter the results.",
@@ -28,8 +28,8 @@ func DataSourceInstanceGroupPolicy() *schema.Resource {
 	}
 
 	return data_list.NewResource(dataListConfig)
-
 }
+
 func instanceGroupPolicySchema() map[string]*schema.Schema {
 	return map[string]*schema.Schema{
 		"id": {
@@ -46,7 +46,6 @@ func instanceGroupPolicySchema() map[string]*schema.Schema {
 }
 
 func flattenInstanceGroupPolicy(instanceGroupPolicy, _ interface{}, _ map[string]interface{}) (map[string]interface{}, error) {
-
 	s := instanceGroupPolicy.(InstanceGroupPolicy)
 
 	flattened := map[string]interface{}{}

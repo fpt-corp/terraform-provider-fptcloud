@@ -1,6 +1,7 @@
 package fptcloud_instance_group
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
@@ -15,7 +16,7 @@ import (
 func DataSourceInstanceGroup() *schema.Resource {
 	dataListConfig := &data_list.ResourceConfig{
 		Description: strings.Join([]string{
-			"Get information on a instance group for use in other resources. This data source provides all of the instance group properties as configured on your account.",
+			"Get information on an instance group for use in other resources. This data source provides all of the instance group properties as configured on your account.",
 			"An error will be raised if the provided instance group name does not exist in your account.",
 		}, "\n\n"),
 		RecordSchema:        instanceGroupSchema(),
@@ -43,27 +44,55 @@ func instanceGroupSchema() map[string]*schema.Schema {
 			Description: "The vpc id of the instance group",
 		},
 		"id": {
-			Type:         schema.TypeString,
-			Optional:     true,
-			ValidateFunc: validation.NoZeroValues,
-			ExactlyOneOf: []string{"id", "name"},
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The id of the instance group",
 		},
 		"name": {
-			Type:         schema.TypeString,
-			Optional:     true,
-			ValidateFunc: validation.NoZeroValues,
-			ExactlyOneOf: []string{"id", "name"},
-			Description:  "The name of the instance group",
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The name of the instance group",
 		},
 		"policy": {
-			Type:        schema.TypeList,
+			Type:        schema.TypeMap,
 			Computed:    true,
 			Description: "The policy of the instance group",
+			Elem: &schema.Schema{
+				Type: schema.TypeString,
+			},
 		},
-		"vm_ids": {
-			Type:        schema.TypeList,
-			Computed:    true,
-			Description: "The instance of the instance group",
+		//"policy": {
+		//	Type:        schema.TypeMap,
+		//	Computed:    true,
+		//	Description: "The policy of the instance group",
+		//	Elem: &schema.Resource{
+		//		Schema: map[string]*schema.Schema{
+		//			"id": {
+		//				Type:     schema.TypeString,
+		//				Computed: true,
+		//			},
+		//			"name": {
+		//				Type:     schema.TypeString,
+		//				Computed: true,
+		//			},
+		//		},
+		//	},
+		//},
+		"vms": {
+			Type:     schema.TypeList,
+			Computed: true,
+			Elem: &schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"id": {
+						Type:     schema.TypeString,
+						Computed: true,
+					},
+					"name": {
+						Type:     schema.TypeString,
+						Computed: true,
+					},
+				},
+			},
 		},
 		"created_at": {
 			Type:        schema.TypeString,
@@ -77,8 +106,51 @@ func flattenInstanceGroup(instanceGroup, _ interface{}, _ map[string]interface{}
 	s := instanceGroup.(InstanceGroup)
 
 	flattened := map[string]interface{}{}
-	flattened["name"] = s.Name
 	flattened["id"] = s.ID
+	flattened["name"] = s.Name
+	flattened["vms"] = s.Vms
+	flattened["created_at"] = s.CreatedAt
+
+	var dataPolicy struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if bytePolicy, err := json.Marshal(s.Policy); err == nil {
+		if err := json.Unmarshal(bytePolicy, &dataPolicy); err == nil {
+			flattened["policy"] = dataPolicy
+		}
+	}
+
+	//// Assume that `s.Policy` is a JSON-compatible map or struct
+	//if policyMap, ok := s.Policy.(map[string]interface{}); ok {
+	//	flattened["policy"] = policyMap
+	//} else {
+	//	// Try to convert it using JSON marshaling/unmarshaling
+	//	var policyMap struct {
+	//		ID   string `json:"id"`
+	//		Name string `json:"name"`
+	//	}
+	//	policyBytes, err := json.Marshal(s.Policy)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("error marshalling policy: %v", err)
+	//	}
+	//	err = json.Unmarshal(policyBytes, &policyMap)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("error unmarshalling policy: %v", err)
+	//	}
+	//	flattened["policy"] = policyMap
+	//}
+
+	//quang
+	//aaaaaaa, erraaaa := json.Marshal(s.Policy)
+	//errTTT := json.Unmarshal(aaaaaaa, &dataPolicy)
+	//return nil, fmt.Errorf("[ERR] Failed to retrieve instance group: %s -- %s -- %s -- %s -- %s -- %s", erraaaa, errTTT, dataPolicy, flattened)
+	//return nil, fmt.Errorf(" >>>>>>>>>>>>  %s", flattened["policy"])
+
+	//if policy, ok := s.Policy.(map[string]interface{}); ok {
+	//	flattened["policy"] = policy
+	//	fmt.Printf("Item: %+v\n", policy)
+	//}
 
 	return flattened, nil
 }

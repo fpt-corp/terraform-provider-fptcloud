@@ -12,15 +12,15 @@ import (
 )
 
 // ResourceFloatingIp function returns a schema.Resource that represents a floating ip.
-// This can be used to create, read and delete operations for a floating ip group in the infrastructure.
+// This can be used to create, read and delete operations for a floating ip in the infrastructure.
 func ResourceFloatingIp() *schema.Resource {
 	return &schema.Resource{
-		Description: "Provides a Fpt cloud instance group which can be attached to an instance in order to provide expanded floating ip.",
+		Description: "Provides a FPT cloud instance group which can be attached to an instance in order to provide expanded floating ip.",
 		Schema: map[string]*schema.Schema{
 			"vpc_id": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "The vpc id of the instance group",
+				Description: "The vpc id of the floating ip",
 				ForceNew:    true,
 			},
 			"floating_ip_id": {
@@ -107,7 +107,6 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 
 	//Waiting for status active
 	createStateConf := &retry.StateChangeConf{
-		//Pending: []string{"INACTIVE", "IN_ACTIVE"},
 		Pending: []string{"INACTIVE"},
 		Target:  []string{"ACTIVE", "IN_ACTIVE"},
 		Refresh: func() (interface{}, string, error) {

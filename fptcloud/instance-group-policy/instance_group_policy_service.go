@@ -11,7 +11,7 @@ type InstanceGroupPolicy struct {
 	Name string `json:"name"`
 }
 
-// InstanceGroupPolicyService defines the interface for instance group policy service
+// InstanceGroupPolicyService defines the interface for the instance group policy service
 type InstanceGroupPolicyService interface {
 	ListInstanceGroupPolicies(vpcId string) (*[]InstanceGroupPolicy, error)
 }
@@ -21,7 +21,7 @@ type InstanceGroupPolicyServiceImpl struct {
 	client *common.Client
 }
 
-// NewInstanceGroupPolicyService creates a new instance of instance group policy Service with the given client
+// NewInstanceGroupPolicyService creates a new instance of instance group policy with the given client
 func NewInstanceGroupPolicyService(client *common.Client) InstanceGroupPolicyService {
 	return &InstanceGroupPolicyServiceImpl{client: client}
 }
