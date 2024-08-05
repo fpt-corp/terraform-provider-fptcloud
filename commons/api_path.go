@@ -59,7 +59,7 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/security-group-rule", vpcId)
 	},
 	VMGroupPolicies: func(vpcId string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group-policies", vpcId)
+		return fmt.Sprintf("/v1/terraform/vpc/%s/vm-group-policies", vpcId)
 	},
 	CreateInstanceGroup: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group", vpcId)

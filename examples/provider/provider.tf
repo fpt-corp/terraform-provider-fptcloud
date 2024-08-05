@@ -14,6 +14,17 @@ provider "fptcloud" {
 
 
 
+data "fptcloud_instance_group_policy" "data" {
+  vpc_id = "120bd194-7031-42ae-86a6-8b53a90ff9ae"
+  filter {
+    key = "name"
+    values = ["Soft Affinity"]
+  }
+}
+
+output "show_value" {
+  value = data.fptcloud_instance_group_policy.data
+}
 
 
 # ==============================================================
