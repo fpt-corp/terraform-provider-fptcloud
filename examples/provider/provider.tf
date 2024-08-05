@@ -13,11 +13,30 @@ provider "fptcloud" {
 }
 
 
-resource "fptcloud_floating_ip" "example" {
-  vpc_id = "934a79d8-8de9-40a2-a5e6-cca500132f15"
-  floating_ip_id = "new"
-}
 
+
+
+
+# ==============================================================
+# ==============================================================
+# ==============================================================
+
+# resource "fptcloud_floating_ip" "example" {
+#   vpc_id = "934a79d8-8de9-40a2-a5e6-cca500132f15"
+#   floating_ip_id = "new"
+# }
+
+# data "fptcloud_floating_ip" "example" {
+#   vpc_id = "120bd194-7031-42ae-86a6-8b53a90ff9ae"
+#   filter {
+#     key = "ip_address"
+#     values = ["103.160.80.184"]
+#   }
+# }
+
+# output "show_value" {
+#   value = data.fptcloud_floating_ip.example
+# }
 
 # ==============================================================
 # ==============================================================

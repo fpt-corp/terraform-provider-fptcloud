@@ -28,6 +28,17 @@ type FloatingIpResponseDto struct {
 	Data    FloatingIp `json:"data"`
 }
 
+type ListFloatingIpResponseDto struct {
+	Status  bool                `json:"status"`
+	Message string              `json:"message"`
+	Data    *ListFloatingIpData `json:"data"`
+}
+
+type ListFloatingIpData struct {
+	Data  []FloatingIp `json:"data"`
+	Total int16        `json:"total"`
+}
+
 // FloatingIp represents a instance group model
 type FloatingIp struct {
 	ID        string             `json:"id"`
@@ -49,6 +60,7 @@ type FloatingIpInstance struct {
 type FloatingIpService interface {
 	FindFloatingIp(findDto FindFloatingIpDTO) (*FloatingIp, error)
 	FindFloatingIpByAddress(findDto FindFloatingIpDTO) (*FloatingIp, error)
+	ListFloatingIp(vpcId string) (*[]FloatingIp, error)
 	CreateFloatingIp(createDto CreateFloatingIpDTO) (*FloatingIp, error)
 	DeleteFloatingIp(vpcId string, floatingIpId string) (bool, error)
 }
@@ -99,6 +111,28 @@ func (s *FloatingIpServiceImpl) FindFloatingIpByAddress(findDto FindFloatingIpDT
 	}
 
 	return &response.Data, nil
+}
+
+func (s *FloatingIpServiceImpl) ListFloatingIp(vpcId string) (*[]FloatingIp, error) {
+	var apiPath = common.ApiPath.ListFloatingIp(vpcId)
+	resp, err := s.client.SendGetRequest(apiPath)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	response := ListFloatingIpResponseDto{}
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	if false == response.Status {
+		return nil, errors.New(response.Message)
+	}
+	if response.Data == nil || len(response.Data.Data) == 0 {
+		return nil, errors.New("Floating ip not found")
+	}
+
+	return &response.Data.Data, nil
 }
 
 func (s *FloatingIpServiceImpl) CreateFloatingIp(createDto CreateFloatingIpDTO) (*FloatingIp, error) {
