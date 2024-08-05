@@ -11,9 +11,9 @@ import (
 type CreateFloatingIpDTO struct {
 	VpcId          string `json:"vpc_id"`
 	FloatingIpId   string `json:"floating_ip_id"`
-	FloatingIpPort string `json:"floating_ip_port"`
+	FloatingIpPort int    `json:"floating_ip_port"`
 	InstanceId     string `json:"instance_id"`
-	InstancePort   string `json:"instance_port"`
+	InstancePort   int    `json:"instance_port"`
 }
 
 type FindFloatingIpDTO struct {

@@ -37,16 +37,18 @@ func ResourceFloatingIp() *schema.Resource {
 				ForceNew:    true,
 			},
 			"floating_ip_port": {
-				Type:         schema.TypeString,
+				Type:         schema.TypeInt,
 				Optional:     true,
-				RequiredWith: []string{"instance_id"},
+				ValidateFunc: validation.IntBetween(1, 65535),
+				RequiredWith: []string{"instance_id", "instance_port"},
 				Description:  "The port of the ip address",
 				ForceNew:     true,
 			},
 			"instance_port": {
-				Type:         schema.TypeString,
+				Type:         schema.TypeInt,
 				Optional:     true,
-				RequiredWith: []string{"instance_id"},
+				ValidateFunc: validation.IntBetween(1, 65535),
+				RequiredWith: []string{"instance_id", "floating_ip_port"},
 				Description:  "The port of the instance",
 				ForceNew:     true,
 			},
@@ -81,13 +83,13 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 		createModel.FloatingIpId = floatingIpId.(string)
 	}
 	if floatingIpPort, ok := d.GetOk("floating_ip_port"); ok {
-		createModel.FloatingIpPort = floatingIpPort.(string)
+		createModel.FloatingIpPort = floatingIpPort.(int)
 	}
 	if instanceId, ok := d.GetOk("instance_id"); ok {
 		createModel.InstanceId = instanceId.(string)
 	}
 	if instancePort, ok := d.GetOk("instance_port"); ok {
-		createModel.InstancePort = instancePort.(string)
+		createModel.InstancePort = instancePort.(int)
 	}
 
 	result, err := service.CreateFloatingIp(createModel)
@@ -107,7 +109,7 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 	createStateConf := &retry.StateChangeConf{
 		//Pending: []string{"INACTIVE", "IN_ACTIVE"},
 		Pending: []string{"INACTIVE"},
-		Target:  []string{"IN_ACTIVE"},
+		Target:  []string{"ACTIVE", "IN_ACTIVE"},
 		Refresh: func() (interface{}, string, error) {
 			findModel := FindFloatingIpDTO{
 				IpAddress: result.IpAddress,
@@ -121,7 +123,7 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 			return resp, resp.Status, nil
 		},
 		Timeout:                   5 * time.Minute,
-		Delay:                     10 * time.Second,
+		Delay:                     30 * time.Second,
 		MinTimeout:                30 * time.Second,
 		ContinuousTargetOccurence: 3,
 		NotFoundChecks:            20,
