@@ -7,7 +7,9 @@ import (
 	"log"
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/fptcloud/flavor"
-	fptcloud_floating_ip "terraform-provider-fptcloud/fptcloud/floating-ip"
+	"terraform-provider-fptcloud/fptcloud/floating-ip"
+	fptcloud_floating_ip_rule_instance "terraform-provider-fptcloud/fptcloud/floating-ip-rule-instance"
+	fptcloud_floating_ip_rule_ip_address "terraform-provider-fptcloud/fptcloud/floating-ip-rule-ip-address"
 	"terraform-provider-fptcloud/fptcloud/image"
 	"terraform-provider-fptcloud/fptcloud/instance-group"
 	"terraform-provider-fptcloud/fptcloud/instance-group-policy"
@@ -57,15 +59,17 @@ func Provider() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"fptcloud_storage_policy":        fptcloud_storage_policy.DataSourceStoragePolicy(),
-			"fptcloud_storage":               fptcloud_storage.DataSourceStorage(),
-			"fptcloud_ssh_key":               fptcloud_ssh.DataSourceSSHKey(),
-			"fptcloud_vpc":                   fptcloud_vpc.NewDataSource(),
-			"fptcloud_flavor":                fptcloud_flavor.DataSourceFlavor(),
-			"fptcloud_image":                 fptcloud_image.DataSourceImage(),
-			"fptcloud_security_group":        fptcloud_security_group.DataSourceSecurityGroup(),
-			"fptcloud_instance_group_policy": fptcloud_instance_group_policy.DataSourceInstanceGroupPolicy(),
-			"fptcloud_floating_ip":           fptcloud_floating_ip.DataSourceFloatingIp(),
+			"fptcloud_storage_policy":              fptcloud_storage_policy.DataSourceStoragePolicy(),
+			"fptcloud_storage":                     fptcloud_storage.DataSourceStorage(),
+			"fptcloud_ssh_key":                     fptcloud_ssh.DataSourceSSHKey(),
+			"fptcloud_vpc":                         fptcloud_vpc.NewDataSource(),
+			"fptcloud_flavor":                      fptcloud_flavor.DataSourceFlavor(),
+			"fptcloud_image":                       fptcloud_image.DataSourceImage(),
+			"fptcloud_security_group":              fptcloud_security_group.DataSourceSecurityGroup(),
+			"fptcloud_instance_group_policy":       fptcloud_instance_group_policy.DataSourceInstanceGroupPolicy(),
+			"fptcloud_floating_ip":                 fptcloud_floating_ip.DataSourceFloatingIp(),
+			"fptcloud_floating_ip_rule_ip_address": fptcloud_floating_ip_rule_ip_address.DataSourceFloatingIpRuleIpAddress(),
+			"fptcloud_floating_ip_rule_instance":   fptcloud_floating_ip_rule_instance.DataSourceFloatingIpRuleInstance(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":             fptcloud_storage.ResourceStorage(),

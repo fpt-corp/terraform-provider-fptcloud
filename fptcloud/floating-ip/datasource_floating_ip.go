@@ -19,7 +19,7 @@ func DataSourceFloatingIp() *schema.Resource {
 			"An error will be raised if the provided floating ip name does not exist in your account.",
 		}, "\n\n"),
 		RecordSchema:        floatingIpSchema(),
-		ResultAttributeName: "floating_ops",
+		ResultAttributeName: "floating_ips",
 		FlattenRecord:       flattenFloatingIp,
 		GetRecords:          getFloatingIps,
 		ExtraQuerySchema: map[string]*schema.Schema{

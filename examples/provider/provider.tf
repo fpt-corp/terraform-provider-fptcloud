@@ -15,18 +15,55 @@ provider "fptcloud" {
 
 
 
-resource "fptcloud_floating_ip" "example" {
-  vpc_id = "120bd194-7031-42ae-86a6-8b53a90ff9ae"
-  floating_ip_id = "new"
-  instance_id= "b90ddce4-7c85-4194-9814-2ca0218410cc"
-  floating_ip_port = 1
-  instance_port = 1
-}
-
 
 # ==============================================================
 # ==============================================================
 # ==============================================================
+
+# data "fptcloud_floating_ip_rule_ip_address" "example" {
+#   vpc_id = "120bd194-7031-42ae-86a6-8b53a90ff9ae"
+#   filter {
+#     key = "id"
+#     values = ["b18a55c5-039d-44c5-9871-bbfb2f0fb09f"]
+#   }
+#   filter {
+#     key = "name"
+#     values = ["103.160.80.101"]
+#   }
+# }
+#
+# output "show_value" {
+#   value = data.fptcloud_floating_ip_rule_ip_address.example
+# }
+
+# ==============================================================
+# ==============================================================
+# ==============================================================
+
+# data "fptcloud_floating_ip_rule_instance" "example" {
+#   vpc_id = "120bd194-7031-42ae-86a6-8b53a90ff9ae"
+#   filter {
+#     key = "name"
+#     values = ["vm-24071722550-k43e47jt"]
+#   }
+# }
+#
+# output "show_value" {
+#   value = data.fptcloud_floating_ip_rule_instance.example
+# }
+
+# ==============================================================
+# ==============================================================
+# ==============================================================
+
+#
+# resource "fptcloud_floating_ip" "example" {
+#   vpc_id = "120bd194-7031-42ae-86a6-8b53a90ff9ae"
+#   floating_ip_id = "new"
+#   instance_id= "b90ddce4-7c85-4194-9814-2ca0218410cc"
+#   floating_ip_port = 1
+#   instance_port = 1
+# }
 
 # resource "fptcloud_floating_ip" "example" {
 #   vpc_id = "934a79d8-8de9-40a2-a5e6-cca500132f15"
@@ -40,7 +77,7 @@ resource "fptcloud_floating_ip" "example" {
 #     values = ["103.160.80.184"]
 #   }
 # }
-
+#
 # output "show_value" {
 #   value = data.fptcloud_floating_ip.example
 # }
