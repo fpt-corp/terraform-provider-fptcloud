@@ -50,6 +50,22 @@ func ResourceInstanceGroup() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				ForceNew:    true,
 			},
+			"policy": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"policy_name": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"vms": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"created_at": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 		},
 		CreateContext: resourceInstanceGroupCreate,
 		ReadContext:   resourceInstanceGroupRead,
@@ -108,12 +124,14 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 			if err != nil || len(*resp) == 0 {
 				return nil, "", common.DecodeError(err)
 			}
+			rsInstanceGroup := (*resp)[0]
+			d.SetId(rsInstanceGroup.ID)
 			return (*resp)[0], "COMPLETE", nil
 		},
 		Timeout:        5 * time.Minute,
-		Delay:          3 * time.Second,
-		MinTimeout:     3 * time.Second,
-		NotFoundChecks: 120,
+		Delay:          10 * time.Second,
+		MinTimeout:     30 * time.Second,
+		NotFoundChecks: 20,
 	}
 	_, err = createStateConf.WaitForStateContext(ctx)
 	if err != nil {
@@ -153,7 +171,7 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 	}
 
 	var setError error
-	data := &(*result)[0]
+	data := (*result)[0]
 
 	d.SetId(data.ID)
 	setError = d.Set("name", data.Name)

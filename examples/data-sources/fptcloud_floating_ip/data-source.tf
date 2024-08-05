@@ -1,7 +1,7 @@
 data "fptcloud_floating_ip" "example" {
   vpc_id = "your_vpc_id"
   filter {
-    key = "ip"
+    key = "id"
     values = ["your_id"]
   }
   filter {

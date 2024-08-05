@@ -6,6 +6,12 @@ terraform {
   }
 }
 
+# provider "fptcloud" {
+#   token       = "ewogICJ0eXAiOiAiSldUIiwKICAiYWxnIjogIkhTMjU2Igp9.ewogICJpYXQiOiAxNzIxOTIyNzEzLjg3NTE0LAogICJzdWIiOiB7CiAgICAiaWQiOiAiNWY2MGRiMTAtODNjZC00MmNkLWEzNzMtMDc2M2ViOTQ1MDMyIiwKICAgICJlbWFpbCI6ICJ0dWFubm41MkBmcHQuY29tIiwKICAgICJqdGkiOiAiOWU1MzdiYmItMDUzYi00MzIwLTg1NjMtMzdiNTI0YTM4OTJjIgogIH0sCiAgImV4cCI6IDE4MDgzMjYzMTMuODc1MTQKfQ.O4HQd-HG8X1xqrTULYUzwOwQbf9CcPx85oOnuPSJGPo"
+#   tenant_name = "Revoke Package"
+#   region      = "VN/HAN"
+# }
+
 provider "fptcloud" {
   token       = "ewogICJ0eXAiOiAiSldUIiwKICAiYWxnIjogIkhTMjU2Igp9.ewogICJpYXQiOiAxNzIxOTIyNzEzLjg3NTE0LAogICJzdWIiOiB7CiAgICAiaWQiOiAiNWY2MGRiMTAtODNjZC00MmNkLWEzNzMtMDc2M2ViOTQ1MDMyIiwKICAgICJlbWFpbCI6ICJ0dWFubm41MkBmcHQuY29tIiwKICAgICJqdGkiOiAiOWU1MzdiYmItMDUzYi00MzIwLTg1NjMtMzdiNTI0YTM4OTJjIgogIH0sCiAgImV4cCI6IDE4MDgzMjYzMTMuODc1MTQKfQ.O4HQd-HG8X1xqrTULYUzwOwQbf9CcPx85oOnuPSJGPo"
   tenant_name = "Revoke Package"
@@ -13,19 +19,24 @@ provider "fptcloud" {
 }
 
 
-
-data "fptcloud_instance_group_policy" "data" {
-  vpc_id = "120bd194-7031-42ae-86a6-8b53a90ff9ae"
-  filter {
-    key = "name"
-    values = ["Soft Affinity"]
-  }
+resource "fptcloud_instance_group" "example" {
+  vpc_id = "6daffc98-fc17-4e5d-aa5d-a221517785f6"
+  name = "instance-test"
+  policy_id = "6e1c5151-39cd-4735-ae27-dfd77233630a"
+#   vm_ids = "vm_ids"
 }
 
-output "show_value" {
-  value = data.fptcloud_instance_group_policy.data
-}
 
+# ==============================================================
+# ==============================================================
+# ==============================================================
+
+# resource "fptcloud_instance_group" "example" {
+#   vpc_id = "6daffc98-fc17-4e5d-aa5d-a221517785f6"
+#   name = "instance-test"
+#   policy_id = "6e1c5151-39cd-4735-ae27-dfd77233630a"
+#   vm_ids = "vm_ids"
+# }
 
 # ==============================================================
 # ==============================================================

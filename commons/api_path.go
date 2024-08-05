@@ -62,13 +62,13 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/vm-group-policies", vpcId)
 	},
 	CreateInstanceGroup: func(vpcId string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group", vpcId)
+		return fmt.Sprintf("/v1/terraform/vpc/%s/vm-group", vpcId)
 	},
 	FindInstanceGroup: func(vpcId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/vm-groups", vpcId)
 	},
 	DeleteInstanceGroup: func(vpcId string, instanceGroupId string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group/%s", vpcId, instanceGroupId)
+		return fmt.Sprintf("/v1/terraform/vpc/%s/vm-group/%s", vpcId, instanceGroupId)
 	},
 	CreateFloatingIp: func(vpcId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ip", vpcId)

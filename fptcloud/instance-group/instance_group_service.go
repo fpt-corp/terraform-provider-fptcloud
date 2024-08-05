@@ -24,12 +24,12 @@ type FindInstanceGroupDTO struct {
 
 // InstanceGroup represents a instance group model
 type InstanceGroup struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Policy    []interface{}   `json:"policy"`
-	Vms       [][]interface{} `json:"vms"`
-	VpcId     string          `json:"vpc_id"`
-	CreatedAt string          `json:"created_at"`
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Policy    interface{}   `json:"policy"`
+	Vms       []interface{} `json:"vms"`
+	VpcId     string        `json:"vpc_id"`
+	CreatedAt string        `json:"created_at"`
 }
 
 //// Instance Group Policy represents an instance group policy model
@@ -79,7 +79,7 @@ func (s *InstanceGroupServiceImpl) FindInstanceGroup(searchModel FindInstanceGro
 	if err != nil {
 		return nil, err
 	}
-	if false == instanceGroupResponse.Status {
+	if false == instanceGroupResponse.Status || len(instanceGroupResponse.Data) == 0 {
 		return nil, errors.New(instanceGroupResponse.Message)
 	}
 
