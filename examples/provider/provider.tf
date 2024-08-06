@@ -12,27 +12,30 @@ terraform {
 #   region      = "VN/HAN"
 # }
 
-provider "fptcloud" {
-  token       = "ewogICJ0eXAiOiAiSldUIiwKICAiYWxnIjogIkhTMjU2Igp9.ewogICJpYXQiOiAxNzIxOTIyNzEzLjg3NTE0LAogICJzdWIiOiB7CiAgICAiaWQiOiAiNWY2MGRiMTAtODNjZC00MmNkLWEzNzMtMDc2M2ViOTQ1MDMyIiwKICAgICJlbWFpbCI6ICJ0dWFubm41MkBmcHQuY29tIiwKICAgICJqdGkiOiAiOWU1MzdiYmItMDUzYi00MzIwLTg1NjMtMzdiNTI0YTM4OTJjIgogIH0sCiAgImV4cCI6IDE4MDgzMjYzMTMuODc1MTQKfQ.O4HQd-HG8X1xqrTULYUzwOwQbf9CcPx85oOnuPSJGPo"
-  tenant_name = "Revoke Package"
-  region      = "VN/HAN"
-}
 
-data "fptcloud_instance_group" "example" {
-  vpc_id = "6daffc98-fc17-4e5d-aa5d-a221517785f6"
-#   filter {
-#     key = "id"
-#     values = ["b18a55c5-039d-44c5-9871-bbfb2f0fb09f"]
-#   }
+
+
+
+# ==============================================================
+# ==============================================================
+# ==============================================================
+
+# data "fptcloud_instance_group" "example" {
+# #   vpc_id = "6daffc98-fc17-4e5d-aa5d-a221517785f6"
+#   vpc_id = "ff6ab93f-4b05-4f04-94f8-ebfdb5bba6f3"
+# #   filter {
+# #     key = "id"
+# #     values = ["679fe554-0a53-442c-931f-1874db4f731a"]
+# #   }
 #   filter {
 #     key = "name"
-#     values = ["103.160.80.101"]
+#     values = ["John Doe"]
 #   }
-}
-
-output "show_value" {
-  value = data.fptcloud_instance_group.example
-}
+# }
+#
+# output "show_value" {
+#   value = data.fptcloud_instance_group.example
+# }
 
 # ==============================================================
 # ==============================================================

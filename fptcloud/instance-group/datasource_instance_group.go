@@ -1,7 +1,6 @@
 package fptcloud_instance_group
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
@@ -54,30 +53,25 @@ func instanceGroupSchema() map[string]*schema.Schema {
 			Description: "The name of the instance group",
 		},
 		"policy": {
-			Type:        schema.TypeMap,
-			Computed:    true,
-			Description: "The policy of the instance group",
-			Elem: &schema.Schema{
-				Type: schema.TypeString,
+			Type:     schema.TypeList,
+			Computed: true,
+			Elem: &schema.Resource{
+				Schema: map[string]*schema.Schema{
+					"id": {
+						Type:     schema.TypeString,
+						Computed: true,
+					},
+					"name": {
+						Type:     schema.TypeString,
+						Computed: true,
+					},
+					"is_active": {
+						Type:     schema.TypeBool,
+						Computed: true,
+					},
+				},
 			},
 		},
-		//"policy": {
-		//	Type:        schema.TypeMap,
-		//	Computed:    true,
-		//	Description: "The policy of the instance group",
-		//	Elem: &schema.Resource{
-		//		Schema: map[string]*schema.Schema{
-		//			"id": {
-		//				Type:     schema.TypeString,
-		//				Computed: true,
-		//			},
-		//			"name": {
-		//				Type:     schema.TypeString,
-		//				Computed: true,
-		//			},
-		//		},
-		//	},
-		//},
 		"vms": {
 			Type:     schema.TypeList,
 			Computed: true,
@@ -108,49 +102,9 @@ func flattenInstanceGroup(instanceGroup, _ interface{}, _ map[string]interface{}
 	flattened := map[string]interface{}{}
 	flattened["id"] = s.ID
 	flattened["name"] = s.Name
+	flattened["policy"] = []interface{}{s.Policy}
 	flattened["vms"] = s.Vms
 	flattened["created_at"] = s.CreatedAt
-
-	var dataPolicy struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	if bytePolicy, err := json.Marshal(s.Policy); err == nil {
-		if err := json.Unmarshal(bytePolicy, &dataPolicy); err == nil {
-			flattened["policy"] = dataPolicy
-		}
-	}
-
-	//// Assume that `s.Policy` is a JSON-compatible map or struct
-	//if policyMap, ok := s.Policy.(map[string]interface{}); ok {
-	//	flattened["policy"] = policyMap
-	//} else {
-	//	// Try to convert it using JSON marshaling/unmarshaling
-	//	var policyMap struct {
-	//		ID   string `json:"id"`
-	//		Name string `json:"name"`
-	//	}
-	//	policyBytes, err := json.Marshal(s.Policy)
-	//	if err != nil {
-	//		return nil, fmt.Errorf("error marshalling policy: %v", err)
-	//	}
-	//	err = json.Unmarshal(policyBytes, &policyMap)
-	//	if err != nil {
-	//		return nil, fmt.Errorf("error unmarshalling policy: %v", err)
-	//	}
-	//	flattened["policy"] = policyMap
-	//}
-
-	//quang
-	//aaaaaaa, erraaaa := json.Marshal(s.Policy)
-	//errTTT := json.Unmarshal(aaaaaaa, &dataPolicy)
-	//return nil, fmt.Errorf("[ERR] Failed to retrieve instance group: %s -- %s -- %s -- %s -- %s -- %s", erraaaa, errTTT, dataPolicy, flattened)
-	//return nil, fmt.Errorf(" >>>>>>>>>>>>  %s", flattened["policy"])
-
-	//if policy, ok := s.Policy.(map[string]interface{}); ok {
-	//	flattened["policy"] = policy
-	//	fmt.Printf("Item: %+v\n", policy)
-	//}
 
 	return flattened, nil
 }
