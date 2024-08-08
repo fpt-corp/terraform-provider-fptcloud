@@ -7,6 +7,7 @@ import (
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/fptcloud/flavor"
 	"terraform-provider-fptcloud/fptcloud/image"
+	"terraform-provider-fptcloud/fptcloud/instance"
 	"terraform-provider-fptcloud/fptcloud/security-group"
 	"terraform-provider-fptcloud/fptcloud/security-group-rule"
 	"terraform-provider-fptcloud/fptcloud/ssh"
@@ -45,7 +46,7 @@ func Provider() *schema.Provider {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_REGION", ""),
-				Description: "The region to use",
+				Description: "The region to use (VN/HAN | VN/SGN)",
 			},
 			"api_endpoint": {
 				Type:        schema.TypeString,
@@ -62,12 +63,14 @@ func Provider() *schema.Provider {
 			"fptcloud_flavor":         fptcloud_flavor.DataSourceFlavor(),
 			"fptcloud_image":          fptcloud_image.DataSourceImage(),
 			"fptcloud_security_group": fptcloud_security_group.DataSourceSecurityGroup(),
+			"fptcloud_instance":       fptcloud_instance.DataSourceInstance(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":             fptcloud_storage.ResourceStorage(),
 			"fptcloud_ssh_key":             fptcloud_ssh.ResourceSSHKey(),
 			"fptcloud_security_group":      fptcloud_security_group.ResourceSecurityGroup(),
 			"fptcloud_security_group_rule": fptcloud_security_group_rule.ResourceSecurityGroupRule(),
+			"fptcloud_instance":            fptcloud_instance.ResourceInstance(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}

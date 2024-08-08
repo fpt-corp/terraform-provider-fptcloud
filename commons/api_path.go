@@ -14,6 +14,10 @@ var ApiPath = struct {
 	UpdateApplyToSecurityGroup func(vpcId string, securityGroupId string) string
 	SecurityGroupRule          func(vpcId string, securityGroupRuleId string) string
 	CreateSecurityGroupRule    func(vpcId string) string
+	Instance                   func(vpcId string) string
+	RenameInstance             func(vpcId string, instanceId string) string
+	ChangeStatusInstance       func(vpcId string, instanceId string) string
+	ResizeInstance             func(vpcId string, instanceId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -45,5 +49,17 @@ var ApiPath = struct {
 	},
 	CreateSecurityGroupRule: func(vpcId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/security-group-rule", vpcId)
+	},
+	Instance: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/instance", vpcId)
+	},
+	RenameInstance: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/instance/%s/rename", vpcId, instanceId)
+	},
+	ChangeStatusInstance: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/instance/%s/change-status", vpcId, instanceId)
+	},
+	ResizeInstance: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
 	},
 }

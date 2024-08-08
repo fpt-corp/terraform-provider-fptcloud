@@ -34,6 +34,11 @@ func DataSourceSSHKey() *schema.Resource {
 				ExactlyOneOf: []string{"id", "name"},
 				Description:  "The name of the SSH key",
 			},
+			"public_key": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The public key of the SSH key",
+			},
 		},
 	}
 }
@@ -63,7 +68,7 @@ func dataSourceSSHKeyRead(_ context.Context, d *schema.ResourceData, m interface
 	var setError error
 	setError = d.Set("name", sshKey.Name)
 	setError = d.Set("public_key", sshKey.PublicKey)
-	setError = d.Set("created_at", sshKey.CreatedAt)
+
 	if setError != nil {
 		return diag.Errorf("[ERR] SSH key could not be found")
 	}
