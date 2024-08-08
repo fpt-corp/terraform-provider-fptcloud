@@ -78,11 +78,11 @@ func resourceSecurityGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 		Pending: []string{"PENDING", "UPDATING"},
 		Target:  []string{"REALIZED", "ACTIVE"},
 		Refresh: func() (interface{}, string, error) {
-			findStorageModel := FindSecurityGroupDTO{
+			findModel := FindSecurityGroupDTO{
 				ID:    securityGroupId,
 				VpcId: vpcId.(string),
 			}
-			resp, err := securityGroupService.Find(findStorageModel)
+			resp, err := securityGroupService.Find(findModel)
 			if err != nil {
 				return 0, "", common.DecodeError(err)
 			}
@@ -179,11 +179,11 @@ func resourceSecurityGroupUpdate(ctx context.Context, d *schema.ResourceData, m 
 			Pending: []string{"PENDING", "UPDATING"},
 			Target:  []string{"REALIZED", "ACTIVE"},
 			Refresh: func() (interface{}, string, error) {
-				findStorageModel := FindSecurityGroupDTO{
+				findModel := FindSecurityGroupDTO{
 					ID:    d.Id(),
 					VpcId: vpcId,
 				}
-				resp, err := securityGroupService.Find(findStorageModel)
+				resp, err := securityGroupService.Find(findModel)
 				if err != nil {
 					return 0, "", common.DecodeError(err)
 				}
@@ -221,11 +221,11 @@ func resourceSecurityGroupDelete(_ context.Context, d *schema.ResourceData, m in
 		Pending: []string{"DELETING"},
 		Target:  []string{"SUCCESS"},
 		Refresh: func() (interface{}, string, error) {
-			findStorageModel := FindSecurityGroupDTO{
+			findModel := FindSecurityGroupDTO{
 				ID:    d.Id(),
 				VpcId: vpcId.(string),
 			}
-			resp, err := securityGroupService.Find(findStorageModel)
+			resp, err := securityGroupService.Find(findModel)
 			if err != nil {
 				// If the security group is not found, consider it deleted
 				return 1, "SUCCESS", nil

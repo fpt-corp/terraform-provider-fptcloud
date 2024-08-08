@@ -45,9 +45,6 @@ func dataSourceSecurityGroupRead(_ context.Context, d *schema.ResourceData, m in
 		return diag.Errorf("[ERR] Failed to retrieve security group: %s", err)
 	}
 
-	// Set the ID of the resource
-	d.SetId(foundSecurityGroup.ID)
-
 	// Set other attributes
 	var setError error
 	d.SetId(foundSecurityGroup.ID)
