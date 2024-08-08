@@ -5,14 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/commons/utils"
-)
-
-const (
-	formatApiUrlGetListVPC string = `/v1/terraform/tenant/%s`
-	formatApiUrlFindVPC    string = `/v1/terraform/org/%s/vpc`
 )
 
 type Service interface {
@@ -31,7 +25,7 @@ func NewService(client *common.Client) Service {
 }
 
 func (s *serviceImpl) GetTenant(ctx context.Context) (*Tenant, error) {
-	reqURL := fmt.Sprintf(formatApiUrlGetListVPC, s.client.TenantName)
+	reqURL := common.ApiPath.Tenant(s.client.TenantName)
 	resp, err := s.client.SendGetRequest(reqURL)
 	if err != nil {
 		return nil, err
@@ -48,7 +42,7 @@ func (s *serviceImpl) GetTenant(ctx context.Context) (*Tenant, error) {
 }
 
 func (s *serviceImpl) FindVPC(ctx context.Context, tenantId string, search FindVPCParam) (*VPC, error) {
-	reqURL := fmt.Sprintf(formatApiUrlFindVPC, tenantId) + utils.ToQueryParams(search)
+	reqURL := common.ApiPath.Vpc(tenantId) + utils.ToQueryParams(search)
 	resp, err := s.client.SendGetRequest(reqURL)
 	if err != nil {
 		return nil, err
