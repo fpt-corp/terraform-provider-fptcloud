@@ -1,5 +1,5 @@
 package commons
 
 const (
-	DefaultApiUrl = "https://console-api.fptcloud.com/api"
+	DefaultApiUrl = "http://localhost:8000/api"
 )
