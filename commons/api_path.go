@@ -18,6 +18,8 @@ var ApiPath = struct {
 	RenameInstance                   func(vpcId string, instanceId string) string
 	ChangeStatusInstance             func(vpcId string, instanceId string) string
 	ResizeInstance                   func(vpcId string, instanceId string) string
+	Tenant                           func(tenantName string) string
+	Vpc                              func(tenantId string) string
 	VMGroupPolicies                  func(vpcId string) string
 	CreateInstanceGroup              func(vpcId string) string
 	FindInstanceGroup                func(vpcId string) string
@@ -73,6 +75,12 @@ var ApiPath = struct {
 	},
 	ResizeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
+	},
+	Tenant: func(tenantName string) string {
+		return fmt.Sprintf("/v1/terraform/tenant/%s", tenantName)
+	},
+	Vpc: func(tenantId string) string {
+		return fmt.Sprintf("/v1/terraform/org/%s/vpc", tenantId)
 	},
 	VMGroupPolicies: func(vpcId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/vm-group-policies", vpcId)
