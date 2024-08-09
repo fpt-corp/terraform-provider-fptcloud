@@ -31,3 +31,4 @@ data "fptcloud_ssh_key" "example" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
+- `public_key` (String) The public key of the SSH key

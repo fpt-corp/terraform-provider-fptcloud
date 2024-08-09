@@ -34,6 +34,6 @@ provider "fptcloud" {
 ### Optional
 
 - `api_endpoint` (String) The URL to use
-- `region` (String) The region to use
+- `region` (String) The region to use (VN/HAN | VN/SGN)
 - `tenant_name` (String) The tenant name to use
 - `token` (String) This is the Fpt cloud API token. Alternatively, this can also be specified using `FPTCLOUD_TOKEN` environment variable.
