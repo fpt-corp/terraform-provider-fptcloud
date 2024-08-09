@@ -33,3 +33,7 @@ go.work
 # .log files
 *.log
 *.log.*
+
+.bin/*
+.bin
+.bin/
