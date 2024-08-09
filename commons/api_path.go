@@ -32,6 +32,11 @@ var ApiPath = struct {
 	ListIpAddress                    func(vpcId string) string
 	ListExistingIpOfFloatingIp       func(vpcId string) string
 	ListExistingInstanceOfFloatingIp func(vpcId string) string
+	CreateSubnet                     func(vpcId string) string
+	DeleteSubnet                     func(vpcId string, subnetId string) string
+	FindSubnetByName                 func(vpcId string) string
+	FindSubnet                       func(vpcId string, subnetId string) string
+	ListSubnets                      func(vpcId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -114,5 +119,20 @@ var ApiPath = struct {
 	},
 	ListExistingInstanceOfFloatingIp: func(vpcId string) string {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/floating-ips/instances", vpcId)
+	},
+	CreateSubnet: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/networks", vpcId)
+	},
+	DeleteSubnet: func(vpcId string, subnetId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/network/%s", vpcId, subnetId)
+	},
+	FindSubnetByName: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/network-by-name", vpcId)
+	},
+	FindSubnet: func(vpcId string, subnetId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/network/%s", vpcId, subnetId)
+	},
+	ListSubnets: func(vpcId string) string {
+		return fmt.Sprintf("/v1/terraform/vpc/%s/networks", vpcId)
 	},
 }
