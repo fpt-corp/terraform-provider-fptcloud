@@ -25,7 +25,7 @@ var resourceSubnet = map[string]*schema.Schema{
 	"type": {
 		Type:        schema.TypeString,
 		Required:    true,
-		Description: "The type of the subnet. NAT_ROUTED: To the Internet via a NAT gateway. ISOLATED: Subnet won't route to the Internet",
+		Description: "The type of the subnet. `NAT_ROUTED`: To the Internet via a NAT gateway. `ISOLATED`: Subnet won't route to the Internet",
 		ForceNew:    true,
 		ValidateFunc: validation.StringInSlice([]string{
 			"ISOLATED", "NAT_ROUTED",

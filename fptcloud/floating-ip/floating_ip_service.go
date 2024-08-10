@@ -7,14 +7,6 @@ import (
 	"terraform-provider-fptcloud/commons/utils"
 )
 
-type CreateFloatingIpDTO struct {
-	VpcId          string `json:"vpc_id"`
-	FloatingIpId   string `json:"floating_ip_id"`
-	FloatingIpPort int    `json:"floating_ip_port"`
-	InstanceId     string `json:"instance_id"`
-	InstancePort   int    `json:"instance_port"`
-}
-
 type FindFloatingIpDTO struct {
 	FloatingIpID string `json:"floating_ip_id"`
 	IpAddress    string `json:"ip_address"`
@@ -60,7 +52,7 @@ type FloatingIpService interface {
 	FindFloatingIp(findDto FindFloatingIpDTO) (*FloatingIp, error)
 	FindFloatingIpByAddress(findDto FindFloatingIpDTO) (*FloatingIp, error)
 	ListFloatingIp(vpcId string) (*[]FloatingIp, error)
-	CreateFloatingIp(createDto CreateFloatingIpDTO) (*FloatingIp, error)
+	CreateFloatingIp(vpcId string) (*FloatingIp, error)
 	DeleteFloatingIp(vpcId string, floatingIpId string) (bool, error)
 }
 
@@ -137,9 +129,10 @@ func (s *FloatingIpServiceImpl) ListFloatingIp(vpcId string) (*[]FloatingIp, err
 }
 
 // CreateFloatingIp create a floating ip
-func (s *FloatingIpServiceImpl) CreateFloatingIp(createDto CreateFloatingIpDTO) (*FloatingIp, error) {
-	var apiPath = common.ApiPath.CreateFloatingIp(createDto.VpcId)
-	resp, err := s.client.SendPostRequest(apiPath, createDto)
+func (s *FloatingIpServiceImpl) CreateFloatingIp(vpcId string) (*FloatingIp, error) {
+	body := map[string]interface{}{"vpc_id": vpcId, "floating_ip_id": "new"}
+	var apiPath = common.ApiPath.CreateFloatingIp(vpcId)
+	resp, err := s.client.SendPostRequest(apiPath, body)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
