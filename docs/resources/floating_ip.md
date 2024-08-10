@@ -3,61 +3,18 @@
 page_title: "fptcloud_floating_ip Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Provides a FPT cloud instance group which can be attached to an instance in order to provide expanded floating ip.
+  Provides a FPT cloud floating ip which can be created to public ip address in order to provide expanded floating ip.
 ---
 
 # fptcloud_floating_ip (Resource)
 
-Provides a FPT cloud instance group which can be attached to an instance in order to provide expanded floating ip.
+Provides a FPT cloud floating ip which can be created to public ip address in order to provide expanded floating ip.
 
 ## Example Usage
 
 ```terraform
-data "fptcloud_floating_ip_rule_ip_address" "example_ip_address" {
-  vpc_id = "your_vpc_id"
-  filter {
-    key = "id"
-    values = ["your_ip_address_id"]
-  }
-}
-
-data "fptcloud_floating_ip_rule_instance" "example_instance" {
-  vpc_id = "your_vpc_id"
-  filter {
-    key = "id"
-    values = ["your_instance_id"]
-  }
-}
-
 resource "fptcloud_floating_ip" "example" {
-  vpc_id = "your_vpc_id"
-  floating_ip_id = "new"
-}
-
-resource "fptcloud_floating_ip" "example" {
-  vpc_id = "your_vpc_id"
-  floating_ip_id = "new"
-  instance_id = fptcloud_floating_ip_rule_instance.example_instance.id
-  # This is optional to ensure the floating ip is created before the rule
-  depends_on = [fptcloud_floating_ip_rule_instance.example_instance]
-}
-
-resource "fptcloud_floating_ip" "example" {
-  vpc_id = "your_vpc_id"
-  floating_ip_id = fptcloud_floating_ip_rule_ip_address.example_ip_address.id
-  instance_id = fptcloud_floating_ip_rule_instance.example_instance.id
-  # This is optional to ensure the floating ip is created before the rule
-  depends_on = [fptcloud_floating_ip_rule_ip_address.example_ip_address, fptcloud_floating_ip_rule_instance.example_instance]
-}
-
-resource "fptcloud_floating_ip" "example" {
-  vpc_id = "your_vpc_id"
-  floating_ip_id = fptcloud_floating_ip_rule_ip_address.example_ip_address.id
-  instance_id = fptcloud_floating_ip_rule_instance.example_instance.id
-  floating_ip_port = 1
-  instance_port = 1
-  # This is optional to ensure the floating ip is created before the rule
-  depends_on = [fptcloud_floating_ip_rule_ip_address.example_ip_address, fptcloud_floating_ip_rule_instance.example_instance]
+  vpc_id    = "your_vpc_id"
 }
 ```
 
@@ -66,14 +23,7 @@ resource "fptcloud_floating_ip" "example" {
 
 ### Required
 
-- `floating_ip_id` (String) The id of the ip address
 - `vpc_id` (String) The vpc id of the floating ip
-
-### Optional
-
-- `floating_ip_port` (Number) The port of the ip address
-- `instance_id` (String) The id of the instance
-- `instance_port` (Number) The port of the instance
 
 ### Read-Only
 
