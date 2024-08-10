@@ -11,17 +11,30 @@ provider "fptcloud" {
     tenant_name = "Revoke Package"
     region      = "VN/HAN"
 }
+#
+# resource "fptcloud_subnet" "example" {
+#     vpc_id         = "45a41029-106f-43a5-846f-8e7fbb805055"
+#     name           = "subnet-test-terraform"
+#     type           = "NAT_ROUTED"
+#     cidr           = "172.19.3.0/24"
+#     gateway_ip     = "172.19.3.1"
+#     static_ip_pool = "172.19.3.5-172.19.3.10"
+# }
 
 
-resource "fptcloud_subnet" "example" {
-    vpc_id         = "45a41029-106f-43a5-846f-8e7fbb805055"
-    name           = "subnet-test-terraform"
-    type           = "NAT_ROUTED"
-    cidr           = "172.19.3.0/24"
-    gateway_ip     = "172.19.3.1"
-    static_ip_pool = "172.19.3.5-172.19.3.10"
+
+data "fptcloud_subnet" "example" {
+  vpc_id = "45a41029-106f-43a5-846f-8e7fbb805055"
+#   filter {
+#     key = "id"
+#     values = ["679fe554-0a53-442c-931f-1874db4f731a"]
+#   }
+
 }
 
+output "show_value" {
+  value = data.fptcloud_subnet.example
+}
 
 # ==============================================================
 # ==============================================================

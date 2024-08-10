@@ -36,11 +36,6 @@ func DataSourceSubnet() *schema.Resource {
 
 func subnetSchema() map[string]*schema.Schema {
 	return map[string]*schema.Schema{
-		"vpc_id": {
-			Type:        schema.TypeString,
-			Required:    true,
-			Description: "The vpc id of the subnet",
-		},
 		"id": {
 			Type:        schema.TypeString,
 			Computed:    true,
@@ -61,6 +56,12 @@ func subnetSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The gateway of the subnet",
 		},
+		"edge_gateway": {
+			Type:        schema.TypeMap,
+			Computed:    true,
+			Description: "The edge gateway of the subnet",
+			Elem:        &schema.Schema{Type: schema.TypeString},
+		},
 		"created_at": {
 			Type:        schema.TypeString,
 			Computed:    true,
@@ -77,7 +78,13 @@ func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]
 	flattened["name"] = s.Name
 	flattened["network_name"] = s.NetworkName
 	flattened["gateway"] = s.Gateway
-	flattened["edge_gateway"] = s.EdgeGateway
+	edgeGateways := s.EdgeGateway
+	mapEdgeGateway := map[string]interface{}{
+		"id":              edgeGateways.ID,
+		"name":            edgeGateways.Name,
+		"edge_gateway_id": edgeGateways.EdgeGatewayId,
+	}
+	flattened["edge_gateway"] = mapEdgeGateway
 	flattened["created_at"] = s.CreatedAt
 	return flattened, nil
 }
