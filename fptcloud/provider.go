@@ -19,6 +19,7 @@ import (
 	"terraform-provider-fptcloud/fptcloud/ssh"
 	"terraform-provider-fptcloud/fptcloud/storage"
 	"terraform-provider-fptcloud/fptcloud/storage-policy"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	"terraform-provider-fptcloud/fptcloud/vpc"
 )
 
@@ -60,19 +61,20 @@ func Provider() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"fptcloud_storage_policy": fptcloud_storage_policy.DataSourceStoragePolicy(),
-			"fptcloud_storage":        fptcloud_storage.DataSourceStorage(),
-			"fptcloud_ssh_key":        fptcloud_ssh.DataSourceSSHKey(),
-			"fptcloud_vpc":            fptcloud_vpc.NewDataSource(),
-			"fptcloud_flavor":         fptcloud_flavor.DataSourceFlavor(),
-			"fptcloud_image":          fptcloud_image.DataSourceImage(),
-			"fptcloud_security_group": fptcloud_security_group.DataSourceSecurityGroup(),
-			"fptcloud_instance":       fptcloud_instance.DataSourceInstance(),
+			"fptcloud_storage_policy":              fptcloud_storage_policy.DataSourceStoragePolicy(),
+			"fptcloud_storage":                     fptcloud_storage.DataSourceStorage(),
+			"fptcloud_ssh_key":                     fptcloud_ssh.DataSourceSSHKey(),
+			"fptcloud_vpc":                         fptcloud_vpc.NewDataSource(),
+			"fptcloud_flavor":                      fptcloud_flavor.DataSourceFlavor(),
+			"fptcloud_image":                       fptcloud_image.DataSourceImage(),
+			"fptcloud_security_group":              fptcloud_security_group.DataSourceSecurityGroup(),
+			"fptcloud_instance":                    fptcloud_instance.DataSourceInstance(),
 			"fptcloud_instance_group_policy":       fptcloud_instance_group_policy.DataSourceInstanceGroupPolicy(),
 			"fptcloud_instance_group":              fptcloud_instance_group.DataSourceInstanceGroup(),
 			"fptcloud_floating_ip":                 fptcloud_floating_ip.DataSourceFloatingIp(),
 			"fptcloud_floating_ip_rule_ip_address": fptcloud_floating_ip_rule_ip_address.DataSourceFloatingIpRuleIpAddress(),
 			"fptcloud_floating_ip_rule_instance":   fptcloud_floating_ip_rule_instance.DataSourceFloatingIpRuleInstance(),
+			"fptcloud_subnet":                      fptcloud_subnet.DataSourceSubnet(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":             fptcloud_storage.ResourceStorage(),
@@ -82,6 +84,7 @@ func Provider() *schema.Provider {
 			"fptcloud_instance":            fptcloud_instance.ResourceInstance(),
 			"fptcloud_instance_group":      fptcloud_instance_group.ResourceInstanceGroup(),
 			"fptcloud_floating_ip":         fptcloud_floating_ip.ResourceFloatingIp(),
+			"fptcloud_subnet":              fptcloud_subnet.ResourceSubnet(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
