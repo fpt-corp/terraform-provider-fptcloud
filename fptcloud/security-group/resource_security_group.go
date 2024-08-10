@@ -216,6 +216,9 @@ func resourceSecurityGroupDelete(_ context.Context, d *schema.ResourceData, m in
 	}
 
 	_, err := securityGroupService.Delete(vpcId.(string), d.Id())
+	if err != nil {
+		return diag.Errorf("[ERR] Failed to delete security group: %s", err)
+	}
 
 	deleteStateConf := &retry.StateChangeConf{
 		Pending: []string{"DELETING"},
