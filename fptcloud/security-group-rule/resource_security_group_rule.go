@@ -32,7 +32,7 @@ func ResourceSecurityGroupRule() *schema.Resource {
 			"direction": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "The direction of the rule can be INGRESS or EGRESS.",
+				Description: "The direction of the rule can be `INGRESS` or `EGRESS`.",
 				ValidateFunc: validation.StringInSlice([]string{
 					"INGRESS", "EGRESS",
 				}, false),
