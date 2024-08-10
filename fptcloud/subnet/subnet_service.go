@@ -161,7 +161,7 @@ func (s *SubnetServiceImpl) ListSubnet(vpcId string) (*[]Subnet, error) {
 // DeleteSubnet delete a subnet
 func (s *SubnetServiceImpl) DeleteSubnet(vpcId string, subnetId string) (bool, error) {
 	var apiPath = common.ApiPath.DeleteSubnet(vpcId, subnetId)
-	resp, err := s.client.SendPostRequest(apiPath, nil)
+	resp, err := s.client.SendDeleteRequest(apiPath)
 	if err != nil {
 		return false, common.DecodeError(err)
 	}

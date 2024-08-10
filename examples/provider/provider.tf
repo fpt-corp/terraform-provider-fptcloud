@@ -1,19 +1,26 @@
 terraform {
-  required_providers {
-    fptcloud = {
-      source = "github.com/terraform-provider/fptcloud"
+    required_providers {
+        fptcloud = {
+            source = "github.com/terraform-provider/fptcloud"
+        }
     }
-  }
 }
 
-# provider "fptcloud" {
-#   token       = "ewogICJ0eXAiOiAiSldUIiwKICAiYWxnIjogIkhTMjU2Igp9.ewogICJpYXQiOiAxNzIxOTIyNzEzLjg3NTE0LAogICJzdWIiOiB7CiAgICAiaWQiOiAiNWY2MGRiMTAtODNjZC00MmNkLWEzNzMtMDc2M2ViOTQ1MDMyIiwKICAgICJlbWFpbCI6ICJ0dWFubm41MkBmcHQuY29tIiwKICAgICJqdGkiOiAiOWU1MzdiYmItMDUzYi00MzIwLTg1NjMtMzdiNTI0YTM4OTJjIgogIH0sCiAgImV4cCI6IDE4MDgzMjYzMTMuODc1MTQKfQ.O4HQd-HG8X1xqrTULYUzwOwQbf9CcPx85oOnuPSJGPo"
-#   tenant_name = "Revoke Package"
-#   region      = "VN/HAN"
-# }
+provider "fptcloud" {
+    token       = "ewogICJ0eXAiOiAiSldUIiwKICAiYWxnIjogIkhTMjU2Igp9.ewogICJpYXQiOiAxNzIzMTczMDQ1LjAzODg1MzIsCiAgInN1YiI6IHsKICAgICJpZCI6ICI1ZjYwZGIxMC04M2NkLTQyY2QtYTM3My0wNzYzZWI5NDUwMzIiLAogICAgImVtYWlsIjogInR1YW5ubjUyQGZwdC5jb20iLAogICAgImp0aSI6ICJjM2YzMGU0ZC1mZDc5LTQ2ODEtYmNkMy1jYjUyNTFiMWNlNzUiCiAgfSwKICAiZXhwIjogMTgwOTU3NjY0NS4wMzg4NTMyCn0.FUudXW4zmO3kU20-8gr_YqL2cZYtsmjKoU8ZJ3EPYO8"
+    tenant_name = "Revoke Package"
+    region      = "VN/HAN"
+}
 
 
-
+resource "fptcloud_subnet" "example" {
+    vpc_id         = "45a41029-106f-43a5-846f-8e7fbb805055"
+    name           = "subnet-test-terraform"
+    type           = "NAT_ROUTED"
+    cidr           = "172.19.3.0/24"
+    gateway_ip     = "172.19.3.1"
+    static_ip_pool = "172.19.3.5-172.19.3.10"
+}
 
 
 # ==============================================================
