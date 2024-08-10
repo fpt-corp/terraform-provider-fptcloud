@@ -6,7 +6,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
-	data_list "terraform-provider-fptcloud/commons/data-list"
+	"terraform-provider-fptcloud/commons/data-list"
 )
 
 // DataSourceSubnet function returns a schema.Resource that represents a subnet.

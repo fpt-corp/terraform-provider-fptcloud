@@ -32,7 +32,7 @@ func ResourceSecurityGroupRule() *schema.Resource {
 			"direction": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "The direction of the rule can be INGRESS or EGRESS.",
+				Description: "The direction of the rule can be `INGRESS` or `EGRESS`.",
 				ValidateFunc: validation.StringInSlice([]string{
 					"INGRESS", "EGRESS",
 				}, false),
@@ -232,6 +232,9 @@ func resourceSecurityGroupRuleDelete(_ context.Context, d *schema.ResourceData, 
 	}
 
 	_, err := securityGroupRuleService.Delete(vpcId.(string), d.Id())
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while trying to delete the security group rule %s", err)
+	}
 
 	deleteStateConf := &retry.StateChangeConf{
 		Pending: []string{"DELETING"},

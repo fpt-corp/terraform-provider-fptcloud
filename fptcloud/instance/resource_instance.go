@@ -196,6 +196,9 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 	}
 
 	_, err := instanceService.Delete(vpcId.(string), d.Id())
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while trying to delete the instance %s", err)
+	}
 
 	deleteStateConf := &retry.StateChangeConf{
 		Pending: []string{"DELETING"},
