@@ -1,3 +1,10 @@
+## [0.1.1] - 2024-08-10
+### Data source
+- Subnet
+### Resource
+- Floating IP association
+- Subnet
+
 ## [0.1.0] - 2024-08-09
 ### Data source
 - Floating IP
