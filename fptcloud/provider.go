@@ -8,7 +8,7 @@ import (
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/fptcloud/flavor"
 	"terraform-provider-fptcloud/fptcloud/floating-ip"
-	fptcloud_floating_ip_association "terraform-provider-fptcloud/fptcloud/floating-ip-association"
+	"terraform-provider-fptcloud/fptcloud/floating-ip-association"
 	"terraform-provider-fptcloud/fptcloud/image"
 	"terraform-provider-fptcloud/fptcloud/instance"
 	"terraform-provider-fptcloud/fptcloud/instance-group"
@@ -18,6 +18,7 @@ import (
 	"terraform-provider-fptcloud/fptcloud/ssh"
 	"terraform-provider-fptcloud/fptcloud/storage"
 	"terraform-provider-fptcloud/fptcloud/storage-policy"
+	"terraform-provider-fptcloud/fptcloud/subnet"
 	"terraform-provider-fptcloud/fptcloud/vpc"
 )
 
@@ -70,6 +71,7 @@ func Provider() *schema.Provider {
 			"fptcloud_instance_group_policy": fptcloud_instance_group_policy.DataSourceInstanceGroupPolicy(),
 			"fptcloud_instance_group":        fptcloud_instance_group.DataSourceInstanceGroup(),
 			"fptcloud_floating_ip":           fptcloud_floating_ip.DataSourceFloatingIp(),
+			"fptcloud_subnet":                fptcloud_subnet.DataSourceSubnet(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                 fptcloud_storage.ResourceStorage(),
@@ -80,6 +82,7 @@ func Provider() *schema.Provider {
 			"fptcloud_instance_group":          fptcloud_instance_group.ResourceInstanceGroup(),
 			"fptcloud_floating_ip":             fptcloud_floating_ip.ResourceFloatingIp(),
 			"fptcloud_floating_ip_association": fptcloud_floating_ip_association.ResourceFloatingIpAssociation(),
+			"fptcloud_subnet":                  fptcloud_subnet.ResourceSubnet(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
