@@ -50,10 +50,9 @@ func (r *resourceDedicatedKubernetesEngine) Create(ctx context.Context, request 
 	f.EnableCustomScript = false
 	f.PublicKey = ""
 	f.UpstreamDNS = ""
-	f.RegionId = "saigon-vn"
 
 	client := r.client
-	a, err := client.SendPostRequest(fmt.Sprintf("xplat/fke/vpc/%s/kubernetes", state.vpcId()), f)
+	a, err := client.SendPostRequest(fmt.Sprintf("/v1/xplat/fke/vpc/%s/kubernetes", state.vpcId()), f)
 
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
@@ -109,8 +108,25 @@ func (r *resourceDedicatedKubernetesEngine) Read(ctx context.Context, request re
 }
 
 func (r *resourceDedicatedKubernetesEngine) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
-	//TODO implement me
-	panic("implement me")
+	var state dedicatedKubernetesEngine
+	diags := request.State.Get(ctx, &state)
+
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	err := r.internalRead(ctx, state.Id.ValueString(), &state)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		return
+	}
+
+	diags = response.State.Set(ctx, &state)
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
 }
 
 func (r *resourceDedicatedKubernetesEngine) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
@@ -122,7 +138,7 @@ func (r *resourceDedicatedKubernetesEngine) Delete(ctx context.Context, request 
 		return
 	}
 
-	_, err := r.client.SendDeleteRequest(fmt.Sprintf("xplat/fke/vpc/%s/cluster/%s/delete", state.vpcId(), state.Id))
+	_, err := r.client.SendDeleteRequest(fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/delete", state.vpcId(), state.Id))
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
 		return
@@ -130,8 +146,10 @@ func (r *resourceDedicatedKubernetesEngine) Delete(ctx context.Context, request 
 }
 
 func (r *resourceDedicatedKubernetesEngine) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
-	tflog.Info(ctx, "Importing cluster ID "+request.ID)
+	tflog.Info(ctx, "Importing DFKE cluster ID "+request.ID)
+
 	var state dedicatedKubernetesEngine
+	state.VpcId = types.StringValue("188af427-269b-418a-90bb-0cb27afc6c1e")
 
 	state.Id = types.StringValue(request.ID)
 	err := r.internalRead(ctx, request.ID, &state)
@@ -145,6 +163,10 @@ func (r *resourceDedicatedKubernetesEngine) ImportState(ctx context.Context, req
 	if response.Diagnostics.HasError() {
 		return
 	}
+
+	// lack of ability to import without VPC ID
+	//response.Diagnostics.Append(diag2.NewErrorDiagnostic("Unimplemented", "Importing DFKE clusters isn't currently supported"))
+	//return
 }
 
 func NewResourceDedicatedKubernetesEngine() resource.Resource {
@@ -259,6 +281,14 @@ func (r *resourceDedicatedKubernetesEngine) Schema(ctx context.Context, request 
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
 			},
+			"vpc_id": schema.StringAttribute{
+				Required:      true,
+				PlanModifiers: forceNewPlanModifiersString,
+			},
+			"region_id": schema.StringAttribute{
+				Required:      true,
+				PlanModifiers: forceNewPlanModifiersString,
+			},
 		},
 	}
 }
@@ -296,7 +326,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+clusterId+", VPC ID "+vpcId)
 
-	a, err := r.client.SendGetRequest(fmt.Sprintf("xplat/fke/vpc/%s/cluster/%s?page=1&page_size=25", vpcId, clusterId))
+	a, err := r.client.SendGetRequest(fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s?page=1&page_size=25", vpcId, clusterId))
 
 	if err != nil {
 		return err
@@ -317,7 +347,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	}
 
 	// resolve edge ID
-	edge, err := r.dfkeClient.FindEdgeByEdgeGatewayId(vpcId, data.EdgeID)
+	edge, err := r.dfkeClient.FindEdgeByEdgeGatewayId(ctx, vpcId, data.EdgeID)
 	if err != nil {
 		return err
 	}
@@ -393,6 +423,7 @@ func (r *resourceDedicatedKubernetesEngine) remap(from *dedicatedKubernetesEngin
 	to.NodeDNS = from.NodeDNS.ValueString()
 	to.IPPublicFirewall = from.IPPublicFirewall.ValueString()
 	to.IPPrivateFirewall = from.IPPrivateFirewall.ValueString()
+	to.RegionId = from.RegionId.ValueString()
 }
 
 func (e *dedicatedKubernetesEngine) vpcId() string {
@@ -431,6 +462,7 @@ type dedicatedKubernetesEngine struct {
 	IPPublicFirewall  types.String `tfsdk:"ip_public_firewall" json:"ip_public_firewall"`
 	IPPrivateFirewall types.String `tfsdk:"ip_private_firewall" json:"ip_private_firewall"`
 	VpcId             types.String `tfsdk:"vpc_id" json:"vpc_id"`
+	RegionId          types.String `tfsdk:"region_id"`
 }
 
 type dedicatedKubernetesEngineJson struct {
@@ -470,8 +502,7 @@ type dedicatedKubernetesEngineJson struct {
 	EnableCustomScript bool   `json:"enable_custom_script"`
 	PublicKey          string `json:"public_key"`
 	UpstreamDNS        string `json:"upstream_dns"`
-
-	RegionId string `json:"region_id"`
+	RegionId           string `json:"region_id"`
 }
 
 type dedicatedKubernetesEngineData struct {

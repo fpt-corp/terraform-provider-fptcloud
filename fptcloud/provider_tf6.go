@@ -12,6 +12,8 @@ import (
 	"os"
 	common "terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 )
 
 var (
@@ -47,20 +49,20 @@ func (x *xplatProvider) Metadata(ctx context.Context, request provider.MetadataR
 
 func (x *xplatProvider) Schema(ctx context.Context, request provider.SchemaRequest, response *provider.SchemaResponse) {
 	response.Schema = schema.Schema{
-		Description: "Resources provider from xPlat",
+		Description: "",
 		Attributes: map[string]schema.Attribute{
 			"region": schema.StringAttribute{
-				Description: "The FPTCloud region to connect to.",
+				Description: "The region to use",
 				Optional:    true,
 			},
 
 			"token": schema.StringAttribute{
-				Description: "Authentication token to use as an alternative to username/password.",
+				Description: "This is the Fpt cloud API token. Alternatively, this can also be specified using `FPTCLOUD_TOKEN` environment variable.",
 				Optional:    true,
 			},
 
 			"tenant_name": schema.StringAttribute{
-				Description: "Tenant name",
+				Description: "The tenant name to use",
 				Optional:    true,
 			},
 
@@ -146,11 +148,14 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 }
 
 func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		fptcloud_subnet.NewDataSourceSubnet,
+	}
 }
 
 func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngine,
+		fptcloud_mfke.NewResourceManagedKubernetesEngine,
 	}
 }
