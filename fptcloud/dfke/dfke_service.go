@@ -1,9 +1,11 @@
 package fptcloud_dfke
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strings"
 	"terraform-provider-fptcloud/commons"
 )
@@ -42,8 +44,9 @@ type edgeResponse struct {
 	EdgeGateway EdgeGateway `json:"edgeGateway"`
 }
 
-func (a *dfkeApiClient) FindEdgeById(vpcId string, id string) (*EdgeGateway, error) {
-	path := fmt.Sprintf("internal/vpc/%s/find_edge_by_id/%s/false", vpcId, id)
+func (a *dfkeApiClient) FindEdgeById(ctx context.Context, vpcId string, id string) (*EdgeGateway, error) {
+	tflog.Info(ctx, "Resolving edge by ID "+id)
+	path := fmt.Sprintf("/v1/kubernetes/vpc/%s/find_edge_by_id/%s/false", vpcId, id)
 	r, err := a.internalFindEdge(path)
 	if err != nil {
 		return nil, err
@@ -52,11 +55,12 @@ func (a *dfkeApiClient) FindEdgeById(vpcId string, id string) (*EdgeGateway, err
 	return r, nil
 }
 
-func (a *dfkeApiClient) FindEdgeByEdgeGatewayId(vpcId string, edgeId string) (*EdgeGateway, error) {
+func (a *dfkeApiClient) FindEdgeByEdgeGatewayId(ctx context.Context, vpcId string, edgeId string) (*EdgeGateway, error) {
 	if !strings.HasPrefix(edgeId, "urn:vcloud:gateway") {
 		return nil, errors.New("edge gateway id must be prefixed with \"urn:vcloud:gateway\"")
 	}
-	path := fmt.Sprintf("internal/vpc/%s/find_edge_by_id/%s/true", vpcId, edgeId)
+	tflog.Info(ctx, "Resolving edge by gateway ID "+edgeId)
+	path := fmt.Sprintf("/v1/kubernetes/vpc/%s/find_edge_by_id/%s/true", vpcId, edgeId)
 	r, err := a.internalFindEdge(path)
 	if err != nil {
 		return nil, err
