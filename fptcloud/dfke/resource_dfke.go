@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"strings"
 	"terraform-provider-fptcloud/commons"
 )
 
@@ -116,9 +117,23 @@ func (r *resourceDedicatedKubernetesEngine) Update(ctx context.Context, request 
 		return
 	}
 
-	err := r.internalRead(ctx, state.Id.ValueString(), &state)
+	var existing dedicatedKubernetesEngine
+
+	err := r.internalRead(ctx, state.Id.ValueString(), &existing)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error getting existing state", err.Error()))
+		return
+	}
+
+	errDiag := r.diff(ctx, &existing, &state)
+	if errDiag != nil {
+		response.Diagnostics.Append(errDiag)
+		return
+	}
+
+	err = r.internalRead(ctx, state.Id.ValueString(), &existing)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))
 		return
 	}
 
@@ -195,23 +210,20 @@ func (r *resourceDedicatedKubernetesEngine) Schema(ctx context.Context, request 
 				PlanModifiers: forceNewPlanModifiersString,
 			},
 			"master_type": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-			},
-			"master_count": schema.Int64Attribute{
 				Required: true,
 			},
-			"master_disk_size": schema.Int64Attribute{
+			"master_count": schema.Int64Attribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersInt,
+			},
+			"master_disk_size": schema.Int64Attribute{
+				Required: true,
 			},
 			"worker_type": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
+				Required: true,
 			},
 			"worker_disk_size": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
+				Required: true,
 			},
 			"network_id": schema.StringAttribute{
 				Required:      true,
@@ -262,12 +274,10 @@ func (r *resourceDedicatedKubernetesEngine) Schema(ctx context.Context, request 
 			//	PlanModifiers: forceNewPlanModifiersInt,
 			//},
 			"scale_min": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
+				Required: true,
 			},
 			"scale_max": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
+				Required: true,
 			},
 			"node_dns": schema.StringAttribute{
 				Required:      true,
@@ -390,9 +400,17 @@ func (r *resourceDedicatedKubernetesEngine) checkForError(a []byte) *diag2.Error
 		return &res
 	}
 
-	if _, ok := re["error"]; ok {
-		res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
-		return &res
+	if errorField, ok := re["error"]; ok {
+		e2, isBool := errorField.(bool)
+		if isBool && e2 != false {
+			res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
+			return &res
+		}
+
+		if errorField != nil {
+			res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
+			return &res
+		}
 	}
 
 	return nil
@@ -426,8 +444,169 @@ func (r *resourceDedicatedKubernetesEngine) remap(from *dedicatedKubernetesEngin
 	to.RegionId = from.RegionId.ValueString()
 }
 
+func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedicatedKubernetesEngine, to *dedicatedKubernetesEngine) *diag2.ErrorDiagnostic {
+	master := from.MasterDiskSize.ValueInt64()
+	master2 := to.MasterDiskSize.ValueInt64()
+	if master != master2 {
+		if master2 < master {
+			d := diag2.NewErrorDiagnostic("Wrong master disk size", "Disk cannot be shrinked")
+			return &d
+		}
+
+		tflog.Info(ctx, fmt.Sprintf("Resizing master from %d to %d", master, master2))
+		management := dedicatedKubernetesEngineManagement{
+			ClusterId:  to.clusterUUID(),
+			MgmtAction: "",
+			DiskExtend: fmt.Sprintf("%d", master2-master),
+			ExtendType: "master",
+			Flavor:     "",
+			NodeType:   "",
+		}
+
+		if err := r.manage(from, management); err != nil {
+			return err
+		}
+		tflog.Info(ctx, fmt.Sprintf("Resized master from %d to %d", master, master2))
+	}
+
+	worker := from.WorkerDiskSize.ValueInt64()
+	worker2 := to.WorkerDiskSize.ValueInt64()
+	if worker != worker2 {
+		if worker2 < worker {
+			d := diag2.NewErrorDiagnostic("Wrong worker disk size", "Disk cannot be shrinked")
+			return &d
+		}
+
+		tflog.Info(ctx, fmt.Sprintf("Resizing worker from %d to %d", worker, worker2))
+		management := dedicatedKubernetesEngineManagement{
+			ClusterId:  to.clusterUUID(),
+			MgmtAction: "",
+			DiskExtend: fmt.Sprintf("%d", worker2-worker),
+			ExtendType: "worker",
+			Flavor:     "",
+			NodeType:   "",
+		}
+
+		if err := r.manage(from, management); err != nil {
+			return err
+		}
+		tflog.Info(ctx, fmt.Sprintf("Resized worker from %d to %d", worker, worker2))
+	}
+
+	masterType := from.MasterType.ValueString()
+	master2Type := to.MasterType.ValueString()
+	if masterType != master2Type {
+		tflog.Info(ctx, fmt.Sprintf("Changing master from %s to %s", masterType, master2Type))
+
+		management := dedicatedKubernetesEngineManagement{
+			ClusterId:  to.clusterUUID(),
+			MgmtAction: "",
+			DiskExtend: "0",
+			ExtendType: "",
+			Flavor:     master2Type,
+			NodeType:   "master",
+		}
+
+		if err := r.manage(from, management); err != nil {
+			return err
+		}
+		tflog.Info(ctx, fmt.Sprintf("Changed master from %s to %s", masterType, master2Type))
+	}
+
+	workerType := from.WorkerType.ValueString()
+	worker2Type := to.WorkerType.ValueString()
+	if from.WorkerType != to.WorkerType {
+		tflog.Info(ctx, fmt.Sprintf("Changing worker from %s to %s", workerType, worker2Type))
+
+		management := dedicatedKubernetesEngineManagement{
+			ClusterId:  to.clusterUUID(),
+			MgmtAction: "",
+			DiskExtend: "0",
+			ExtendType: "",
+			Flavor:     worker2Type,
+			NodeType:   "worker",
+		}
+
+		if err := r.manage(from, management); err != nil {
+			return err
+		}
+
+		tflog.Info(ctx, fmt.Sprintf("Changed worker from %s to %s", workerType, worker2Type))
+	}
+
+	if (from.ScaleMin.ValueInt64() != to.ScaleMin.ValueInt64()) || (from.ScaleMax.ValueInt64() != to.ScaleMax.ValueInt64()) {
+		tflog.Info(ctx, fmt.Sprintf(
+			"Changing autoscale from (%d-%d) to (%d-%d)",
+			from.ScaleMin.ValueInt64(), from.ScaleMax.ValueInt64(),
+			to.ScaleMin.ValueInt64(), to.ScaleMax.ValueInt64(),
+		))
+		autoScale := dedicatedKubernetesEngineAutoscale{
+			ClusterId:   to.clusterUUID(),
+			ScaleMin:    to.ScaleMin.ValueInt64(),
+			ScaleMax:    to.ScaleMax.ValueInt64(),
+			ActionScale: "update",
+		}
+
+		if err := r.manage(from, autoScale); err != nil {
+			return err
+		}
+
+		tflog.Info(ctx, fmt.Sprintf(
+			"Changed autoscale to to (%d-%d)",
+			to.ScaleMin.ValueInt64(), to.ScaleMax.ValueInt64(),
+		))
+	}
+
+	if from.Version.ValueString() != to.Version.ValueString() {
+		//	version changed, call bump version
+		path := commons.ApiPath.DedicatedFKEUpgradeVersion(from.vpcId(), from.Id.ValueString())
+
+		version := to.Version.ValueString()
+		if !strings.HasPrefix(version, "v") {
+			version = "v" + version
+		}
+		change := dedicatedKubernetesEngineUpgradeVersion{
+			VersionUpgrade: version,
+			ClusterId:      from.clusterUUID(),
+		}
+
+		tflog.Info(ctx, fmt.Sprintf("Bumping version to %s", to.Version))
+
+		a, err2 := r.client.SendPostRequest(path, change)
+		if err2 != nil {
+			d := diag2.NewErrorDiagnostic("Error calling upgrade version API", err2.Error())
+			return &d
+		}
+
+		if diagErr2 := r.checkForError(a); diagErr2 != nil {
+			return diagErr2
+		}
+	}
+
+	return nil
+}
+
+func (r *resourceDedicatedKubernetesEngine) manage(state *dedicatedKubernetesEngine, params interface{}) *diag2.ErrorDiagnostic {
+	path := commons.ApiPath.DedicatedFKEManagement(state.vpcId(), state.clusterUUID())
+
+	a, err2 := r.client.SendPostRequest(path, params)
+	if err2 != nil {
+		d := diag2.NewErrorDiagnostic("Error calling autoscale API", err2.Error())
+		return &d
+	}
+
+	if diagErr2 := r.checkForError(a); diagErr2 != nil {
+		return diagErr2
+	}
+
+	return nil
+}
+
 func (e *dedicatedKubernetesEngine) vpcId() string {
 	return e.VpcId.ValueString()
+}
+func (e *dedicatedKubernetesEngine) clusterUUID() string {
+	return e.Id.ValueString()
 }
 
 type dedicatedKubernetesEngine struct {
@@ -588,4 +767,25 @@ type dedicatedKubernetesEngineCreateResponse struct {
 
 type dedicatedKubernetesEngineReadResponse struct {
 	Cluster dedicatedKubernetesEngineData `json:"cluster"`
+}
+
+type dedicatedKubernetesEngineUpgradeVersion struct {
+	ClusterId      string `json:"cluster_id"`
+	VersionUpgrade string `json:"version_upgrade"`
+}
+
+type dedicatedKubernetesEngineManagement struct {
+	ClusterId  string `json:"cluster_id"`
+	MgmtAction string `json:"mgmt_action"`
+	DiskExtend string `json:"disk_extend"`
+	ExtendType string `json:"extend_type"`
+	Flavor     string `json:"flavor"`
+	NodeType   string `json:"node_type"`
+}
+
+type dedicatedKubernetesEngineAutoscale struct {
+	ClusterId   string `json:"cluster_id"`
+	ScaleMin    int64  `json:"scale_min"`
+	ScaleMax    int64  `json:"scale_max"`
+	ActionScale string `json:"action_scale"`
 }

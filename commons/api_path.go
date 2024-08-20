@@ -3,18 +3,21 @@ package commons
 import "fmt"
 
 var ApiPath = struct {
-	SSH                   string
-	Storage               func(vpcId string) string
-	StorageUpdateAttached func(vpcId string, storageId string) string
-	StoragePolicy         func(vpcId string) string
-	Flavor                func(vpcId string) string
-	Image                 func(vpcId string) string
-	Subnet                func(vpcId string) string
-	ManagedFKEList        func(vpcId string, page int, pageSize int) string
-	ManagedFKEGet         func(vpcId string, platform string, clusterId string) string
-	ManagedFKEDelete      func(vpcId string, platform string, clusterName string) string
-	ManagedFKECreate      func(vpcId string, platform string) string
-	GetFKEOSVersion       func(vpcId string, platform string) string
+	SSH                        string
+	Storage                    func(vpcId string) string
+	StorageUpdateAttached      func(vpcId string, storageId string) string
+	StoragePolicy              func(vpcId string) string
+	Flavor                     func(vpcId string) string
+	Image                      func(vpcId string) string
+	Subnet                     func(vpcId string) string
+	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
+	DedicatedFKEManagement     func(vpcId string, clusterId string) string
+
+	ManagedFKEList   func(vpcId string, page int, pageSize int) string
+	ManagedFKEGet    func(vpcId string, platform string, clusterId string) string
+	ManagedFKEDelete func(vpcId string, platform string, clusterName string) string
+	ManagedFKECreate func(vpcId string, platform string) string
+	GetFKEOSVersion  func(vpcId string, platform string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -33,6 +36,14 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/terraform/vpc/%s/images", vpcId)
 	},
 	Subnet: func(vpcId string) string { return fmt.Sprintf("/v1/vmware/vpc/%s/network/subnets", vpcId) },
+
+	DedicatedFKEUpgradeVersion: func(vpcId string, clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/upgrade-version", vpcId, clusterId)
+	},
+	DedicatedFKEManagement: func(vpcId string, clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/kubernetes/%s/management", vpcId, clusterId)
+	},
+
 	ManagedFKEList: func(vpcId string, page int, pageSize int) string {
 		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/vmw/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, page, pageSize)
 	},
