@@ -54,7 +54,6 @@ func (r *resourceManagedKubernetesEngine) Schema(ctx context.Context, request re
 	topLevelAttributes["id"] = schema.StringAttribute{
 		Computed: true,
 	}
-	//topLevelAttributes["pools"] = schema.ListNestedAttribute{Required: true}
 
 	response.Schema = schema.Schema{
 		Description: "Manage managed FKE clusters.",
@@ -194,7 +193,7 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 	topLevelAttributes := map[string]schema.Attribute{}
 	requiredStrings := []string{
 		"vpc_id", "cluster_name", "network_id", "k8s_version", "purpose",
-		"pod_network", "pod_prefix", "service_network",
+		"pod_network", "pod_prefix", "service_network", "service_prefix",
 		"range_ip_lb_start", "range_ip_lb_end", "load_balancer_type", "region_id",
 	}
 
@@ -219,7 +218,7 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribute {
 	poolLevelAttributes := map[string]schema.Attribute{}
 	requiredStrings := []string{
-		"storage_profile", "worker_type", "container_runtime",
+		"storage_profile", "worker_type",
 		"network_name", "network_id",
 		"driver_installation_type", "gpu_driver_version",
 	}
@@ -228,7 +227,7 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 	}
 
 	requiredBool := []string{
-		"auto_scale", "is_create", "is_scale", "is_others", "is_enable_auto_repair",
+		"auto_scale", "is_enable_auto_repair",
 	}
 
 	for _, attribute := range requiredStrings {
@@ -258,6 +257,7 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 func (r *resourceManagedKubernetesEngine) fillJson(to *managedKubernetesEngineJson, vpcId string) *diag2.ErrorDiagnostic {
 	to.SSHKey = nil
 	to.TypeCreate = "create"
+	to.NetworkType = "calico"
 	for _, pool := range to.Pools {
 		pool.WorkerPoolID = "worker-new"
 		pool.ContainerRuntime = "containerd"
@@ -266,6 +266,9 @@ func (r *resourceManagedKubernetesEngine) fillJson(to *managedKubernetesEngineJs
 		}([]struct{ Name string }{})
 		pool.VGpuID = nil
 		pool.IsDisplayGPU = false
+		pool.IsCreate = true
+		pool.IsScale = false
+		pool.IsOthers = false
 	}
 
 	// get k8s versions
@@ -300,9 +303,6 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 			ScaleMax:               item.ScaleMax.ValueInt64(),
 			NetworkName:            item.NetworkName.ValueString(),
 			NetworkID:              item.NetworkID.ValueString(),
-			IsCreate:               item.IsCreate.ValueBool(),
-			IsScale:                item.IsScale.ValueBool(),
-			IsOthers:               item.IsOthers.ValueBool(),
 			IsEnableAutoRepair:     item.IsEnableAutoRepair.ValueBool(),
 			DriverInstallationType: item.DriverInstallationType.ValueString(),
 			GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
@@ -432,10 +432,10 @@ type managedKubernetesEnginePool struct {
 	//} `tfsdk:"kv"`
 	//VGpuID                 interface{}  `tfsdk:"vGpuId"`
 	//IsDisplayGPU           bool         `tfsdk:"isDisplayGPU"`
-	IsCreate               types.Bool   `tfsdk:"is_create"`
-	IsScale                types.Bool   `tfsdk:"is_scale"`
-	IsOthers               types.Bool   `tfsdk:"is_others"`
-	IsEnableAutoRepair     types.Bool   `tfsdk:"is_enable-auto_repair"`
+	//IsCreate               types.Bool   `tfsdk:"is_create"`
+	//IsScale                types.Bool   `tfsdk:"is_scale"`
+	//IsOthers               types.Bool   `tfsdk:"is_others"`
+	IsEnableAutoRepair     types.Bool   `tfsdk:"is_enable_auto_repair"`
 	DriverInstallationType types.String `tfsdk:"driver_installation_type"`
 	GpuDriverVersion       types.String `tfsdk:"gpu_driver_version"`
 }
@@ -455,6 +455,7 @@ type managedKubernetesEngineJson struct {
 	RangeIPLbStart    string                            `json:"range_ip_lb_start"`
 	RangeIPLbEnd      string                            `json:"range_ip_lb_end"`
 	LoadBalancerType  string                            `json:"loadBalancerType"`
+	NetworkType       string                            `json:"network_type"`
 	SSHKey            interface{}                       `json:"sshKey"`
 	TypeCreate        string                            `json:"type_create"`
 	RegionId          string                            `json:"region_id"`
