@@ -28,8 +28,8 @@ func DataSourceStoragePolicy() *schema.Resource {
 	}
 
 	return data_list.NewResource(dataListConfig)
-
 }
+
 func storagePolicySchema() map[string]*schema.Schema {
 	return map[string]*schema.Schema{
 		"id": {
@@ -46,7 +46,6 @@ func storagePolicySchema() map[string]*schema.Schema {
 }
 
 func flattenStoragePolicy(storagePolicy, _ interface{}, _ map[string]interface{}) (map[string]interface{}, error) {
-
 	s := storagePolicy.(StoragePolicy)
 
 	flattened := map[string]interface{}{}
