@@ -17,6 +17,7 @@ type InstanceModel struct {
 	MemoryMb         int      `json:"memory_mb"`
 	CpuNumber        int      `json:"cpu_number"`
 	FlavorId         *string  `json:"flavor_id,omitempty"`
+	FlavorName       *string  `json:"flavor_name,omitempty"`
 	SubnetId         string   `json:"subnet_id"`
 	StorageSizeGb    int      `json:"storage_size_gb"`
 	StoragePolicy    string   `json:"storage_policy"`
@@ -31,8 +32,8 @@ type CreateInstanceDTO struct {
 	Name             string   `json:"name"`
 	PrivateIp        *string  `json:"private_ip,omitempty"`
 	PublicIp         *string  `json:"public_ip,omitempty"`
-	FlavorId         string   `json:"flavor_id"`
-	ImageId          string   `json:"image_id"`
+	FlavorName       string   `json:"flavor_name"`
+	ImageName        string   `json:"image_name"`
 	SubnetId         string   `json:"subnet_id"`
 	StorageSizeGb    int      `json:"storage_size_gb"`
 	StoragePolicyId  string   `json:"storage_policy_id"`
@@ -40,4 +41,9 @@ type CreateInstanceDTO struct {
 	InstanceGroupId  *string  `json:"instance_group_id,omitempty"`
 	SshKey           *string  `json:"ssh_key,omitempty"`
 	Password         *string  `json:"password,omitempty"`
+}
+
+type FlavorDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

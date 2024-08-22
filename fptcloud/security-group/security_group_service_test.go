@@ -46,7 +46,7 @@ func TestFindSecurityGroup_ReturnsSecurityGroup(t *testing.T) {
 			}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group": mockResponse,
+		"/v2/vpc/vpc_id/security-group": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
@@ -61,7 +61,7 @@ func TestFindSecurityGroup_ReturnsSecurityGroup(t *testing.T) {
 func TestFindSecurityGroup_ReturnsErrorOnRequestFailure(t *testing.T) {
 	mockResponse := `invalid`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group": mockResponse,
+		"/v2/vpc/vpc_id/security-group": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
@@ -74,7 +74,7 @@ func TestFindSecurityGroup_ReturnsErrorOnRequestFailure(t *testing.T) {
 func TestCreateSecurityGroup_ReturnsSecurityGroupId(t *testing.T) {
 	mockResponse := `{"security_group_id": "security_group_id"}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group": mockResponse,
+		"/v2/vpc/vpc_id/security-group": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
@@ -86,7 +86,7 @@ func TestCreateSecurityGroup_ReturnsSecurityGroupId(t *testing.T) {
 
 func TestDeleteSecurityGroup_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group": "",
+		"/v2/vpc/vpc_id/security-group": "",
 	})
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
@@ -98,7 +98,7 @@ func TestDeleteSecurityGroup_ReturnsSuccess(t *testing.T) {
 
 func TestRenameSecurityGroup_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group": "",
+		"/v2/vpc/vpc_id/security-group": "",
 	})
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
@@ -110,7 +110,7 @@ func TestRenameSecurityGroup_ReturnsSuccess(t *testing.T) {
 
 func TestUpdateApplyToSecurityGroup_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group": "",
+		"/v2/vpc/vpc_id/security-group": "",
 	})
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
