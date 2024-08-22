@@ -14,6 +14,7 @@ type InstanceService interface {
 	Rename(vpcId string, instanceId string, newName string) (*common.SimpleResponse, error)
 	ChangeStatus(vpcId string, instanceId string, status string) (*common.SimpleResponse, error)
 	Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error)
+	GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error)
 }
 
 // InstanceServiceImpl is the implementation of InstanceService
@@ -125,4 +126,22 @@ func (s *InstanceServiceImpl) Resize(vpcId string, instanceId string, flavorId s
 	}
 
 	return result, nil
+}
+
+// GetFlavorByName get flavor by name
+func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error) {
+	var apiPath = common.ApiPath.GetFlavorByName(vpcId)
+	resp, err := s.client.SendPostRequest(apiPath, map[string]string{"flavor_name": flavorName})
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	flavor := FlavorDTO{}
+	err = json.Unmarshal(resp, &flavor)
+
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	return &flavor, nil
 }

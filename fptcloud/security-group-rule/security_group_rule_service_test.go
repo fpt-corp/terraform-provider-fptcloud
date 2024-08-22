@@ -27,7 +27,7 @@ func TestFindSecurityGroupRule_ReturnsSecurityGroupRule(t *testing.T) {
 		}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group-rule": mockResponse,
+		"/v2/vpc/vpc_id/security-group-rule": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_security_group_rule.NewSecurityGroupRuleService(mockClient)
@@ -50,7 +50,7 @@ func TestFindSecurityGroupRule_ReturnsSecurityGroupRule(t *testing.T) {
 func TestFindSecurityGroupRule_ReturnsErrorOnRequestFailure(t *testing.T) {
 	mockResponse := `invalid`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group-rule": mockResponse,
+		"/v2/vpc/vpc_id/security-group-rule": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_security_group_rule.NewSecurityGroupRuleService(mockClient)
@@ -62,7 +62,7 @@ func TestFindSecurityGroupRule_ReturnsErrorOnRequestFailure(t *testing.T) {
 func TestCreateSecurityGroupRule_ReturnsSecurityGroupRuleId(t *testing.T) {
 	mockResponse := `{"security_group_rule_id": "security_group_rule_id"}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group-rule": mockResponse,
+		"/v2/vpc/vpc_id/security-group-rule": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_security_group_rule.NewSecurityGroupRuleService(mockClient)
@@ -82,7 +82,7 @@ func TestCreateSecurityGroupRule_ReturnsSecurityGroupRuleId(t *testing.T) {
 
 func TestDeleteSecurityGroupRule_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/security-group-rule": "",
+		"/v2/vpc/vpc_id/security-group-rule": "",
 	})
 	defer server.Close()
 	service := fptcloud_security_group_rule.NewSecurityGroupRuleService(mockClient)
