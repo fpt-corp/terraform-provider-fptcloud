@@ -18,7 +18,7 @@ func TestGetTenant_ReturnsTenant(t *testing.T) {
 		}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/tenant": mockResponse,
+		"/v2/tenant": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_vpc.NewService(mockClient)
@@ -39,7 +39,7 @@ func TestFindVPC_ReturnsVPC(t *testing.T) {
 		}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/org/tenant_id/vpc": mockResponse,
+		"/v2/org/tenant_id/vpc": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_vpc.NewService(mockClient)

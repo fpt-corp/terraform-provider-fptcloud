@@ -16,7 +16,7 @@ func TestListStoragePolicy_ReturnsStoragePolicies(t *testing.T) {
 		}]
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage-policies": mockResponse,
+		"/v2/vpc/vpc_id/storage-policies": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_storage_policy.NewStoragePolicyService(mockClient)
@@ -33,7 +33,7 @@ func TestListStoragePolicy_ReturnsEmptyWhenNotFound(t *testing.T) {
 		"data": []
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage-policies": mockResponse,
+		"/v2/vpc/vpc_id/storage-policies": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_storage_policy.NewStoragePolicyService(mockClient)

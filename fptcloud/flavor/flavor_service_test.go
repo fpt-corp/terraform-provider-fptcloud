@@ -11,7 +11,7 @@ import (
 func TestListFlavor_ReturnsFlavors(t *testing.T) {
 	mockResponse := `{"data": [{"id": "1", "name": "flavor1", "info": {"vcpu": 2, "memory_mb": 2048, "gpu_memory_gb": 1}, "type": "VM_TYPE"}]}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/flavors": mockResponse,
+		"/v2/vpc/vpc_id/flavors": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_flavor.NewFlavorService(mockClient)
@@ -30,7 +30,7 @@ func TestListFlavor_ReturnsFlavors(t *testing.T) {
 func TestListFlavor_ReturnsEmptyListOnEmptyResponse(t *testing.T) {
 	mockResponse := `{"data": []}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/flavors": mockResponse,
+		"/v2/vpc/vpc_id/flavors": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_flavor.NewFlavorService(mockClient)

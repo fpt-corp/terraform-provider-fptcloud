@@ -32,7 +32,7 @@ func TestFindInstance_ReturnsInstance(t *testing.T) {
 		}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/instance": mockResponse,
+		"/v2/vpc/vpc_id/instance": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
@@ -47,7 +47,7 @@ func TestFindInstance_ReturnsInstance(t *testing.T) {
 func TestFindInstance_ReturnsErrorOnRequestFailure(t *testing.T) {
 	mockResponse := `invalid`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/instance": mockResponse,
+		"/v2/vpc/vpc_id/instance": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
@@ -60,7 +60,7 @@ func TestFindInstance_ReturnsErrorOnRequestFailure(t *testing.T) {
 func TestCreateInstance_ReturnsInstanceIdWhenSuccess(t *testing.T) {
 	mockResponse := `{"instance_id": "instance_id"}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/instance": mockResponse,
+		"/v2/vpc/vpc_id/instance": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
@@ -72,7 +72,7 @@ func TestCreateInstance_ReturnsInstanceIdWhenSuccess(t *testing.T) {
 
 func TestDeleteInstance_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/instance": "",
+		"/v2/vpc/vpc_id/instance": "",
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
@@ -84,7 +84,7 @@ func TestDeleteInstance_ReturnsSuccess(t *testing.T) {
 
 func TestRenameInstance_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/instance": "",
+		"/v2/vpc/vpc_id/instance": "",
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
@@ -96,7 +96,7 @@ func TestRenameInstance_ReturnsSuccess(t *testing.T) {
 
 func TestChangeStatusInstance_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/instance": "",
+		"/v2/vpc/vpc_id/instance": "",
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
@@ -108,7 +108,7 @@ func TestChangeStatusInstance_ReturnsSuccess(t *testing.T) {
 
 func TestResizeInstance_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/instance": "",
+		"/v2/vpc/vpc_id/instance": "",
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)

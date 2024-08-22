@@ -56,7 +56,7 @@ func dataSourceInstanceRead(_ context.Context, d *schema.ResourceData, m interfa
 	setError = d.Set("public_ip", foundInstance.PublicIp)
 	setError = d.Set("memory_mb", foundInstance.MemoryMb)
 	setError = d.Set("cpu_number", foundInstance.CpuNumber)
-	setError = d.Set("flavor_id", foundInstance.FlavorId)
+	setError = d.Set("flavor_name", foundInstance.FlavorName)
 	setError = d.Set("subnet_id", foundInstance.SubnetId)
 	setError = d.Set("storage_size_gb", foundInstance.StorageSizeGb)
 	setError = d.Set("storage_policy", foundInstance.StoragePolicy)

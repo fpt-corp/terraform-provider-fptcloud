@@ -11,7 +11,7 @@ import (
 func TestListImage_ReturnsImages(t *testing.T) {
 	mockResponse := `{"data": [{"id": "1", "name": "image-name", "catalog": "windows", "is_gpu": true}]}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/images": mockResponse,
+		"/v2/vpc/vpc_id/images": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_image.NewImageService(mockClient)
@@ -28,7 +28,7 @@ func TestListImage_ReturnsImages(t *testing.T) {
 func TestListImage_ReturnsErrorOnInvalidJSON(t *testing.T) {
 	mockResponse := `invalid json`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/images": mockResponse,
+		"/v2/vpc/vpc_id/images": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_image.NewImageService(mockClient)
@@ -40,7 +40,7 @@ func TestListImage_ReturnsErrorOnInvalidJSON(t *testing.T) {
 func TestListImage_ReturnsEmptyListOnEmptyResponse(t *testing.T) {
 	mockResponse := `{"data": []}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/images": mockResponse,
+		"/v2/vpc/vpc_id/images": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_image.NewImageService(mockClient)
