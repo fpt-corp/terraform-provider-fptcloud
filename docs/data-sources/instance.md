@@ -35,7 +35,7 @@ output "output-example" {
 
 ### Optional
 
-- `flavor_id` (String) The flavor id of the instance
+- `flavor_name` (String) The flavor name of the instance
 - `id` (String) The id of the instance
 - `instance_group_id` (String) The instance group id of the instance
 - `name` (String) The name of the instance
