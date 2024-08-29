@@ -95,7 +95,12 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 		createModel.PolicyId = policyId.(string)
 	}
 	if vmIds, ok := d.GetOk("vm_ids"); ok {
-		createModel.VmIds = vmIds.([]string)
+		vmIdsSet := vmIds.(*schema.Set)
+		vmIdsList := make([]string, 0, len(vmIdsSet.List()))
+		for _, v := range vmIdsSet.List() {
+			vmIdsList = append(vmIdsList, v.(string))
+		}
+		createModel.VmIds = vmIdsList
 	}
 
 	isSuccess, err := service.CreateInstanceGroup(createModel)
