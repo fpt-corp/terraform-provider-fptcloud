@@ -64,7 +64,7 @@ func ResourceSecurityGroupRule() *schema.Resource {
 				ForceNew:     true,
 			},
 			"sources": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Required:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Description: "The sources of the rule, can be a CIDR notation or a IP address, pass `ALL` if you want to open for all IP",
