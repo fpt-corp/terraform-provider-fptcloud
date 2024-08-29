@@ -44,7 +44,7 @@ func ResourceInstanceGroup() *schema.Resource {
 				ForceNew:     true,
 			},
 			"vm_ids": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: "The list of instances in the instance group",
 				Elem:        &schema.Schema{Type: schema.TypeString},

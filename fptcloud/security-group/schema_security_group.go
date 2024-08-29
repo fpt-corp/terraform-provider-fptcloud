@@ -134,7 +134,7 @@ var resourceSecurityGroup = map[string]*schema.Schema{
 		}, false),
 	},
 	"apply_to": {
-		Type:        schema.TypeList,
+		Type:        schema.TypeSet,
 		Optional:    true,
 		Elem:        &schema.Schema{Type: schema.TypeString},
 		Description: "The list IP apply to of the security group",
