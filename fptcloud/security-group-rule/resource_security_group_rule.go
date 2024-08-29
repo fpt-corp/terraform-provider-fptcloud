@@ -127,11 +127,12 @@ func resourceSecurityGroupRuleCreate(ctx context.Context, d *schema.ResourceData
 	}
 
 	if sources, ok := d.GetOk("sources"); ok {
-		sourceList := sources.([]interface{})
-		createdModel.Sources = make([]string, len(sourceList))
-		for i, v := range sourceList {
-			createdModel.Sources[i] = v.(string)
+		sourceSet := sources.(*schema.Set)
+		sourceList := make([]string, 0, len(sourceSet.List()))
+		for _, v := range sourceSet.List() {
+			sourceList = append(sourceList, v.(string))
 		}
+		createdModel.Sources = sourceList
 	}
 
 	if description, ok := d.GetOk("description"); ok {

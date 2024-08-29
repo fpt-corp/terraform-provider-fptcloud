@@ -47,11 +47,12 @@ func resourceSecurityGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 	}
 
 	if applyTo, ok := d.GetOk("apply_to"); ok {
-		applyToList := applyTo.([]interface{})
-		createdModel.ApplyTo = make([]string, len(applyToList))
-		for i, v := range applyToList {
-			createdModel.ApplyTo[i] = v.(string)
+		applyToSet := applyTo.(*schema.Set)
+		applyToList := make([]string, 0, len(applyToSet.List()))
+		for _, v := range applyToSet.List() {
+			applyToList = append(applyToList, v.(string))
 		}
+		createdModel.ApplyTo = applyToList
 	}
 
 	if okVpcId {
@@ -161,18 +162,20 @@ func resourceSecurityGroupUpdate(ctx context.Context, d *schema.ResourceData, m 
 	}
 
 	if hasChangeApplyTo {
-		applyToValue, ok := d.Get("apply_to").([]interface{})
+		applyToValue, ok := d.GetOk("apply_to")
 		if !ok {
-			applyToValue = []interface{}{}
+			applyToValue = &schema.Set{}
 		}
-		applyTo := make([]string, len(applyToValue))
-		for i, v := range applyToValue {
-			applyTo[i] = v.(string)
+
+		applyToSet := applyToValue.(*schema.Set)
+		applyTo := make([]string, 0, len(applyToSet.List()))
+		for _, v := range applyToSet.List() {
+			applyTo = append(applyTo, v.(string))
 		}
 
 		_, err := securityGroupService.UpdateApplyTo(vpcId, d.Id(), applyTo)
 		if err != nil {
-			return diag.Errorf("[ERR] An error occurred while change apply to from security group %s: %s", d.Id(), err)
+			return diag.Errorf("[ERR] An error occurred while changing apply to for security group %s: %s", d.Id(), err)
 		}
 
 		updateStateConf := &retry.StateChangeConf{
