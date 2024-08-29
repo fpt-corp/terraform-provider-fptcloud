@@ -84,7 +84,7 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 		Description: "The root storage policy of the instance",
 	},
 	"security_group_ids": {
-		Type:        schema.TypeList,
+		Type:        schema.TypeSet,
 		Computed:    true,
 		Optional:    true,
 		Elem:        &schema.Schema{Type: schema.TypeString},
@@ -171,7 +171,7 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		ForceNew:    true,
 	},
 	"security_group_ids": {
-		Type:        schema.TypeList,
+		Type:        schema.TypeSet,
 		Computed:    true,
 		Optional:    true,
 		Elem:        &schema.Schema{Type: schema.TypeString},
