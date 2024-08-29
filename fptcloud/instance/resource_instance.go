@@ -69,11 +69,12 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 	}
 
 	if securityGroupIds, ok := d.GetOk("security_group_ids"); ok {
-		securityGroupIdsValue := securityGroupIds.([]interface{})
-		createdModel.SecurityGroupIds = make([]string, len(securityGroupIdsValue))
-		for i, v := range securityGroupIdsValue {
-			createdModel.SecurityGroupIds[i] = v.(string)
+		securityGroupIdsSet := securityGroupIds.(*schema.Set)
+		securityGroupIdsList := make([]string, 0, len(securityGroupIdsSet.List()))
+		for _, v := range securityGroupIdsSet.List() {
+			securityGroupIdsList = append(securityGroupIdsList, v.(string))
 		}
+		createdModel.SecurityGroupIds = securityGroupIdsList
 	}
 
 	if instanceGroupId, ok := d.GetOk("instance_group_id"); ok {
