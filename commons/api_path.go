@@ -32,9 +32,10 @@ var ApiPath = struct {
 	ListIpAddress                    func(vpcId string) string
 	ListExistingIpOfFloatingIp       func(vpcId string) string
 	ListExistingInstanceOfFloatingIp func(vpcId string) string
-	Subnet                     func(vpcId string) string
-	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
-	DedicatedFKEManagement     func(vpcId string, clusterId string) string
+	Subnet                           func(vpcId string) string
+	DedicatedFKEGet                  func(vpcId string, clusterId string) string
+	DedicatedFKEUpgradeVersion       func(vpcId string, clusterId string) string
+	DedicatedFKEManagement           func(vpcId string, clusterId string) string
 
 	ManagedFKEList   func(vpcId string, page int, pageSize int) string
 	ManagedFKEGet    func(vpcId string, platform string, clusterId string) string
@@ -126,6 +127,9 @@ var ApiPath = struct {
 	},
 	Subnet: func(vpcId string) string { return fmt.Sprintf("/v1/vmware/vpc/%s/network/subnets", vpcId) },
 
+	DedicatedFKEGet: func(vpcId string, clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s?page=1&page_size=25", vpcId, clusterId)
+	},
 	DedicatedFKEUpgradeVersion: func(vpcId string, clusterId string) string {
 		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/upgrade-version", vpcId, clusterId)
 	},

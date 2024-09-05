@@ -156,6 +156,7 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngine,
+		fptcloud_dfke.NewResourceDedicatedKubernetesEngineState,
 		fptcloud_mfke.NewResourceManagedKubernetesEngine,
 	}
 }

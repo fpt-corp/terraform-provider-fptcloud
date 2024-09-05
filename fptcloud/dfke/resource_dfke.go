@@ -77,6 +77,12 @@ func (r *resourceDedicatedKubernetesEngine) Create(ctx context.Context, request 
 
 	tflog.Info(ctx, "Created cluster with id "+createResponse.Cluster.ID)
 
+	state.Id = types.StringValue(createResponse.Cluster.ID)
+
+	if err = r.waitForSucceeded(ctx, &state, 30*time.Minute, true); err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error waiting cluster up", err.Error()))
+		return
+	}
 	if _, err = r.internalRead(ctx, createResponse.Cluster.ID, &state); err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading cluster state", err.Error()))
 		return
@@ -174,10 +180,22 @@ func (r *resourceDedicatedKubernetesEngine) ImportState(ctx context.Context, req
 	tflog.Info(ctx, "Importing DFKE cluster ID "+request.ID)
 
 	var state dedicatedKubernetesEngine
-	state.VpcId = types.StringValue("188af427-269b-418a-90bb-0cb27afc6c1e")
 
-	state.Id = types.StringValue(request.ID)
-	_, err := r.internalRead(ctx, request.ID, &state)
+	// format: vpcId/clusterId
+	id := request.ID
+	pieces := strings.Split(id, "/")
+	if len(pieces) != 2 {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Invalid format", "must be in format vpcId/clusterId"))
+		return
+	}
+
+	vpcId := pieces[0]
+	clusterId := pieces[1]
+
+	state.VpcId = types.StringValue(vpcId)
+
+	state.Id = types.StringValue(clusterId)
+	_, err := r.internalRead(ctx, clusterId, &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
 		return
@@ -349,7 +367,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+clusterId+", VPC ID "+vpcId)
 
-	a, err := r.client.SendGetRequest(fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s?page=1&page_size=25", vpcId, clusterId))
+	a, err := r.client.SendGetRequest(commons.ApiPath.DedicatedFKEGet(vpcId, clusterId))
 
 	if err != nil {
 		return nil, err
@@ -357,10 +375,10 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 
 	var d dedicatedKubernetesEngineReadResponse
 	err = json.Unmarshal(a, &d)
-	data := d.Cluster
 	if err != nil {
 		return nil, err
 	}
+	data := d.Cluster
 
 	var awx dedicatedKubernetesEngineParams
 	err = json.Unmarshal([]byte(d.Cluster.AwxParams), &awx)
@@ -496,7 +514,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 		}
 		tflog.Info(ctx, fmt.Sprintf("Resized master from %d to %d", master, master2))
 
-		err := r.waitForSucceeded(ctx, from, 5*time.Minute)
+		err := r.waitForSucceeded(ctx, from, 5*time.Minute, false)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error waiting for cluster after resizing master disk to return to SUCCEEDED state", err.Error())
 			return &d
@@ -527,7 +545,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 		}
 		tflog.Info(ctx, fmt.Sprintf("Resized worker from %d to %d", worker, worker2))
 
-		err := r.waitForSucceeded(ctx, from, 5*time.Minute)
+		err := r.waitForSucceeded(ctx, from, 5*time.Minute, false)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error waiting for cluster after resizing worker disk to return to SUCCEEDED state", err.Error())
 			return &d
@@ -553,7 +571,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 		}
 		tflog.Info(ctx, fmt.Sprintf("Changed master from %s to %s", masterType, master2Type))
 
-		err := r.waitForSucceeded(ctx, from, 20*time.Minute)
+		err := r.waitForSucceeded(ctx, from, 20*time.Minute, false)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error waiting for cluster after changing master type to return to SUCCEEDED state", err.Error())
 			return &d
@@ -580,7 +598,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 
 		tflog.Info(ctx, fmt.Sprintf("Changed worker from %s to %s", workerType, worker2Type))
 
-		err := r.waitForSucceeded(ctx, from, 20*time.Minute)
+		err := r.waitForSucceeded(ctx, from, 20*time.Minute, false)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error waiting for cluster after changing worker type to return to SUCCEEDED state", err.Error())
 			return &d
@@ -609,7 +627,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 			to.ScaleMin.ValueInt64(), to.ScaleMax.ValueInt64(),
 		))
 
-		err := r.waitForSucceeded(ctx, from, 5*time.Minute)
+		err := r.waitForSucceeded(ctx, from, 5*time.Minute, false)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error waiting for cluster after updating autoscale to return to SUCCEEDED state", err.Error())
 			return &d
@@ -641,7 +659,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 			return diagErr2
 		}
 
-		err := r.waitForSucceeded(ctx, from, 1*time.Hour)
+		err := r.waitForSucceeded(ctx, from, 1*time.Hour, false)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error waiting for cluster after upgrading to return to SUCCEEDED state", err.Error())
 			return &d
@@ -667,7 +685,7 @@ func (r *resourceDedicatedKubernetesEngine) manage(state *dedicatedKubernetesEng
 	return nil
 }
 
-func (r *resourceDedicatedKubernetesEngine) waitForSucceeded(ctx context.Context, state *dedicatedKubernetesEngine, timeout time.Duration) error {
+func (r *resourceDedicatedKubernetesEngine) waitForSucceeded(ctx context.Context, state *dedicatedKubernetesEngine, timeout time.Duration, ignoreError bool) error {
 	clusterId := state.clusterUUID()
 	durationText := fmt.Sprintf("%v", timeout)
 	tflog.Info(ctx, "Waiting for cluster "+clusterId+" to succeed, duration "+durationText)
@@ -717,7 +735,7 @@ func (r *resourceDedicatedKubernetesEngine) waitForSucceeded(ctx context.Context
 						return errors.New("cluster is stopped")
 					}
 				}
-				if e != nil {
+				if e != nil && !ignoreError {
 					return e
 				}
 			}
