@@ -14,8 +14,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
+	"unicode"
 )
 
 var (
@@ -37,7 +39,8 @@ var (
 )
 
 type resourceManagedKubernetesEngine struct {
-	client *commons.Client
+	client     *commons.Client
+	mfkeClient *MfkeApiClient
 }
 
 func NewResourceManagedKubernetesEngine() resource.Resource {
@@ -79,14 +82,16 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 
 	var f managedKubernetesEngineJson
 	r.remap(&state, &f)
-	errDiag := r.fillJson(&f, state.VpcId.ValueString())
+	errDiag := r.fillJson(ctx, &f, state.VpcId.ValueString())
+
 	if errDiag != nil {
 		response.Diagnostics.Append(errDiag)
 		return
 	}
 
-	client := r.client
-	a, err := client.SendPostRequest(commons.ApiPath.ManagedFKECreate(state.VpcId.ValueString(), "vmw"), f)
+	path := commons.ApiPath.ManagedFKECreate(state.VpcId.ValueString(), "vmw")
+	tflog.Info(ctx, "Calling path "+path)
+	a, err := r.mfkeClient.sendPost(path, f)
 
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
@@ -188,6 +193,7 @@ func (r *resourceManagedKubernetesEngine) Configure(ctx context.Context, request
 	}
 
 	r.client = client
+	r.mfkeClient = newMfkeApiClient(r.client)
 }
 func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {
 	topLevelAttributes := map[string]schema.Attribute{}
@@ -218,9 +224,10 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribute {
 	poolLevelAttributes := map[string]schema.Attribute{}
 	requiredStrings := []string{
+		"name",
 		"storage_profile", "worker_type",
 		"network_name", "network_id",
-		"driver_installation_type", "gpu_driver_version",
+		//"driver_installation_type", "gpu_driver_version",
 	}
 	requiredInts := []string{
 		"worker_disk_size", "scale_min", "scale_max",
@@ -254,13 +261,14 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 	return poolLevelAttributes
 }
 
-func (r *resourceManagedKubernetesEngine) fillJson(to *managedKubernetesEngineJson, vpcId string) *diag2.ErrorDiagnostic {
+func (r *resourceManagedKubernetesEngine) fillJson(ctx context.Context, to *managedKubernetesEngineJson, vpcId string) *diag2.ErrorDiagnostic {
 	to.SSHKey = nil
 	to.TypeCreate = "create"
 	to.NetworkType = "calico"
 	for _, pool := range to.Pools {
-		pool.WorkerPoolID = "worker-new"
 		pool.ContainerRuntime = "containerd"
+		pool.DriverInstallationType = "pre-install"
+		pool.GpuDriverVersion = "default"
 		pool.Kv = []struct {
 			Name string `json:"name"`
 		}([]struct{ Name string }{})
@@ -277,7 +285,7 @@ func (r *resourceManagedKubernetesEngine) fillJson(to *managedKubernetesEngineJs
 		version = string([]rune(version)[1:])
 	}
 
-	osVersion, err := r.getOsVersion(version, vpcId)
+	osVersion, err := r.getOsVersion(ctx, version, vpcId)
 	if err != nil {
 		return err
 	}
@@ -292,23 +300,23 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 	to.K8SVersion = from.K8SVersion.ValueString()
 	to.Purpose = from.Purpose.ValueString()
 
-	pools := make([]managedKubernetesEnginePoolJson, 0)
+	pools := make([]*managedKubernetesEnginePoolJson, 0)
 	for _, item := range from.Pools {
+		name := item.WorkerPoolID.ValueString()
 		newItem := managedKubernetesEnginePoolJson{
-			StorageProfile:         item.StorageProfile.ValueString(),
-			WorkerType:             item.WorkerType.ValueString(),
-			WorkerDiskSize:         item.WorkerDiskSize.ValueInt64(),
-			AutoScale:              item.AutoScale.ValueBool(),
-			ScaleMin:               item.ScaleMin.ValueInt64(),
-			ScaleMax:               item.ScaleMax.ValueInt64(),
-			NetworkName:            item.NetworkName.ValueString(),
-			NetworkID:              item.NetworkID.ValueString(),
-			IsEnableAutoRepair:     item.IsEnableAutoRepair.ValueBool(),
-			DriverInstallationType: item.DriverInstallationType.ValueString(),
-			GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
+			StorageProfile:     item.StorageProfile.ValueString(),
+			WorkerType:         item.WorkerType.ValueString(),
+			WorkerDiskSize:     item.WorkerDiskSize.ValueInt64(),
+			AutoScale:          item.AutoScale.ValueBool(),
+			ScaleMin:           item.ScaleMin.ValueInt64(),
+			ScaleMax:           item.ScaleMax.ValueInt64(),
+			NetworkName:        item.NetworkName.ValueString(),
+			NetworkID:          item.NetworkID.ValueString(),
+			IsEnableAutoRepair: item.IsEnableAutoRepair.ValueBool(),
+			WorkerPoolID:       &name,
 		}
 
-		pools = append(pools, newItem)
+		pools = append(pools, &newItem)
 	}
 	to.Pools = pools
 
@@ -361,13 +369,95 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 		return errors.New(fmt.Sprintf("Error: %v", d.Mess))
 	}
 
+	data := d.Data
+
+	state.Id = types.StringValue(data.Metadata.Name)
+	state.VpcId = types.StringValue(vpcId)
+	// keep clusterName
 	//state.NetworkID
+	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
+
+	cloudPurpose := strings.Split(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "-")
+	state.Purpose = types.StringValue(cloudPurpose[0])
+
+	var existingPool map[string]managedKubernetesEnginePool
+	var poolNames []string
+	for _, pool := range state.Pools {
+		name := pool.WorkerPoolID.ValueString()
+		if _, ok := existingPool[name]; ok {
+			return errors.New(fmt.Sprintf("Pool %s already exists", name))
+		}
+
+		existingPool[name] = pool
+		poolNames = append(poolNames, name)
+	}
+
+	var workers map[string]managedKubernetesEngineDataWorker
+	for _, worker := range data.Spec.Provider.Workers {
+		workers[worker.Name] = worker
+	}
+
+	var pool []managedKubernetesEnginePool
+
+	for _, name := range poolNames {
+		w, ok := workers[name]
+		if !ok {
+			continue
+		}
+
+		flavorId, ok := data.Metadata.Labels["fptcloud.com/flavor_pool_test"]
+		if !ok {
+			return errors.New("missing flavor ID on label fptcloud.com/flavor_pool_test")
+		}
+
+		autoRepair := false
+		for _, item := range w.Annotations {
+			if label, ok := item["worker.fptcloud.com/node-auto-repair"]; ok {
+				autoRepair = label == "true"
+			}
+		}
+
+		item := managedKubernetesEnginePool{
+			WorkerPoolID:       types.StringValue(w.Name),
+			StorageProfile:     types.StringValue(w.Volume.Type),
+			WorkerType:         types.StringValue(flavorId),
+			WorkerDiskSize:     types.Int64Value(int64(parseNumber(w.Volume.Size))),
+			AutoScale:          types.BoolValue(w.Maximum != w.Minimum),
+			ScaleMin:           types.Int64Value(int64(w.Minimum)),
+			ScaleMax:           types.Int64Value(int64(w.Maximum)),
+			NetworkName:        types.StringValue(w.ProviderConfig.NetworkName),
+			NetworkID:          state.NetworkID,
+			IsEnableAutoRepair: types.BoolValue(autoRepair),
+			//DriverInstallationType: types.String{},
+			//GpuDriverVersion:       types.StringValue(gpuDriverVersion),
+		}
+
+		pool = append(pool, item)
+	}
+
+	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
+	state.PodNetwork = types.StringValue(podNetwork[0])
+	state.PodPrefix = types.StringValue(podNetwork[1])
+
+	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
+	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
+	state.ServicePrefix = types.StringValue(serviceNetwork[1])
+
+	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
+	// state.NetworkNodePrefix
+	state.RangeIPLbStart = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.LbIPRangeStart)
+	state.RangeIPLbEnd = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.LbIPRangeEnd)
+
+	state.LoadBalancerType = types.StringValue(data.Spec.LoadBalancerType)
 
 	return nil
 }
-func (r *resourceManagedKubernetesEngine) getOsVersion(version string, vpcId string) (interface{}, *diag2.ErrorDiagnostic) {
-	var path = commons.ApiPath.GetFKEOSVersion(version, vpcId)
-	res, err := r.client.SendGetRequest(path)
+func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, version string, vpcId string) (interface{}, *diag2.ErrorDiagnostic) {
+	var path = commons.ApiPath.GetFKEOSVersion(vpcId, "vmw")
+	tflog.Info(ctx, "Getting OS version for version "+version+", VPC ID "+vpcId)
+	tflog.Info(ctx, "Calling "+path)
+
+	res, err := r.mfkeClient.sendGet(path)
 	if err != nil {
 		diag := diag2.NewErrorDiagnostic("Error calling API", err.Error())
 		return nil, &diag
@@ -394,6 +484,27 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(version string, vpcId str
 	return nil, &diag
 }
 
+//func (r *resourceManagedKubernetesEngine) waitForSucceeded(ctx context.Context, clusterId string, vpcId string, timeout time.Duration, ignoreErrors bool) error {
+//	s := managedKubernetesEngine{}
+//	err :=
+//}
+
+func parseNumber(s string) int {
+	out := ""
+	for _, c := range s {
+		if unicode.IsDigit(c) {
+			out += string(c)
+		}
+	}
+
+	if out == "" {
+		out = "0"
+	}
+
+	f, _ := strconv.Atoi(out)
+	return f
+}
+
 type managedKubernetesEngine struct {
 	Id          types.String `tfsdk:"id"`
 	VpcId       types.String `tfsdk:"vpc_id"`
@@ -417,7 +528,7 @@ type managedKubernetesEngine struct {
 	RegionId types.String `tfsdk:"region_id"`
 }
 type managedKubernetesEnginePool struct {
-	//WorkerPoolID     interface{}  `tfsdk:"worker_pool_id"`
+	WorkerPoolID   types.String `tfsdk:"name"`
 	StorageProfile types.String `tfsdk:"storage_profile"`
 	WorkerType     types.String `tfsdk:"worker_type"`
 	WorkerDiskSize types.Int64  `tfsdk:"worker_disk_size"`
@@ -435,42 +546,42 @@ type managedKubernetesEnginePool struct {
 	//IsCreate               types.Bool   `tfsdk:"is_create"`
 	//IsScale                types.Bool   `tfsdk:"is_scale"`
 	//IsOthers               types.Bool   `tfsdk:"is_others"`
-	IsEnableAutoRepair     types.Bool   `tfsdk:"is_enable_auto_repair"`
-	DriverInstallationType types.String `tfsdk:"driver_installation_type"`
-	GpuDriverVersion       types.String `tfsdk:"gpu_driver_version"`
+	IsEnableAutoRepair types.Bool `tfsdk:"is_enable_auto_repair"`
+	//DriverInstallationType types.String `tfsdk:"driver_installation_type"`
+	//GpuDriverVersion       types.String `tfsdk:"gpu_driver_version"`
 }
 type managedKubernetesEngineJson struct {
-	ClusterName       string                            `json:"cluster_name"`
-	NetworkID         string                            `json:"network_id"`
-	K8SVersion        string                            `json:"k8s_version"`
-	OsVersion         interface{}                       `json:"os_version"`
-	Purpose           string                            `json:"purpose"`
-	Pools             []managedKubernetesEnginePoolJson `json:"pools"`
-	PodNetwork        string                            `json:"pod_network"`
-	PodPrefix         string                            `json:"pod_prefix"`
-	ServiceNetwork    string                            `json:"service_network"`
-	ServicePrefix     string                            `json:"service_prefix"`
-	K8SMaxPod         int64                             `json:"k8s_max_pod"`
-	NetworkNodePrefix int64                             `json:"network_node_prefix"`
-	RangeIPLbStart    string                            `json:"range_ip_lb_start"`
-	RangeIPLbEnd      string                            `json:"range_ip_lb_end"`
-	LoadBalancerType  string                            `json:"loadBalancerType"`
-	NetworkType       string                            `json:"network_type"`
-	SSHKey            interface{}                       `json:"sshKey"`
-	TypeCreate        string                            `json:"type_create"`
-	RegionId          string                            `json:"region_id"`
+	ClusterName       string                             `json:"cluster_name"`
+	NetworkID         string                             `json:"network_id"`
+	K8SVersion        string                             `json:"k8s_version"`
+	OsVersion         interface{}                        `json:"os_version"`
+	Purpose           string                             `json:"purpose"`
+	Pools             []*managedKubernetesEnginePoolJson `json:"pools"`
+	PodNetwork        string                             `json:"pod_network"`
+	PodPrefix         string                             `json:"pod_prefix"`
+	ServiceNetwork    string                             `json:"service_network"`
+	ServicePrefix     string                             `json:"service_prefix"`
+	K8SMaxPod         int64                              `json:"k8s_max_pod"`
+	NetworkNodePrefix int64                              `json:"network_node_prefix"`
+	RangeIPLbStart    string                             `json:"range_ip_lb_start"`
+	RangeIPLbEnd      string                             `json:"range_ip_lb_end"`
+	LoadBalancerType  string                             `json:"loadBalancerType"`
+	NetworkType       string                             `json:"network_type"`
+	SSHKey            interface{}                        `json:"sshKey"`
+	TypeCreate        string                             `json:"type_create"`
+	RegionId          string                             `json:"region_id"`
 }
 type managedKubernetesEnginePoolJson struct {
-	WorkerPoolID     interface{} `json:"worker_pool_id"`
-	StorageProfile   string      `json:"storage_profile"`
-	WorkerType       string      `json:"worker_type"`
-	WorkerDiskSize   int64       `json:"worker_disk_size"`
-	ContainerRuntime string      `json:"container_runtime"`
-	AutoScale        bool        `json:"auto_scale"`
-	ScaleMin         int64       `json:"scale_min"`
-	ScaleMax         int64       `json:"scale_max"`
-	NetworkName      string      `json:"network_name"`
-	NetworkID        string      `json:"network_id"`
+	WorkerPoolID     *string `json:"worker_pool_id"`
+	StorageProfile   string  `json:"storage_profile"`
+	WorkerType       string  `json:"worker_type"`
+	WorkerDiskSize   int64   `json:"worker_disk_size"`
+	ContainerRuntime string  `json:"container_runtime"`
+	AutoScale        bool    `json:"auto_scale"`
+	ScaleMin         int64   `json:"scale_min"`
+	ScaleMax         int64   `json:"scale_max"`
+	NetworkName      string  `json:"network_name"`
+	NetworkID        string  `json:"network_id"`
 	Kv               []struct {
 		Name string `json:"name"`
 	} `json:"kv"`
@@ -505,4 +616,115 @@ type managedKubernetesEngineOsVersionResponse struct {
 }
 
 type managedKubernetesEngineData struct {
+	Status   managedKubernetesEngineDataStatus   `json:"status"`
+	Metadata managedKubernetesEngineDataMetadata `json:"metadata"`
+	Spec     managedKubernetesEngineDataSpec     `json:"spec"`
+}
+
+type managedKubernetesEngineDataStatus struct {
+	LastOperation struct {
+		Progress int    `json:"progress"`
+		State    string `json:"state"`
+		Type     string `json:"type"`
+	} `json:"lastOperation"`
+}
+type managedKubernetesEngineDataMetadata struct {
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels"`
+}
+type managedKubernetesEngineDataSpec struct {
+	Kubernetes struct {
+		Kubelet struct {
+			MaxPods int `json:"maxPods"`
+		} `json:"kubelet"`
+		Version string `json:"version"`
+	} `json:"kubernetes"`
+	LoadBalancerType string `json:"loadBalancerType"`
+	Networking       struct {
+		Nodes    string `json:"nodes"`
+		Pods     string `json:"pods"`
+		Services string `json:"services"`
+		Type     string `json:"type"`
+	} `json:"networking"`
+
+	SeedSelector struct {
+		MatchLabels struct {
+			GardenerCloudPurpose string `json:"gardener_cloud_purpose"`
+		} `json:"matchLabels"`
+	} `json:"seedSelector"`
+
+	Provider struct {
+		InfrastructureConfig struct {
+			Networks struct {
+				LbIPRangeEnd   string `json:"lbIpRangeEnd"`
+				LbIPRangeStart string `json:"lbIpRangeStart"`
+				Workers        string `json:"workers"`
+			} `json:"networks"`
+		} `json:"infrastructureConfig"`
+		Workers []managedKubernetesEngineDataWorker `json:"workers"`
+	} `json:"provider"`
+}
+
+type managedKubernetesEngineDataWorker struct {
+	Annotations []map[string]string `json:"annotations"`
+	Kubernetes  struct {
+		Kubelet struct {
+			ContainerLogMaxFiles int    `json:"containerLogMaxFiles"`
+			ContainerLogMaxSize  string `json:"containerLogMaxSize"`
+			EvictionHard         struct {
+				ImageFSAvailable  string `json:"imageFSAvailable"`
+				ImageFSInodesFree string `json:"imageFSInodesFree"`
+				MemoryAvailable   string `json:"memoryAvailable"`
+				NodeFSAvailable   string `json:"nodeFSAvailable"`
+				NodeFSInodesFree  string `json:"nodeFSInodesFree"`
+			} `json:"evictionHard"`
+			FailSwapOn   bool `json:"failSwapOn"`
+			KubeReserved struct {
+				CPU              string `json:"cpu"`
+				EphemeralStorage string `json:"ephemeralStorage"`
+				Memory           string `json:"memory"`
+				Pid              string `json:"pid"`
+			} `json:"kubeReserved"`
+			MaxPods        int `json:"maxPods"`
+			SystemReserved struct {
+				CPU              string `json:"cpu"`
+				EphemeralStorage string `json:"ephemeralStorage"`
+				Memory           string `json:"memory"`
+				Pid              string `json:"pid"`
+			} `json:"systemReserved"`
+		} `json:"kubelet"`
+		Version string `json:"version"`
+	} `json:"kubernetes"`
+	Labels  []interface{} `json:"labels"`
+	Machine struct {
+		Image struct {
+			DriverInstallationType *string `json:"driverInstallationType"`
+			GpuDriverVersion       *string `json:"gpuDriverVersion"`
+			Name                   string  `json:"name"`
+			Version                string  `json:"version"`
+		} `json:"image"`
+		Type string `json:"type"`
+	} `json:"machine"`
+	MaxSurge       int    `json:"maxSurge"`
+	MaxUnavailable int    `json:"maxUnavailable"`
+	Maximum        int    `json:"maximum"`
+	Minimum        int    `json:"minimum"`
+	Name           string `json:"name"`
+	ProviderConfig struct {
+		APIVersion  string      `json:"apiVersion"`
+		Kind        string      `json:"kind"`
+		NetworkName string      `json:"networkName"`
+		ServerGroup interface{} `json:"serverGroup"`
+		UserName    string      `json:"userName"`
+		VGpuID      interface{} `json:"vGpuId"`
+	} `json:"providerConfig"`
+	SystemComponents struct {
+		Allow bool `json:"allow"`
+	} `json:"systemComponents"`
+	Taints []interface{} `json:"taints"`
+	Volume struct {
+		Size string `json:"size"`
+		Type string `json:"type"`
+	} `json:"volume"`
+	Zones []string `json:"zones"`
 }

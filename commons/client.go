@@ -83,12 +83,12 @@ func NewClientWithURL(apiKey, apiUrl, region string, tenantName string) (*Client
 	return client, nil
 }
 
-func (c *Client) prepareClientURL(requestURL string) *url.URL {
+func (c *Client) PrepareClientURL(requestURL string) *url.URL {
 	u, _ := url.Parse(c.BaseURL.String() + requestURL)
 	return u
 }
 
-func (c *Client) sendRequest(req *http.Request) ([]byte, error) {
+func (c *Client) SendRequest(req *http.Request) ([]byte, error) {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("Content-Type", "application/json")
@@ -123,18 +123,18 @@ func (c *Client) sendRequest(req *http.Request) ([]byte, error) {
 
 // SendGetRequest sends a correctly authenticated get request to the API server
 func (c *Client) SendGetRequest(requestURL string) ([]byte, error) {
-	u := c.prepareClientURL(requestURL)
+	u := c.PrepareClientURL(requestURL)
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.sendRequest(req)
+	return c.SendRequest(req)
 }
 
 // SendPostRequest sends a correctly authenticated post request to the API server
 func (c *Client) SendPostRequest(requestURL string, params interface{}) ([]byte, error) {
-	u := c.prepareClientURL(requestURL)
+	u := c.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
 	jsonValue, _ := json.Marshal(params)
@@ -143,12 +143,12 @@ func (c *Client) SendPostRequest(requestURL string, params interface{}) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	return c.sendRequest(req)
+	return c.SendRequest(req)
 }
 
 // SendPutRequest sends a correctly authenticated put request to the API server
 func (c *Client) SendPutRequest(requestURL string, params interface{}) ([]byte, error) {
-	u := c.prepareClientURL(requestURL)
+	u := c.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
 	jsonValue, _ := json.Marshal(params)
@@ -157,23 +157,23 @@ func (c *Client) SendPutRequest(requestURL string, params interface{}) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	return c.sendRequest(req)
+	return c.SendRequest(req)
 }
 
 // SendDeleteRequest sends a correctly authenticated delete request to the API server
 func (c *Client) SendDeleteRequest(requestURL string) ([]byte, error) {
-	u := c.prepareClientURL(requestURL)
+	u := c.PrepareClientURL(requestURL)
 	req, err := http.NewRequest("DELETE", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.sendRequest(req)
+	return c.SendRequest(req)
 }
 
 // SendDeleteRequestWithBody sends a correctly authenticated delete request to the API server
 func (c *Client) SendDeleteRequestWithBody(requestURL string, params interface{}) ([]byte, error) {
-	u := c.prepareClientURL(requestURL)
+	u := c.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
 	jsonValue, _ := json.Marshal(params)
@@ -183,7 +183,7 @@ func (c *Client) SendDeleteRequestWithBody(requestURL string, params interface{}
 		return nil, err
 	}
 
-	return c.sendRequest(req)
+	return c.SendRequest(req)
 }
 
 // SetUserAgent sets the user agent for the client
