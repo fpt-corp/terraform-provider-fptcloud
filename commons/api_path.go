@@ -159,6 +159,6 @@ var ApiPath = struct {
 		)
 	},
 	GetFKEOSVersion: func(vpcId string, platform string) string {
-		return fmt.Sprintf("v1/xplat/fke/vpc/%s/m-fke/%s/get_k8s_versions", vpcId, platform)
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get_k8s_versions", vpcId, platform)
 	},
 }
