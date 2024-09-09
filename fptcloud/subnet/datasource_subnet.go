@@ -17,7 +17,8 @@ var (
 )
 
 type datasourceSubnet struct {
-	client *commons.Client
+	client  *commons.Client
+	sClient *SubnetClient
 }
 
 func NewDataSourceSubnet() datasource.DataSource {
@@ -63,7 +64,7 @@ func (d *datasourceSubnet) Read(ctx context.Context, request datasource.ReadRequ
 		return
 	}
 
-	var sub subnetData
+	var sub SubnetData
 
 	for _, sn := range *subnetList {
 		if sn.Name == state.Name.ValueString() {
@@ -110,9 +111,11 @@ func (d *datasourceSubnet) Configure(ctx context.Context, request datasource.Con
 	}
 
 	d.client = client
+	sClient := NewSubnetClient(client)
+	d.sClient = sClient
 }
 
-func (d *datasourceSubnet) internalRead(vpcId string) (*[]subnetData, error) {
+func (d *datasourceSubnet) internalRead(vpcId string) (*[]SubnetData, error) {
 	url := commons.ApiPath.Subnet(vpcId)
 	res, err := d.client.SendGetRequest(url)
 
@@ -132,18 +135,4 @@ type subnet struct {
 	ID    types.String `tfsdk:"id"`
 	Name  types.String `tfsdk:"name"`
 	VpcId types.String `tfsdk:"vpc_id"`
-}
-
-type subnetData struct {
-	ID                 string      `json:"id"`
-	Name               string      `json:"name"`
-	Description        string      `json:"description"`
-	DefaultGateway     string      `json:"defaultGateway"`
-	SubnetPrefixLength int         `json:"subnetPrefixLength"`
-	NetworkID          interface{} `json:"network_id"`
-	NetworkType        string      `json:"networkType"`
-}
-
-type subnetResponse struct {
-	Data []subnetData `json:"data"`
 }
