@@ -206,10 +206,6 @@ func (r *resourceDedicatedKubernetesEngine) ImportState(ctx context.Context, req
 	if response.Diagnostics.HasError() {
 		return
 	}
-
-	// lack of ability to import without VPC ID
-	//response.Diagnostics.Append(diag2.NewErrorDiagnostic("Unimplemented", "Importing DFKE clusters isn't currently supported"))
-	//return
 }
 
 func NewResourceDedicatedKubernetesEngine() resource.Resource {

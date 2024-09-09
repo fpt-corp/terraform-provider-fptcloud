@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	"unicode"
 )
 
@@ -39,8 +40,9 @@ var (
 )
 
 type resourceManagedKubernetesEngine struct {
-	client     *commons.Client
-	mfkeClient *MfkeApiClient
+	client       *commons.Client
+	mfkeClient   *MfkeApiClient
+	subnetClient *fptcloud_subnet.SubnetClient
 }
 
 func NewResourceManagedKubernetesEngine() resource.Resource {
@@ -77,6 +79,11 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
+		return
+	}
+
+	if len(state.Pools) == 0 {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Invalid configuration", "At least a worker pool must be configured"))
 		return
 	}
 
@@ -149,8 +156,39 @@ func (r *resourceManagedKubernetesEngine) Read(ctx context.Context, request reso
 }
 
 func (r *resourceManagedKubernetesEngine) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
-	//TODO implement me
-	panic("implement me")
+	var state managedKubernetesEngine
+	diags := request.State.Get(ctx, &state)
+
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	var plan managedKubernetesEngine
+	request.Plan.Get(ctx, &plan)
+
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	errDiag := r.diff(ctx, &state, &plan)
+	if errDiag != nil {
+		response.Diagnostics.Append(errDiag)
+		return
+	}
+
+	err := r.internalRead(ctx, state.Id.ValueString(), &state)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))
+		return
+	}
+
+	diags = response.State.Set(ctx, &state)
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
 }
 
 func (r *resourceManagedKubernetesEngine) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
@@ -173,9 +211,33 @@ func (r *resourceManagedKubernetesEngine) Delete(ctx context.Context, request re
 func (r *resourceManagedKubernetesEngine) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
 	tflog.Info(ctx, "Importing MFKE cluster ID "+request.ID)
 
-	// lack of ability to import without VPC ID
-	response.Diagnostics.Append(diag2.NewErrorDiagnostic("Unimplemented", "Importing DFKE clusters isn't currently supported"))
-	return
+	var state managedKubernetesEngine
+
+	id := request.ID
+	pieces := strings.Split(id, "/")
+	if len(pieces) != 2 {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Invalid format", "must be in format vpcId/clusterId"))
+		return
+	}
+
+	vpcId := pieces[0]
+	clusterId := pieces[1]
+
+	state.VpcId = types.StringValue(vpcId)
+
+	state.Id = types.StringValue(clusterId)
+
+	err := r.internalRead(ctx, clusterId, &state)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		return
+	}
+
+	diags := response.State.Set(ctx, &state)
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
 }
 func (r *resourceManagedKubernetesEngine) Configure(ctx context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
 	if request.ProviderData == nil {
@@ -194,13 +256,14 @@ func (r *resourceManagedKubernetesEngine) Configure(ctx context.Context, request
 
 	r.client = client
 	r.mfkeClient = newMfkeApiClient(r.client)
+	r.subnetClient = fptcloud_subnet.NewSubnetClient(r.client)
 }
 func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {
 	topLevelAttributes := map[string]schema.Attribute{}
 	requiredStrings := []string{
-		"vpc_id", "cluster_name", "network_id", "k8s_version", "purpose",
+		"vpc_id", "cluster_name", "k8s_version", "purpose",
 		"pod_network", "pod_prefix", "service_network", "service_prefix",
-		"range_ip_lb_start", "range_ip_lb_end", "load_balancer_type", "region_id",
+		"range_ip_lb_start", "range_ip_lb_end", "load_balancer_type",
 	}
 
 	requiredInts := []string{"k8s_max_pod", "network_node_prefix"}
@@ -217,6 +280,13 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersInt,
 		}
+	}
+
+	topLevelAttributes["k8s_version"] = schema.StringAttribute{
+		Required: true,
+	}
+	topLevelAttributes["network_node_prefix"] = schema.Int64Attribute{
+		Required: true,
 	}
 
 	return topLevelAttributes
@@ -296,7 +366,6 @@ func (r *resourceManagedKubernetesEngine) fillJson(ctx context.Context, to *mana
 }
 func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, to *managedKubernetesEngineJson) {
 	to.ClusterName = from.ClusterName.ValueString()
-	to.NetworkID = from.NetworkID.ValueString()
 	to.K8SVersion = from.K8SVersion.ValueString()
 	to.Purpose = from.Purpose.ValueString()
 
@@ -320,6 +389,8 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 	}
 	to.Pools = pools
 
+	to.NetworkID = to.Pools[0].NetworkID
+
 	to.PodNetwork = from.PodNetwork.ValueString()
 	to.PodPrefix = from.PodPrefix.ValueString()
 	to.ServiceNetwork = from.ServiceNetwork.ValueString()
@@ -329,7 +400,6 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 	to.RangeIPLbStart = from.RangeIPLbStart.ValueString()
 	to.RangeIPLbEnd = from.RangeIPLbEnd.ValueString()
 	to.LoadBalancerType = from.LoadBalancerType.ValueString()
-	to.RegionId = from.RegionId.ValueString()
 }
 func (r *resourceManagedKubernetesEngine) checkForError(a []byte) *diag2.ErrorDiagnostic {
 	var re map[string]interface{}
@@ -349,12 +419,50 @@ func (r *resourceManagedKubernetesEngine) checkForError(a []byte) *diag2.ErrorDi
 	return nil
 }
 
+func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	if from.K8SVersion != to.K8SVersion {
+		// upgrade version
+		vpcId := from.VpcId.ValueString()
+		cluster := from.Id.ValueString()
+		targetVersion := to.K8SVersion.ValueString()
+
+		path := fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			vpcId,
+			"vmw",
+			cluster,
+			targetVersion,
+		)
+
+		body, err := r.mfkeClient.sendPatch(path, struct{}{})
+		if err != nil {
+			d := diag2.NewErrorDiagnostic(
+				fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
+				err.Error(),
+			)
+
+			return &d
+		}
+
+		if diagErr2 := r.checkForError(body); diagErr2 != nil {
+			return diagErr2
+		}
+	}
+
+	if from.NetworkNodePrefix != to.NetworkNodePrefix {
+		// TODO: patch it to retrieve data from API
+		from.NetworkNodePrefix = to.NetworkNodePrefix
+	}
+
+	return nil
+}
+
 func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id string, state *managedKubernetesEngine) error {
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
 
 	path := commons.ApiPath.ManagedFKEGet(vpcId, "vmw", id)
-	a, err := r.client.SendGetRequest(path)
+	a, err := r.mfkeClient.sendGet(path)
 	if err != nil {
 		return err
 	}
@@ -372,6 +480,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 	data := d.Data
 
 	state.Id = types.StringValue(data.Metadata.Name)
+	state.ClusterName = types.StringValue(r.getClusterName(data.Metadata.Name))
 	state.VpcId = types.StringValue(vpcId)
 	// keep clusterName
 	//state.NetworkID
@@ -380,24 +489,31 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 	cloudPurpose := strings.Split(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "-")
 	state.Purpose = types.StringValue(cloudPurpose[0])
 
-	var existingPool map[string]managedKubernetesEnginePool
 	var poolNames []string
-	for _, pool := range state.Pools {
-		name := pool.WorkerPoolID.ValueString()
-		if _, ok := existingPool[name]; ok {
-			return errors.New(fmt.Sprintf("Pool %s already exists", name))
-		}
 
-		existingPool[name] = pool
-		poolNames = append(poolNames, name)
+	if len(state.Pools) != 0 {
+		existingPool := map[string]*managedKubernetesEnginePool{}
+		for _, pool := range state.Pools {
+			name := pool.WorkerPoolID.ValueString()
+			if _, ok := existingPool[name]; ok {
+				return errors.New(fmt.Sprintf("Pool %s already exists", name))
+			}
+
+			existingPool[name] = pool
+			poolNames = append(poolNames, name)
+		}
 	}
 
-	var workers map[string]managedKubernetesEngineDataWorker
+	workers := map[string]*managedKubernetesEngineDataWorker{}
 	for _, worker := range data.Spec.Provider.Workers {
 		workers[worker.Name] = worker
+
+		if len(state.Pools) == 0 {
+			poolNames = append(poolNames, worker.Name)
+		}
 	}
 
-	var pool []managedKubernetesEnginePool
+	var pool []*managedKubernetesEnginePool
 
 	for _, name := range poolNames {
 		w, ok := workers[name]
@@ -406,15 +522,21 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 		}
 
 		flavorId, ok := data.Metadata.Labels["fptcloud.com/flavor_pool_test"]
-		if !ok {
-			return errors.New("missing flavor ID on label fptcloud.com/flavor_pool_test")
-		}
+		//if !ok {
+		//	return errors.New("missing flavor ID on label fptcloud.com/flavor_pool_test")
+		//}
+		flavorId = "c89d97cd-c9cb-4d70-a0c1-01f190ea1b02"
 
 		autoRepair := false
 		for _, item := range w.Annotations {
 			if label, ok := item["worker.fptcloud.com/node-auto-repair"]; ok {
 				autoRepair = label == "true"
 			}
+		}
+
+		networkId, e := r.getNetworkId(ctx, vpcId, w.ProviderConfig.NetworkName)
+		if e != nil {
+			return e
 		}
 
 		item := managedKubernetesEnginePool{
@@ -426,14 +548,16 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			ScaleMin:           types.Int64Value(int64(w.Minimum)),
 			ScaleMax:           types.Int64Value(int64(w.Maximum)),
 			NetworkName:        types.StringValue(w.ProviderConfig.NetworkName),
-			NetworkID:          state.NetworkID,
+			NetworkID:          types.StringValue(networkId),
 			IsEnableAutoRepair: types.BoolValue(autoRepair),
 			//DriverInstallationType: types.String{},
 			//GpuDriverVersion:       types.StringValue(gpuDriverVersion),
 		}
 
-		pool = append(pool, item)
+		pool = append(pool, &item)
 	}
+
+	state.Pools = pool
 
 	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
 	state.PodNetwork = types.StringValue(podNetwork[0])
@@ -484,10 +608,39 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	return nil, &diag
 }
 
-//func (r *resourceManagedKubernetesEngine) waitForSucceeded(ctx context.Context, clusterId string, vpcId string, timeout time.Duration, ignoreErrors bool) error {
-//	s := managedKubernetesEngine{}
-//	err :=
-//}
+func (r *resourceManagedKubernetesEngine) getNetworkId(ctx context.Context, vpcId string, networkName string) (string, error) {
+	tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network "+networkName)
+
+	networks, err := r.subnetClient.ListNetworks(vpcId)
+	if err != nil {
+		return "", err
+	}
+
+	for _, network := range networks {
+		if network.Name == networkName {
+			return network.ID, nil
+		}
+	}
+
+	return "", errors.New("couldn't find network with name " + networkName)
+}
+func (r *resourceManagedKubernetesEngine) getClusterName(name string) string {
+	var indices []int
+	for i, c := range name {
+		if c == '-' {
+			indices = append(indices, i)
+		}
+	}
+
+	if len(indices) == 0 {
+		return name
+	}
+
+	last := indices[len(indices)-1]
+	clusterName := string([]rune(name)[:last])
+
+	return clusterName
+}
 
 func parseNumber(s string) int {
 	out := ""
@@ -509,23 +662,23 @@ type managedKubernetesEngine struct {
 	Id          types.String `tfsdk:"id"`
 	VpcId       types.String `tfsdk:"vpc_id"`
 	ClusterName types.String `tfsdk:"cluster_name"`
-	NetworkID   types.String `tfsdk:"network_id"`
-	K8SVersion  types.String `tfsdk:"k8s_version"`
+	//NetworkID   types.String `tfsdk:"network_id"`
+	K8SVersion types.String `tfsdk:"k8s_version"`
 	//OsVersion   struct{} `tfsdk:"os_version"`
-	Purpose           types.String                  `tfsdk:"purpose"`
-	Pools             []managedKubernetesEnginePool `tfsdk:"pools"`
-	PodNetwork        types.String                  `tfsdk:"pod_network"`
-	PodPrefix         types.String                  `tfsdk:"pod_prefix"`
-	ServiceNetwork    types.String                  `tfsdk:"service_network"`
-	ServicePrefix     types.String                  `tfsdk:"service_prefix"`
-	K8SMaxPod         types.Int64                   `tfsdk:"k8s_max_pod"`
-	NetworkNodePrefix types.Int64                   `tfsdk:"network_node_prefix"`
-	RangeIPLbStart    types.String                  `tfsdk:"range_ip_lb_start"`
-	RangeIPLbEnd      types.String                  `tfsdk:"range_ip_lb_end"`
-	LoadBalancerType  types.String                  `tfsdk:"load_balancer_type"`
+	Purpose           types.String                   `tfsdk:"purpose"`
+	Pools             []*managedKubernetesEnginePool `tfsdk:"pools"`
+	PodNetwork        types.String                   `tfsdk:"pod_network"`
+	PodPrefix         types.String                   `tfsdk:"pod_prefix"`
+	ServiceNetwork    types.String                   `tfsdk:"service_network"`
+	ServicePrefix     types.String                   `tfsdk:"service_prefix"`
+	K8SMaxPod         types.Int64                    `tfsdk:"k8s_max_pod"`
+	NetworkNodePrefix types.Int64                    `tfsdk:"network_node_prefix"`
+	RangeIPLbStart    types.String                   `tfsdk:"range_ip_lb_start"`
+	RangeIPLbEnd      types.String                   `tfsdk:"range_ip_lb_end"`
+	LoadBalancerType  types.String                   `tfsdk:"load_balancer_type"`
 	//SSHKey            interface{} `tfsdk:"sshKey"` // just set it nil
 	//TypeCreate types.String `tfsdk:"type_create"`
-	RegionId types.String `tfsdk:"region_id"`
+	//RegionId types.String `tfsdk:"region_id"`
 }
 type managedKubernetesEnginePool struct {
 	WorkerPoolID   types.String `tfsdk:"name"`
@@ -569,7 +722,7 @@ type managedKubernetesEngineJson struct {
 	NetworkType       string                             `json:"network_type"`
 	SSHKey            interface{}                        `json:"sshKey"`
 	TypeCreate        string                             `json:"type_create"`
-	RegionId          string                             `json:"region_id"`
+	//RegionId          string                             `json:"region_id"`
 }
 type managedKubernetesEnginePoolJson struct {
 	WorkerPoolID     *string `json:"worker_pool_id"`
@@ -661,7 +814,7 @@ type managedKubernetesEngineDataSpec struct {
 				Workers        string `json:"workers"`
 			} `json:"networks"`
 		} `json:"infrastructureConfig"`
-		Workers []managedKubernetesEngineDataWorker `json:"workers"`
+		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
 	} `json:"provider"`
 }
 

@@ -38,6 +38,19 @@ func (m *MfkeApiClient) sendPost(requestURL string, params interface{}) ([]byte,
 	return m.sendRequestWithHeader(req)
 }
 
+func (m *MfkeApiClient) sendPatch(requestURL string, params interface{}) ([]byte, error) {
+	u := m.Client.PrepareClientURL(requestURL)
+
+	// we create a new buffer and encode everything to json to send it in the request
+	jsonValue, _ := json.Marshal(params)
+
+	req, err := http.NewRequest("PATCH", u.String(), bytes.NewBuffer(jsonValue))
+	if err != nil {
+		return nil, err
+	}
+	return m.sendRequestWithHeader(req)
+}
+
 func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request) ([]byte, error) {
 	request.Header.Set("fpt-region", m.Client.Region)
 	request.Header.Set("infra-type", "VMW")
