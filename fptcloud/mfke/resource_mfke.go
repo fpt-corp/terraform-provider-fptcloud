@@ -87,6 +87,22 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 		return
 	}
 
+	groupNames := map[string]bool{}
+	for _, pool := range state.Pools {
+		name := pool.WorkerPoolID.ValueString()
+		if name == "worker-new" {
+			response.Diagnostics.Append(diag2.NewErrorDiagnostic("Invalid worker group name", "Worker group name \"worker-new\" is reserved"))
+			return
+		}
+
+		if _, ok := groupNames[name]; ok {
+			response.Diagnostics.Append(diag2.NewErrorDiagnostic("Duplicate worker group name", "Worker group name "+name+" is used twice"))
+			return
+		}
+
+		groupNames[name] = true
+	}
+
 	var f managedKubernetesEngineJson
 	r.remap(&state, &f)
 	errDiag := r.fillJson(ctx, &f, state.VpcId.ValueString())
