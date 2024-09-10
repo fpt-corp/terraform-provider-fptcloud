@@ -41,9 +41,9 @@ func ResourceSecurityGroupRule() *schema.Resource {
 			"action": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "The action of the rule can be allow or deny. When we set the `action = 'ALLOW'`, this is going to add a rule to allow traffic. Similarly, setting `action = 'DENY'` will deny the traffic.",
+				Description: "The action of the rule can be allow or deny. When we set the `action = 'ALLOW'`, this is going to add a rule to allow traffic. Similarly, setting `action = 'DROP'` will deny the traffic.",
 				ValidateFunc: validation.StringInSlice([]string{
-					"ALLOW", "DENY",
+					"ALLOW", "DROP",
 				}, false),
 				ForceNew: true,
 			},
