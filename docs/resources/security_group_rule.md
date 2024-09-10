@@ -63,7 +63,7 @@ resource "fptcloud_security_group_rule" "example_all_traffic_rule_for_tcp" {
 
 ### Required
 
-- `action` (String) The action of the rule can be allow or deny. When we set the `action = 'ALLOW'`, this is going to add a rule to allow traffic. Similarly, setting `action = 'DENY'` will deny the traffic.
+- `action` (String) The action of the rule can be allow or deny. When we set the `action = 'ALLOW'`, this is going to add a rule to allow traffic. Similarly, setting `action = 'DROP'` will deny the traffic.
 - `direction` (String) The direction of the rule can be `INGRESS` or `EGRESS`.
 - `port_range` (String) The port or port range to open, if the protocol is `ALL` this field is required `ALL`
 - `protocol` (String) The protocol of the security group rule include value `TCP`, `UDP`, `ICMP` or `ALL`
