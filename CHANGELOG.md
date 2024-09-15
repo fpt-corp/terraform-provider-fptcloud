@@ -1,3 +1,8 @@
+## [0.1.2] - 2024-09-15
+### Resource
+- Update schema instance (using flavor name and image name)
+- Fix bug security group rule
+
 ## [0.1.1] - 2024-08-10
 ### Data source
 - Subnet
