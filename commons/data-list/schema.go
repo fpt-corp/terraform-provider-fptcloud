@@ -3,10 +3,10 @@ package data_list
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/id"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -116,7 +116,7 @@ func dataListResourceRead(config *ResourceConfig) schema.ReadContextFunc {
 			flattenedRecords = applySorts(config.RecordSchema, flattenedRecords, sorts)
 		}
 
-		d.SetId(resource.UniqueId())
+		d.SetId(id.UniqueId())
 
 		if err := d.Set(config.ResultAttributeName, flattenedRecords); err != nil {
 			return diag.Errorf("unable to set `%s` attribute: %s", config.ResultAttributeName, err)
