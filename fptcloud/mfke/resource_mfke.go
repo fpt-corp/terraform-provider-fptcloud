@@ -137,7 +137,7 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 
 	tflog.Info(ctx, "Created cluster with id "+slug)
 
-	if err = r.internalRead(ctx, slug, &state); err != nil {
+	if _, err = r.internalRead(ctx, slug, &state); err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading cluster state", err.Error()))
 		return
 	}
@@ -158,7 +158,7 @@ func (r *resourceManagedKubernetesEngine) Read(ctx context.Context, request reso
 		return
 	}
 
-	err := r.internalRead(ctx, state.Id.ValueString(), &state)
+	_, err := r.internalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
 		return
@@ -194,7 +194,7 @@ func (r *resourceManagedKubernetesEngine) Update(ctx context.Context, request re
 		return
 	}
 
-	err := r.internalRead(ctx, state.Id.ValueString(), &state)
+	_, err := r.internalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))
 		return
@@ -243,7 +243,7 @@ func (r *resourceManagedKubernetesEngine) ImportState(ctx context.Context, reque
 
 	state.Id = types.StringValue(clusterId)
 
-	err := r.internalRead(ctx, clusterId, &state)
+	_, err := r.internalRead(ctx, clusterId, &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
 		return
@@ -344,6 +344,14 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 		}
 	}
 
+	poolLevelAttributes["scale_min"] = schema.Int64Attribute{
+		Required: true,
+	}
+
+	poolLevelAttributes["scale_max"] = schema.Int64Attribute{
+		Required: true,
+	}
+
 	return poolLevelAttributes
 }
 
@@ -417,6 +425,24 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 	to.RangeIPLbEnd = from.RangeIPLbEnd.ValueString()
 	to.LoadBalancerType = from.LoadBalancerType.ValueString()
 }
+
+func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) *managedKubernetesEnginePoolJson {
+	newItem := managedKubernetesEnginePoolJson{
+		StorageProfile:     item.StorageProfile.ValueString(),
+		WorkerType:         item.WorkerType.ValueString(),
+		WorkerDiskSize:     item.WorkerDiskSize.ValueInt64(),
+		AutoScale:          item.AutoScale.ValueBool(),
+		ScaleMin:           item.ScaleMin.ValueInt64(),
+		ScaleMax:           item.ScaleMax.ValueInt64(),
+		NetworkName:        item.NetworkName.ValueString(),
+		NetworkID:          item.NetworkID.ValueString(),
+		IsEnableAutoRepair: item.IsEnableAutoRepair.ValueBool(),
+		WorkerPoolID:       &name,
+	}
+
+	return &newItem
+}
+
 func (r *resourceManagedKubernetesEngine) checkForError(a []byte) *diag2.ErrorDiagnostic {
 	var re map[string]interface{}
 	err := json.Unmarshal(a, &re)
@@ -464,33 +490,79 @@ func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *manage
 			return diagErr2
 		}
 	}
-
 	if from.NetworkNodePrefix != to.NetworkNodePrefix {
 		// TODO: patch it to retrieve data from API
 		from.NetworkNodePrefix = to.NetworkNodePrefix
 	}
 
+	editGroup, err := r.diffPool(ctx, from, to)
+	if err != nil {
+		return err
+	}
+
+	if editGroup {
+		d, err := r.internalRead(ctx, from.Id.ValueString(), from)
+		if err != nil {
+			di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
+			return &di
+		}
+
+		pools := []*managedKubernetesEnginePoolJson{}
+
+		for _, pool := range to.Pools {
+			item := r.remapPools(pool, pool.WorkerPoolID.ValueString())
+			pools = append(pools, item)
+		}
+
+		body := managedKubernetesEngineEditWorker{
+			K8sVersion:        to.K8SVersion.ValueString(),
+			CurrentNetworking: d.Data.Spec.Networking.Nodes,
+			Pools:             pools,
+			TypeConfigure:     "configure",
+		}
+
+		path := fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/vmw/configure-worker-cluster/shoots/%s/0",
+			from.VpcId.ValueString(),
+			from.Id.ValueString(),
+		)
+
+		res, err := r.mfkeClient.sendPatch(path, body)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
+			return &d
+		}
+
+		if e2 := r.checkForError(res); e2 != nil {
+			return e2
+		}
+	}
+
 	return nil
 }
 
-func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id string, state *managedKubernetesEngine) error {
+func (r *resourceManagedKubernetesEngine) diffPool(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) (bool, *diag2.ErrorDiagnostic) {
+	return false, nil
+}
+
+func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id string, state *managedKubernetesEngine) (*managedKubernetesEngineReadResponse, error) {
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
 
 	path := commons.ApiPath.ManagedFKEGet(vpcId, "vmw", id)
 	a, err := r.mfkeClient.sendGet(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var d managedKubernetesEngineReadResponse
 	err = json.Unmarshal(a, &d)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if d.Error {
-		return errors.New(fmt.Sprintf("Error: %v", d.Mess))
+		return nil, errors.New(fmt.Sprintf("Error: %v", d.Mess))
 	}
 
 	data := d.Data
@@ -512,7 +584,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 		for _, pool := range state.Pools {
 			name := pool.WorkerPoolID.ValueString()
 			if _, ok := existingPool[name]; ok {
-				return errors.New(fmt.Sprintf("Pool %s already exists", name))
+				return nil, errors.New(fmt.Sprintf("Pool %s already exists", name))
 			}
 
 			existingPool[name] = pool
@@ -552,7 +624,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 
 		networkId, e := r.getNetworkId(ctx, vpcId, w.ProviderConfig.NetworkName)
 		if e != nil {
-			return e
+			return nil, e
 		}
 
 		item := managedKubernetesEnginePool{
@@ -590,7 +662,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 
 	state.LoadBalancerType = types.StringValue(data.Spec.LoadBalancerType)
 
-	return nil
+	return &d, nil
 }
 func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, version string, vpcId string) (interface{}, *diag2.ErrorDiagnostic) {
 	var path = commons.ApiPath.GetFKEOSVersion(vpcId, "vmw")
@@ -896,4 +968,11 @@ type managedKubernetesEngineDataWorker struct {
 		Type string `json:"type"`
 	} `json:"volume"`
 	Zones []string `json:"zones"`
+}
+
+type managedKubernetesEngineEditWorker struct {
+	Pools             []*managedKubernetesEnginePoolJson `json:"pools"`
+	K8sVersion        string                             `json:"k8s_version"`
+	TypeConfigure     string                             `json:"type_configure"`
+	CurrentNetworking string                             `json:"currentNetworking"`
 }
