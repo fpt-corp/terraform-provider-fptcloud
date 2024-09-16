@@ -554,7 +554,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 		tflog.Info(ctx, fmt.Sprintf("Changing master from %s to %s", masterType, master2Type))
 
 		management := dedicatedKubernetesEngineManagement{
-			ClusterId:  to.clusterUUID(),
+			ClusterId:  from.clusterUUID(),
 			MgmtAction: "",
 			DiskExtend: "0",
 			ExtendType: "",
@@ -580,7 +580,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 		tflog.Info(ctx, fmt.Sprintf("Changing worker from %s to %s", workerType, worker2Type))
 
 		management := dedicatedKubernetesEngineManagement{
-			ClusterId:  to.clusterUUID(),
+			ClusterId:  from.clusterUUID(),
 			MgmtAction: "",
 			DiskExtend: "0",
 			ExtendType: "",
@@ -666,7 +666,8 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 }
 
 func (r *resourceDedicatedKubernetesEngine) manage(state *dedicatedKubernetesEngine, params interface{}) *diag2.ErrorDiagnostic {
-	path := commons.ApiPath.DedicatedFKEManagement(state.vpcId(), state.clusterUUID())
+	//path := commons.ApiPath.DedicatedFKEManagement(state.vpcId(), state.clusterUUID())
+	path := fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/auto-scale", state.vpcId(), state.clusterUUID())
 
 	a, err2 := r.client.SendPostRequest(path, params)
 	if err2 != nil {
