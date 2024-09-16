@@ -22,7 +22,7 @@ func TestFindStorage_ReturnsStorage(t *testing.T) {
 			"created_at": "2023-10-01T00:00:00Z"
 		}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage": mockResponse,
+		"/v2/vpc/vpc_id/storage": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)
@@ -37,7 +37,7 @@ func TestFindStorage_ReturnsStorage(t *testing.T) {
 func TestFindStorage_ReturnsErrorOnRequestFailure(t *testing.T) {
 	mockResponse := `invalid`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage": mockResponse,
+		"/v2/vpc/vpc_id/storage": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)
@@ -50,7 +50,7 @@ func TestFindStorage_ReturnsErrorOnRequestFailure(t *testing.T) {
 func TestCreateStorage_ReturnsStorageId(t *testing.T) {
 	mockResponse := `{"storage_id": "1"}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage": mockResponse,
+		"/v2/vpc/vpc_id/storage": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)
@@ -62,7 +62,7 @@ func TestCreateStorage_ReturnsStorageId(t *testing.T) {
 
 func TestUpdateStorage_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage": "",
+		"/v2/vpc/vpc_id/storage": "",
 	})
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)
@@ -75,7 +75,7 @@ func TestUpdateStorage_ReturnsSuccess(t *testing.T) {
 
 func TestDeleteStorage_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage": "",
+		"/v2/vpc/vpc_id/storage": "",
 	})
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)
@@ -87,7 +87,7 @@ func TestDeleteStorage_ReturnsSuccess(t *testing.T) {
 
 func TestUpdateAttachedInstance_ReturnsSuccess(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/terraform/vpc/vpc_id/storage/storage_id/update-attached": "",
+		"/v2/vpc/vpc_id/storage/storage_id/update-attached": "",
 	})
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)

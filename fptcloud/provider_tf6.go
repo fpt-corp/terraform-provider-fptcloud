@@ -13,7 +13,6 @@ import (
 	common "terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
-	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 )
 
 var (
@@ -148,9 +147,7 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 }
 
 func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		fptcloud_subnet.NewDataSourceSubnet,
-	}
+	return []func() datasource.DataSource{}
 }
 
 func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resource {

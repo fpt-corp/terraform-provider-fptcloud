@@ -1,138 +1,112 @@
 package fptcloud_subnet
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/types"
-	"terraform-provider-fptcloud/commons"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"strings"
+	common "terraform-provider-fptcloud/commons"
+	"terraform-provider-fptcloud/commons/data-list"
 )
 
-var (
-	_ datasource.DataSource              = &datasourceSubnet{}
-	_ datasource.DataSourceWithConfigure = &datasourceSubnet{}
-)
+// DataSourceSubnet function returns a schema.Resource that represents a subnet.
+// This can be used to query and retrieve details about a specific subnet in the infrastructure using its id or name.
+func DataSourceSubnet() *schema.Resource {
+	dataListConfig := &data_list.ResourceConfig{
+		Description: strings.Join([]string{
+			"Get information on a subnet for use in other resources. This data source provides all of the subnet properties as configured on your account.",
+			"An error will be raised if the provided subnet name does not exist in your account.",
+		}, "\n\n"),
+		RecordSchema:        subnetSchema(),
+		ResultAttributeName: "subnets",
+		FlattenRecord:       flattenSubnet,
+		GetRecords:          getSubnets,
+		ExtraQuerySchema: map[string]*schema.Schema{
+			"vpc_id": {
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validation.NoZeroValues,
+				Description:  "The vpc id of the subnet",
+			},
+		},
+	}
 
-type datasourceSubnet struct {
-	client  *commons.Client
-	sClient *SubnetClient
+	return data_list.NewResource(dataListConfig)
 }
 
-func NewDataSourceSubnet() datasource.DataSource {
-	return &datasourceSubnet{}
-}
-
-func (d *datasourceSubnet) Metadata(ctx context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
-	response.TypeName = request.ProviderTypeName + "_subnet_v1"
-}
-
-func (d *datasourceSubnet) Schema(ctx context.Context, request datasource.SchemaRequest, response *datasource.SchemaResponse) {
-	response.Schema = schema.Schema{
-		Description: "Subnets",
-		Attributes: map[string]schema.Attribute{
-			"name": schema.StringAttribute{
-				Required:    true,
-				Description: "Name of the subnet",
-			},
-			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "Identifier of the subnet",
-			},
-			"vpc_id": schema.StringAttribute{
-				Required:    true,
-				Description: "ID of the VPC containing the subnet",
-			},
+func subnetSchema() map[string]*schema.Schema {
+	return map[string]*schema.Schema{
+		"id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The id of the subnet",
+		},
+		"name": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The name of the subnet",
+		},
+		"network_name": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The network name of the subnet",
+		},
+		"gateway": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The gateway of the subnet",
+		},
+		"edge_gateway": {
+			Type:        schema.TypeMap,
+			Computed:    true,
+			Description: "The edge gateway of the subnet",
+			Elem:        &schema.Schema{Type: schema.TypeString},
+		},
+		"created_at": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The created at of the subnet",
 		},
 	}
 }
 
-func (d *datasourceSubnet) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) {
-	var state subnet
-	diags := request.Config.Get(ctx, &state)
+func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]interface{}, error) {
+	s := subnet.(Subnet)
 
-	response.Diagnostics.Append(diags...)
-	if response.Diagnostics.HasError() {
-		return
+	flattened := map[string]interface{}{}
+	flattened["id"] = s.ID
+	flattened["name"] = s.Name
+	flattened["network_name"] = s.NetworkName
+	flattened["gateway"] = s.Gateway
+	edgeGateways := s.EdgeGateway
+	mapEdgeGateway := map[string]interface{}{
+		"id":              edgeGateways.ID,
+		"name":            edgeGateways.Name,
+		"edge_gateway_id": edgeGateways.EdgeGatewayId,
 	}
-
-	subnetList, err := d.internalRead(state.VpcId.ValueString())
-	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error getting subnet list", err.Error()))
-		return
-	}
-
-	var sub SubnetData
-
-	for _, sn := range *subnetList {
-		if sn.Name == state.Name.ValueString() {
-			if sub.ID != "" {
-				response.Diagnostics.Append(diag2.NewErrorDiagnostic(
-					"Duplicate subnet name",
-					"Subnet list contains two networks with identical name. For safety reasons this is an error. Report this to support.",
-				))
-				return
-			} else {
-				sub = sn
-			}
-		}
-	}
-
-	if sub.ID == "" {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(
-			"No such subnet",
-			fmt.Sprintf("No subnet with name \"%s\" was found", state.Name),
-		))
-	}
-
-	state.ID = types.StringValue(sub.ID)
-	diags = response.State.Set(ctx, &state)
-	response.Diagnostics.Append(diags...)
-	if response.Diagnostics.HasError() {
-		return
-	}
+	flattened["edge_gateway"] = mapEdgeGateway
+	flattened["created_at"] = s.CreatedAt
+	return flattened, nil
 }
 
-func (d *datasourceSubnet) Configure(ctx context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) {
-	if request.ProviderData == nil {
-		return
+func getSubnets(m interface{}, extra map[string]interface{}) ([]interface{}, error) {
+	apiClient := m.(*common.Client)
+	service := NewSubnetService(apiClient)
+
+	vpcId, okVpcId := extra["vpc_id"].(string)
+	if !okVpcId {
+		return nil, fmt.Errorf("[ERR] Vpc id is required")
 	}
 
-	client, ok := request.ProviderData.(*commons.Client)
-	if !ok {
-		response.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *commons.Client, got: %T. Please report this issue to the provider developers.", request.ProviderData),
-		)
-
-		return
+	result, err := service.ListSubnet(vpcId)
+	if err != nil || len(*result) == 0 {
+		return nil, fmt.Errorf("[ERR] Failed to retrieve subnet: %s", err)
 	}
 
-	d.client = client
-	sClient := NewSubnetClient(client)
-	d.sClient = sClient
-}
-
-func (d *datasourceSubnet) internalRead(vpcId string) (*[]SubnetData, error) {
-	url := commons.ApiPath.Subnet(vpcId)
-	res, err := d.client.SendGetRequest(url)
-
-	if err != nil {
-		return nil, err
+	var templates []interface{}
+	for _, item := range *result {
+		templates = append(templates, item)
 	}
 
-	var r subnetResponse
-	if err = json.Unmarshal(res, &r); err != nil {
-		return nil, err
-	}
-
-	return &r.Data, nil
-}
-
-type subnet struct {
-	ID    types.String `tfsdk:"id"`
-	Name  types.String `tfsdk:"name"`
-	VpcId types.String `tfsdk:"vpc_id"`
+	return templates, nil
 }

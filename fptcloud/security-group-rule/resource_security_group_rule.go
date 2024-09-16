@@ -32,7 +32,7 @@ func ResourceSecurityGroupRule() *schema.Resource {
 			"direction": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "The direction of the rule can be INGRESS or EGRESS.",
+				Description: "The direction of the rule can be `INGRESS` or `EGRESS`.",
 				ValidateFunc: validation.StringInSlice([]string{
 					"INGRESS", "EGRESS",
 				}, false),
@@ -41,9 +41,9 @@ func ResourceSecurityGroupRule() *schema.Resource {
 			"action": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "The action of the rule can be allow or deny. When we set the `action = 'ALLOW'`, this is going to add a rule to allow traffic. Similarly, setting `action = 'DENY'` will deny the traffic.",
+				Description: "The action of the rule can be allow or deny. When we set the `action = 'ALLOW'`, this is going to add a rule to allow traffic. Similarly, setting `action = 'DROP'` will deny the traffic.",
 				ValidateFunc: validation.StringInSlice([]string{
-					"ALLOW", "DENY",
+					"ALLOW", "DROP",
 				}, false),
 				ForceNew: true,
 			},
@@ -64,7 +64,7 @@ func ResourceSecurityGroupRule() *schema.Resource {
 				ForceNew:     true,
 			},
 			"sources": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Required:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Description: "The sources of the rule, can be a CIDR notation or a IP address, pass `ALL` if you want to open for all IP",
@@ -127,11 +127,12 @@ func resourceSecurityGroupRuleCreate(ctx context.Context, d *schema.ResourceData
 	}
 
 	if sources, ok := d.GetOk("sources"); ok {
-		sourceList := sources.([]interface{})
-		createdModel.Sources = make([]string, len(sourceList))
-		for i, v := range sourceList {
-			createdModel.Sources[i] = v.(string)
+		sourceSet := sources.(*schema.Set)
+		sourceList := make([]string, 0, len(sourceSet.List()))
+		for _, v := range sourceSet.List() {
+			sourceList = append(sourceList, v.(string))
 		}
+		createdModel.Sources = sourceList
 	}
 
 	if description, ok := d.GetOk("description"); ok {
@@ -232,6 +233,9 @@ func resourceSecurityGroupRuleDelete(_ context.Context, d *schema.ResourceData, 
 	}
 
 	_, err := securityGroupRuleService.Delete(vpcId.(string), d.Id())
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while trying to delete the security group rule %s", err)
+	}
 
 	deleteStateConf := &retry.StateChangeConf{
 		Pending: []string{"DELETING"},

@@ -48,12 +48,12 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 		createdModel.PublicIp = &publicIpValue
 	}
 
-	if flavorId, ok := d.GetOk("flavor_id"); ok {
-		createdModel.FlavorId = flavorId.(string)
+	if flavorName, ok := d.GetOk("flavor_name"); ok {
+		createdModel.FlavorName = flavorName.(string)
 	}
 
-	if imageId, ok := d.GetOk("image_id"); ok {
-		createdModel.ImageId = imageId.(string)
+	if imageName, ok := d.GetOk("image_name"); ok {
+		createdModel.ImageName = imageName.(string)
 	}
 
 	if subnetId, ok := d.GetOk("subnet_id"); ok {
@@ -69,11 +69,12 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 	}
 
 	if securityGroupIds, ok := d.GetOk("security_group_ids"); ok {
-		securityGroupIdsValue := securityGroupIds.([]interface{})
-		createdModel.SecurityGroupIds = make([]string, len(securityGroupIdsValue))
-		for i, v := range securityGroupIdsValue {
-			createdModel.SecurityGroupIds[i] = v.(string)
+		securityGroupIdsSet := securityGroupIds.(*schema.Set)
+		securityGroupIdsList := make([]string, 0, len(securityGroupIdsSet.List()))
+		for _, v := range securityGroupIdsSet.List() {
+			securityGroupIdsList = append(securityGroupIdsList, v.(string))
 		}
+		createdModel.SecurityGroupIds = securityGroupIdsList
 	}
 
 	if instanceGroupId, ok := d.GetOk("instance_group_id"); ok {
@@ -169,7 +170,7 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	setError = d.Set("name", foundInstance.Name)
 	setError = d.Set("status", foundInstance.Status)
 	setError = d.Set("public_ip", foundInstance.PublicIp)
-	setError = d.Set("flavor_id", foundInstance.FlavorId)
+	setError = d.Set("flavor_name", foundInstance.FlavorName)
 	setError = d.Set("subnet_id", foundInstance.SubnetId)
 	setError = d.Set("security_group_ids", foundInstance.SecurityGroupIds)
 	setError = d.Set("instance_group_id", foundInstance.InstanceGroupId)
@@ -196,6 +197,9 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 	}
 
 	_, err := instanceService.Delete(vpcId.(string), d.Id())
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while trying to delete the instance %s", err)
+	}
 
 	deleteStateConf := &retry.StateChangeConf{
 		Pending: []string{"DELETING"},
@@ -233,7 +237,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 
 	vpcId := d.Get("vpc_id").(string)
 	hasChangedName := d.HasChange("name")
-	hasChangeFlavor := d.HasChange("flavor_id")
+	hasChangeFlavor := d.HasChange("flavor_name")
 	hasChangeStatus := d.HasChange("status")
 
 	if hasChangedName {
@@ -253,8 +257,12 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	}
 
 	if hasChangeFlavor {
-		newFlavorId := d.Get("flavor_id").(string)
-		_, err := instanceService.Resize(vpcId, d.Id(), newFlavorId)
+		newFlavorName := d.Get("flavor_name").(string)
+		flavor, flavorErr := instanceService.GetFlavorByName(vpcId, newFlavorName)
+		if flavorErr != nil {
+			return diag.Errorf("[ERR] Flavor not found %s", flavorErr)
+		}
+		_, err := instanceService.Resize(vpcId, d.Id(), flavor.ID)
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while resize instance %s", err)
 		}

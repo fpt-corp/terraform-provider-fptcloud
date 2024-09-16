@@ -92,7 +92,6 @@ func (c *Client) SendRequest(req *http.Request) ([]byte, error) {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.UserAgent)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
 
 	c.httpClient.Transport = &http.Transport{
