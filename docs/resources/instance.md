@@ -17,10 +17,10 @@ resource "fptcloud_instance" "example" {
   name              = "example"
   vpc_id            = "your_vpc_id"
   ssh_key           = "your_public_key"
-  image_id          = "your_image_id"
-  flavor_id         = "your_flavor_id"
+  image_name          = "CentOS-7"
+  flavor_name         = "1C1G"
   public_ip         = "your_ip_public"
-  subnet_id         = "f25b15f5-9098-429e-887d-1c9562b648ae"
+  subnet_id         = "your_subnet_id"
   storage_size_gb   = 50
   storage_policy_id = "your_storage_policy_id"
   security_group_ids = []
@@ -33,7 +33,7 @@ resource "fptcloud_instance" "example" {
 
 ### Required
 
-- `image_id` (String) The image id of the instance
+- `image_name` (String) The image name of the instance (get from API or data source)
 - `name` (String) The name of the instance
 - `status` (String) The status of the instance (`POWERED_ON` or `POWERED_OFF`)
 - `storage_policy_id` (String) The root storage policy of the instance
@@ -43,7 +43,7 @@ resource "fptcloud_instance" "example" {
 
 ### Optional
 
-- `flavor_id` (String) The flavor id of the instance
+- `flavor_name` (String) The flavor name of the instance (get from API or data source)
 - `instance_group_id` (String) The instance group id of the instance
 - `password` (String) The password of the instance
 - `private_ip` (String) The private ip of the instance.

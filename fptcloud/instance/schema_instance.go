@@ -62,11 +62,11 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The cpu number of the instance",
 	},
-	"flavor_id": {
+	"flavor_name": {
 		Type:        schema.TypeString,
 		Computed:    true,
 		Optional:    true,
-		Description: "The flavor id of the instance",
+		Description: "The flavor name of the instance",
 	},
 	"subnet_id": {
 		Type:        schema.TypeString,
@@ -141,15 +141,15 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		Optional:    true,
 		Description: "The public ip (floating ip) of the instance.  Fill `new` to allocate new from the pool.",
 	},
-	"flavor_id": {
+	"flavor_name": {
 		Type:        schema.TypeString,
 		Optional:    true,
-		Description: "The flavor id of the instance",
+		Description: "The flavor name of the instance (get from API or data source)",
 	},
-	"image_id": {
+	"image_name": {
 		Type:        schema.TypeString,
 		Required:    true,
-		Description: "The image id of the instance",
+		Description: "The image name of the instance (get from API or data source)",
 		ForceNew:    true,
 	},
 	"subnet_id": {
@@ -171,7 +171,7 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		ForceNew:    true,
 	},
 	"security_group_ids": {
-		Type:        schema.TypeList,
+		Type:        schema.TypeSet,
 		Computed:    true,
 		Optional:    true,
 		Elem:        &schema.Schema{Type: schema.TypeString},

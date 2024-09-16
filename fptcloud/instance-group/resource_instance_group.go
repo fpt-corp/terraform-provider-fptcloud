@@ -44,7 +44,7 @@ func ResourceInstanceGroup() *schema.Resource {
 				ForceNew:     true,
 			},
 			"vm_ids": {
-				Type:        schema.TypeList,
+				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: "The list of instances in the instance group",
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -95,7 +95,12 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 		createModel.PolicyId = policyId.(string)
 	}
 	if vmIds, ok := d.GetOk("vm_ids"); ok {
-		createModel.VmIds = vmIds.([]string)
+		vmIdsSet := vmIds.(*schema.Set)
+		vmIdsList := make([]string, 0, len(vmIdsSet.List()))
+		for _, v := range vmIdsSet.List() {
+			vmIdsList = append(vmIdsList, v.(string))
+		}
+		createModel.VmIds = vmIdsList
 	}
 
 	isSuccess, err := service.CreateInstanceGroup(createModel)
