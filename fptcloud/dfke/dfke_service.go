@@ -44,6 +44,10 @@ type edgeResponse struct {
 	EdgeGateway EdgeGateway `json:"edgeGateway"`
 }
 
+type edgeListResponse struct {
+	Data []EdgeGateway `json:"data"`
+}
+
 func (a *dfkeApiClient) FindEdgeById(ctx context.Context, vpcId string, id string) (*EdgeGateway, error) {
 	tflog.Info(ctx, "Resolving edge by ID "+id)
 	path := fmt.Sprintf("/v1/kubernetes/vpc/%s/find_edge_by_id/%s/false", vpcId, id)
@@ -59,14 +63,28 @@ func (a *dfkeApiClient) FindEdgeByEdgeGatewayId(ctx context.Context, vpcId strin
 	if !strings.HasPrefix(edgeId, "urn:vcloud:gateway") {
 		return nil, errors.New("edge gateway id must be prefixed with \"urn:vcloud:gateway\"")
 	}
+
 	tflog.Info(ctx, "Resolving edge by gateway ID "+edgeId)
-	path := fmt.Sprintf("/v1/kubernetes/vpc/%s/find_edge_by_id/%s/true", vpcId, edgeId)
-	r, err := a.internalFindEdge(path)
+
+	path := fmt.Sprintf("/v1/vmware/vpc/%s/edge_gateway/list", vpcId)
+	r, err := a.edgeClient.SendGetRequest(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return r, nil
+	var edgeList edgeListResponse
+	err = json.Unmarshal(r, &edgeList)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, edge := range edgeList.Data {
+		if edge.EdgeGatewayId == edgeId {
+			return &edge, nil
+		}
+	}
+
+	return nil, errors.New("edge gateway not found")
 }
 
 func (a *dfkeApiClient) internalFindEdge(endpoint string) (*EdgeGateway, error) {
