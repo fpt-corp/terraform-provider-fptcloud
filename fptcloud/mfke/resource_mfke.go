@@ -568,7 +568,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 	data := d.Data
 
 	state.Id = types.StringValue(data.Metadata.Name)
-	state.ClusterName = types.StringValue(r.getClusterName(data.Metadata.Name))
+	state.ClusterName = types.StringValue(getClusterName(data.Metadata.Name))
 	state.VpcId = types.StringValue(vpcId)
 	// keep clusterName
 	//state.NetworkID
@@ -622,7 +622,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			}
 		}
 
-		networkId, e := r.getNetworkId(ctx, vpcId, w.ProviderConfig.NetworkName)
+		networkId, e := getNetworkId(ctx, r.subnetClient, vpcId, w.ProviderConfig.NetworkName)
 		if e != nil {
 			return nil, e
 		}
@@ -696,10 +696,10 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	return nil, &diag
 }
 
-func (r *resourceManagedKubernetesEngine) getNetworkId(ctx context.Context, vpcId string, networkName string) (string, error) {
+func getNetworkId(ctx context.Context, client *fptcloud_subnet.SubnetClient, vpcId string, networkName string) (string, error) {
 	tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network "+networkName)
 
-	networks, err := r.subnetClient.ListNetworks(vpcId)
+	networks, err := client.ListNetworks(vpcId)
 	if err != nil {
 		return "", err
 	}
@@ -712,7 +712,7 @@ func (r *resourceManagedKubernetesEngine) getNetworkId(ctx context.Context, vpcI
 
 	return "", errors.New("couldn't find network with name " + networkName)
 }
-func (r *resourceManagedKubernetesEngine) getClusterName(name string) string {
+func getClusterName(name string) string {
 	var indices []int
 	for i, c := range name {
 		if c == '-' {
