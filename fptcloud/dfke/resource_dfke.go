@@ -415,7 +415,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	state.VpcId = types.StringValue(data.VpcID)
 	//state.CustomScript = awx.CustomScript
 	//state.EnableCustomScript = awx.EnableCustomScript
-	region, err := r.getRegionFromVpcId(ctx, vpcId)
+	region, err := getRegionFromVpcId(r.tenancyApiClient, ctx, vpcId)
 	if err != nil {
 		return nil, err
 	}
@@ -746,9 +746,7 @@ func (e *dedicatedKubernetesEngine) vpcId() string {
 func (e *dedicatedKubernetesEngine) clusterUUID() string {
 	return e.Id.ValueString()
 }
-func (r *resourceDedicatedKubernetesEngine) getRegionFromVpcId(ctx context.Context, vpcId string) (string, error) {
-	client := r.tenancyApiClient
-
+func getRegionFromVpcId(client *tenancyApiClient, ctx context.Context, vpcId string) (string, error) {
 	t, err := client.GetTenancy(ctx)
 	if err != nil {
 		return "", err
