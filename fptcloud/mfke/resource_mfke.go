@@ -42,7 +42,7 @@ var (
 type resourceManagedKubernetesEngine struct {
 	client       *commons.Client
 	mfkeClient   *MfkeApiClient
-	subnetClient *fptcloud_subnet.SubnetClient
+	subnetClient fptcloud_subnet.SubnetService
 }
 
 func NewResourceManagedKubernetesEngine() resource.Resource {
@@ -272,7 +272,7 @@ func (r *resourceManagedKubernetesEngine) Configure(ctx context.Context, request
 
 	r.client = client
 	r.mfkeClient = newMfkeApiClient(r.client)
-	r.subnetClient = fptcloud_subnet.NewSubnetClient(r.client)
+	r.subnetClient = fptcloud_subnet.NewSubnetService(r.client)
 }
 func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {
 	topLevelAttributes := map[string]schema.Attribute{}
@@ -705,21 +705,18 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	return nil, &diag
 }
 
-func getNetworkId(ctx context.Context, client *fptcloud_subnet.SubnetClient, vpcId string, networkName string) (string, error) {
+func getNetworkId(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId string, networkName string) (string, error) {
 	tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network "+networkName)
 
-	networks, err := client.ListNetworks(vpcId)
+	networks, err := client.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{
+		NetworkName: networkName,
+		VpcId:       vpcId,
+	})
 	if err != nil {
 		return "", err
 	}
 
-	for _, network := range networks {
-		if network.Name == networkName {
-			return network.ID, nil
-		}
-	}
-
-	return "", errors.New("couldn't find network with name " + networkName)
+	return networks.ID, nil
 }
 func getClusterName(name string) string {
 	var indices []int
