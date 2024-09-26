@@ -221,65 +221,82 @@ func (r *resourceDedicatedKubernetesEngine) Schema(ctx context.Context, request 
 		Description: "Manage dedicated FKE clusters.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Cluster UUID",
 			},
 			"cluster_id": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Cluster slug",
 			},
 			"cluster_name": schema.StringAttribute{
-				Required: true,
+				Required:    true,
+				Description: "Cluster name",
 			},
 			"k8s_version": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Kubernetes version",
 			},
 			"master_type": schema.StringAttribute{
-				Required: true,
+				Required:    true,
+				Description: "Flavor ID of master node",
 			},
 			"master_count": schema.Int64Attribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersInt,
+				Description:   "Number of master nodes",
 			},
 			"master_disk_size": schema.Int64Attribute{
-				Required: true,
+				Required:    true,
+				Description: "Disk size of master node in GB",
 			},
 			"worker_type": schema.StringAttribute{
-				Required: true,
+				Required:    true,
+				Description: "Flavor ID of worker node",
 			},
 			"worker_disk_size": schema.Int64Attribute{
-				Required: true,
+				Required:    true,
+				Description: "Disk size of worker node in GB",
 			},
 			"network_id": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Disk size of worker node in GB",
 			},
 			"lb_size": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Load balancer size",
 			},
 			"pod_network": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Pod network in CIDR notation",
 			},
 			"service_network": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Service network in CIDR notation",
 			},
 			"network_node_prefix": schema.Int64Attribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersInt,
+				Description:   "Network node prefix",
 			},
 			"max_pod_per_node": schema.Int64Attribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersInt,
+				Description:   "Max pods per node",
 			},
 			"nfs_status": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "NFS status",
 			},
 			"nfs_disk_size": schema.Int64Attribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersInt,
+				Description:   "NFS disk size",
 			},
 			//"public_key": schema.StringAttribute{
 			//	Required:true,
@@ -288,40 +305,49 @@ func (r *resourceDedicatedKubernetesEngine) Schema(ctx context.Context, request 
 			"storage_policy": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Storage policy",
 			},
 			"edge_id": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Edge ID",
 			},
 			//"upstream_dns": schema.Int64Attribute{
 			//	Required:true,
 			//	PlanModifiers: forceNewPlanModifiersInt,
 			//},
 			"scale_min": schema.Int64Attribute{
-				Required: true,
+				Required:    true,
+				Description: "Minimum number of nodes for autoscaling",
 			},
 			"scale_max": schema.Int64Attribute{
-				Required: true,
+				Required:    true,
+				Description: "Maximum number of nodes for autoscaling",
 			},
 			"node_dns": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "DNS server of nodes",
 			},
 			"ip_public_firewall": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "IP public firewall",
 			},
 			"ip_private_firewall": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "IP private firewall",
 			},
 			"vpc_id": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "VPC ID",
 			},
 			"region_id": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "Region ID",
 			},
 		},
 	}
