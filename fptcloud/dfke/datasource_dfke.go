@@ -69,83 +69,108 @@ func (d *datasourceDedicatedKubernetesEngine) Schema(ctx context.Context, reques
 		Description: "Retrieves information about dedicated FKE clusters",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "UUID of the cluster",
 			},
 			"vpc_id": schema.StringAttribute{
-				Required: true,
+				Required:    true,
+				Description: "VPC ID",
 			},
 			"cluster_id": schema.StringAttribute{
 				Required:    true,
 				Description: "Cluster ID, as shown on the dashboard, usually has a length of 8 characters",
 			},
 			"cluster_name": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Cluster name",
 			},
 			"k8s_version": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Kubernetes version",
 			},
 			"master_type": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "ID of the flavor of master node",
 			},
 			"master_count": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Number of master node",
 			},
 			"master_disk_size": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Master node disk capacity in GB",
 			},
 			"worker_type": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "ID of the flavor of worker node",
 			},
 			"worker_disk_size": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Worker node disk capacity in GB",
 			},
 			"network_id": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Network UUID",
 			},
 			"lb_size": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Load balancer size",
 			},
 			"pod_network": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Pod network in CIDR notation",
 			},
 			"service_network": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Service network in CIDR notation",
 			},
 			"network_node_prefix": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Network node prefix",
 			},
 			"max_pod_per_node": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Max pods per node",
 			},
 			"nfs_status": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "NFS status",
 			},
 			"nfs_disk_size": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "NFS disk size",
 			},
 			"storage_policy": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Storage policy",
 			},
 			"edge_id": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Edge ID",
 			},
 			"scale_min": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Minimum number of nodes for autoscaling",
 			},
 			"scale_max": schema.Int64Attribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Maximum number of nodes for autoscaling",
 			},
 			"node_dns": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "DNS server of nodes",
 			},
 			"ip_public_firewall": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "IP public firewall",
 			},
 			"ip_private_firewall": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "IP private firewall",
 			},
 			"region_id": schema.StringAttribute{
-				Computed: true,
+				Computed:    true,
+				Description: "Region ID",
 			},
 		},
 	}

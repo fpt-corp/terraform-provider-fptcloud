@@ -288,6 +288,7 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 		topLevelAttributes[attribute] = schema.StringAttribute{
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersString,
+			Description:   descriptions[attribute],
 		}
 	}
 
@@ -295,14 +296,17 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 		topLevelAttributes[attribute] = schema.Int64Attribute{
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersInt,
+			Description:   descriptions[attribute],
 		}
 	}
 
 	topLevelAttributes["k8s_version"] = schema.StringAttribute{
-		Required: true,
+		Required:    true,
+		Description: descriptions["k8s_version"],
 	}
 	topLevelAttributes["network_node_prefix"] = schema.Int64Attribute{
-		Required: true,
+		Required:    true,
+		Description: descriptions["network_node_prefix"],
 	}
 
 	return topLevelAttributes
@@ -327,6 +331,7 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 		poolLevelAttributes[attribute] = schema.StringAttribute{
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersString,
+			Description:   descriptions[attribute],
 		}
 	}
 
@@ -334,6 +339,7 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 		poolLevelAttributes[attribute] = schema.Int64Attribute{
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersInt,
+			Description:   descriptions[attribute],
 		}
 	}
 
@@ -341,15 +347,18 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersBool,
+			Description:   descriptions[attribute],
 		}
 	}
 
 	poolLevelAttributes["scale_min"] = schema.Int64Attribute{
-		Required: true,
+		Required:    true,
+		Description: descriptions["scale_min"],
 	}
 
 	poolLevelAttributes["scale_max"] = schema.Int64Attribute{
-		Required: true,
+		Required:    true,
+		Description: descriptions["scale_max"],
 	}
 
 	return poolLevelAttributes
