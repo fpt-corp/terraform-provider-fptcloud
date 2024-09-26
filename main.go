@@ -11,6 +11,8 @@ import (
 	"terraform-provider-fptcloud/fptcloud"
 )
 
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name terraform-provider-fptcloud
+
 func main() {
 	ctx := context.Background()
 	var debugMode bool = true
