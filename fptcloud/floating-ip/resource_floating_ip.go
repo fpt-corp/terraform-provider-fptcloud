@@ -53,12 +53,14 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 		return diag.Errorf("[ERR] Failed to create a new floating ip: %s", err)
 	}
 
-	var setError error
 	d.SetId(result.ID)
-	setError = d.Set("vpc_id", vpcId)
-	setError = d.Set("ip_address", result.IpAddress)
-	if setError != nil {
-		return diag.Errorf("[ERR] Failed to create a new floating ip")
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	}
+
+	if err := d.Set("ip_address", result.IpAddress); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'ip_address': %s", err)
 	}
 
 	//Waiting for status active
@@ -109,13 +111,18 @@ func resourceFloatingIpRead(_ context.Context, d *schema.ResourceData, m interfa
 		return diag.Errorf("[ERR] Floating ip could not be found")
 	}
 
-	var setError error
 	d.SetId(result.ID)
-	setError = d.Set("vpc_id", findModel.VpcId)
-	setError = d.Set("ip_address", result.IpAddress)
-	setError = d.Set("created_at", result.CreatedAt)
-	if setError != nil {
-		return diag.Errorf("[ERR] Floating ip could not be found")
+
+	if err := d.Set("vpc_id", findModel.VpcId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	}
+
+	if err := d.Set("ip_address", result.IpAddress); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'ip_address': %s", err)
+	}
+
+	if err := d.Set("created_at", result.CreatedAt); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'created_at': %s", err)
 	}
 
 	return nil

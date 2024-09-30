@@ -47,25 +47,54 @@ func dataSourceInstanceRead(_ context.Context, d *schema.ResourceData, m interfa
 	// Set other attributes
 	var setError error
 	d.SetId(foundInstance.ID)
-	setError = d.Set("vpc_id", foundInstance.VpcId)
-	setError = d.Set("name", foundInstance.Name)
-	setError = d.Set("guest_os", foundInstance.GuestOs)
-	setError = d.Set("host_name", foundInstance.HostName)
-	setError = d.Set("status", foundInstance.Status)
-	setError = d.Set("private_ip", foundInstance.PrivateIp)
-	setError = d.Set("public_ip", foundInstance.PublicIp)
-	setError = d.Set("memory_mb", foundInstance.MemoryMb)
-	setError = d.Set("cpu_number", foundInstance.CpuNumber)
-	setError = d.Set("flavor_name", foundInstance.FlavorName)
-	setError = d.Set("subnet_id", foundInstance.SubnetId)
-	setError = d.Set("storage_size_gb", foundInstance.StorageSizeGb)
-	setError = d.Set("storage_policy", foundInstance.StoragePolicy)
-	setError = d.Set("security_group_ids", foundInstance.SecurityGroupIds)
-	setError = d.Set("instance_group_id", foundInstance.InstanceGroupId)
-	setError = d.Set("created_at", foundInstance.CreatedAt)
 
-	if setError != nil {
-		return diag.Errorf("[ERR] Instance could not be found")
+	if setError = d.Set("vpc_id", foundInstance.VpcId); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("name", foundInstance.Name); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("guest_os", foundInstance.GuestOs); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("host_name", foundInstance.HostName); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("status", foundInstance.Status); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("private_ip", foundInstance.PrivateIp); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("public_ip", foundInstance.PublicIp); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("memory_mb", foundInstance.MemoryMb); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("cpu_number", foundInstance.CpuNumber); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("flavor_name", foundInstance.FlavorName); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("subnet_id", foundInstance.SubnetId); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("storage_size_gb", foundInstance.StorageSizeGb); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("storage_policy", foundInstance.StoragePolicy); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("security_group_ids", foundInstance.SecurityGroupIds); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("instance_group_id", foundInstance.InstanceGroupId); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("created_at", foundInstance.CreatedAt); setError != nil {
+		return diag.FromErr(setError)
 	}
 
 	return nil

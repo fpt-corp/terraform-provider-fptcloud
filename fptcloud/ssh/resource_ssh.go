@@ -71,10 +71,9 @@ func resourceSSHKeyRead(_ context.Context, d *schema.ResourceData, m interface{}
 		return diag.Errorf("[ERR] error retrieving ssh key: %s", err)
 	}
 
-	var setError error
-	setError = d.Set("name", sshKey.Name)
-	if setError != nil {
-		return diag.Errorf("[ERR] error retrieving ssh key: %s", setError)
+	if err := d.Set("name", sshKey.Name); err != nil {
+
+		return diag.Errorf("[ERR] error retrieving ssh key: %s", err)
 	}
 	return nil
 }
