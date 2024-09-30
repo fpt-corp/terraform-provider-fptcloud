@@ -81,5 +81,6 @@ Read-Only:
 - `edge_gateway` (Map of String)
 - `gateway` (String)
 - `id` (String)
+- `network_id` (String)
 - `name` (String)
 - `network_name` (String)
