@@ -5,5 +5,4 @@ import (
 )
 
 func TestDataSourceStoragePolicy(t *testing.T) {
-	return
 }

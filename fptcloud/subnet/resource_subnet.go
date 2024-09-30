@@ -49,12 +49,14 @@ func resourceSubnetCreate(ctx context.Context, d *schema.ResourceData, m interfa
 		return diag.Errorf("[ERR] Failed to create a new subnet: %s", err)
 	}
 
-	var setError error
 	d.SetId("")
-	setError = d.Set("vpc_id", vpcId)
-	setError = d.Set("network_name", result.NetworkName)
-	if setError != nil {
-		return diag.Errorf("[ERR] Failed to create a new subnet")
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	}
+
+	if err := d.Set("network_name", result.NetworkName); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'network_name': %s", err)
 	}
 
 	//Waiting for status active
@@ -107,15 +109,26 @@ func resourceSubnetRead(_ context.Context, d *schema.ResourceData, m interface{}
 		return diag.Errorf("[ERR] Subnet could not be found")
 	}
 
-	var setError error
 	d.SetId(result.ID)
-	setError = d.Set("name", result.Name)
-	setError = d.Set("network_name", result.NetworkName)
-	setError = d.Set("gateway", result.Gateway)
-	setError = d.Set("edge_gateway", result.EdgeGateway)
-	setError = d.Set("created_at", result.CreatedAt)
-	if setError != nil {
-		return diag.Errorf("[ERR] Subnet could not be found")
+
+	if err := d.Set("name", result.Name); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'name': %s", err)
+	}
+
+	if err := d.Set("network_name", result.NetworkName); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'network_name': %s", err)
+	}
+
+	if err := d.Set("gateway", result.Gateway); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'gateway': %s", err)
+	}
+
+	if err := d.Set("edge_gateway", result.EdgeGateway); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'edge_gateway': %s", err)
+	}
+
+	if err := d.Set("created_at", result.CreatedAt); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'created_at': %s", err)
 	}
 
 	return nil

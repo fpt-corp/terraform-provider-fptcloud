@@ -5,5 +5,4 @@ import (
 )
 
 func TestDataSourceVPC_Read(t *testing.T) {
-	return
 }
