@@ -72,7 +72,7 @@ func (s *FloatingIpAssociationServiceImpl) FindFloatingIp(findDto FindFloatingIp
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 
@@ -92,7 +92,7 @@ func (s *FloatingIpAssociationServiceImpl) Associate(associateData AssociateFloa
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 

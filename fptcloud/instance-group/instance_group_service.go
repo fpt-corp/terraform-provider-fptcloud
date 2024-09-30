@@ -66,7 +66,7 @@ func (s *InstanceGroupServiceImpl) FindInstanceGroup(searchModel FindInstanceGro
 	if err != nil {
 		return nil, err
 	}
-	if false == instanceGroupResponse.Status || len(instanceGroupResponse.Data) == 0 {
+	if !instanceGroupResponse.Status || len(instanceGroupResponse.Data) == 0 {
 		return nil, errors.New(instanceGroupResponse.Message)
 	}
 

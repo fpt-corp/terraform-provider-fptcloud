@@ -95,19 +95,38 @@ func dataSourceStorageRead(_ context.Context, d *schema.ResourceData, m interfac
 		return diag.Errorf("[ERR] Failed to retrieve storage: %s", err)
 	}
 
-	var setError error
 	d.SetId(foundStorage.ID)
-	setError = d.Set("name", foundStorage.Name)
-	setError = d.Set("size_gb", foundStorage.SizeGb)
-	setError = d.Set("storage_policy", foundStorage.StoragePolicy)
-	setError = d.Set("storage_policy_id", foundStorage.StoragePolicyId)
-	setError = d.Set("type", foundStorage.Type)
-	setError = d.Set("instance_id", foundStorage.InstanceId)
-	setError = d.Set("vpc_id", foundStorage.VpcId)
-	setError = d.Set("created_at", foundStorage.CreatedAt)
 
-	if setError != nil {
-		return diag.Errorf("[ERR]Storage could not be found")
+	if err := d.Set("name", foundStorage.Name); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("size_gb", foundStorage.SizeGb); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("storage_policy", foundStorage.StoragePolicy); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("storage_policy_id", foundStorage.StoragePolicyId); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("type", foundStorage.Type); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("instance_id", foundStorage.InstanceId); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("vpc_id", foundStorage.VpcId); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("created_at", foundStorage.CreatedAt); err != nil {
+		return diag.FromErr(err)
 	}
 
 	return nil

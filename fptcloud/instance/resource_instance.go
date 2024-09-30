@@ -164,20 +164,34 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	}
 
 	// Set other attributes
-	var setError error
 	d.SetId(foundInstance.ID)
-	setError = d.Set("vpc_id", foundInstance.VpcId)
-	setError = d.Set("name", foundInstance.Name)
-	setError = d.Set("status", foundInstance.Status)
-	setError = d.Set("public_ip", foundInstance.PublicIp)
-	setError = d.Set("flavor_name", foundInstance.FlavorName)
-	setError = d.Set("subnet_id", foundInstance.SubnetId)
-	setError = d.Set("security_group_ids", foundInstance.SecurityGroupIds)
-	setError = d.Set("instance_group_id", foundInstance.InstanceGroupId)
-	setError = d.Set("created_at", foundInstance.CreatedAt)
 
-	if setError != nil {
-		return diag.Errorf("[ERR] Instance could not be found")
+	if err := d.Set("vpc_id", foundInstance.VpcId); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("name", foundInstance.Name); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("status", foundInstance.Status); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("public_ip", foundInstance.PublicIp); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("flavor_name", foundInstance.FlavorName); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("subnet_id", foundInstance.SubnetId); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("security_group_ids", foundInstance.SecurityGroupIds); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("instance_group_id", foundInstance.InstanceGroupId); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("created_at", foundInstance.CreatedAt); err != nil {
+		return diag.FromErr(err)
 	}
 
 	return nil
