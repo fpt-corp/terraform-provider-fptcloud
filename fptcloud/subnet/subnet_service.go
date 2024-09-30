@@ -89,7 +89,7 @@ func (s *SubnetServiceImpl) CreateSubnet(createDto CreateSubnetDTO) (*Subnet, er
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 
@@ -109,7 +109,7 @@ func (s *SubnetServiceImpl) FindSubnetByName(findDto FindSubnetDTO) (*Subnet, er
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 
@@ -129,7 +129,7 @@ func (s *SubnetServiceImpl) FindSubnet(findDto FindSubnetDTO) (*Subnet, error) {
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 
@@ -149,7 +149,7 @@ func (s *SubnetServiceImpl) ListSubnet(vpcId string) (*[]Subnet, error) {
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 	if response.Data == nil || len(response.Data.Data) == 0 {
@@ -172,7 +172,7 @@ func (s *SubnetServiceImpl) DeleteSubnet(vpcId string, subnetId string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return false, errors.New(response.Message)
 	}
 

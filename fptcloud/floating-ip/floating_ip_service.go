@@ -78,7 +78,7 @@ func (s *FloatingIpServiceImpl) FindFloatingIp(findDto FindFloatingIpDTO) (*Floa
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 
@@ -98,7 +98,7 @@ func (s *FloatingIpServiceImpl) FindFloatingIpByAddress(findDto FindFloatingIpDT
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 
@@ -118,7 +118,7 @@ func (s *FloatingIpServiceImpl) ListFloatingIp(vpcId string) (*[]FloatingIp, err
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 	if response.Data == nil || len(response.Data.Data) == 0 {
@@ -142,7 +142,7 @@ func (s *FloatingIpServiceImpl) CreateFloatingIp(vpcId string) (*FloatingIp, err
 	if err != nil {
 		return nil, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
 
@@ -162,7 +162,7 @@ func (s *FloatingIpServiceImpl) DeleteFloatingIp(vpcId string, floatingIpId stri
 	if err != nil {
 		return false, err
 	}
-	if false == response.Status {
+	if !response.Status {
 		return false, errors.New(response.Message)
 	}
 

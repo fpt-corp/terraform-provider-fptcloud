@@ -65,12 +65,12 @@ func dataSourceSSHKeyRead(_ context.Context, d *schema.ResourceData, m interface
 
 	d.SetId(sshKey.ID)
 
-	var setError error
-	setError = d.Set("name", sshKey.Name)
-	setError = d.Set("public_key", sshKey.PublicKey)
+	if err := d.Set("name", sshKey.Name); err != nil {
+		return diag.Errorf("[ERR] error setting 'name': %s", err)
+	}
 
-	if setError != nil {
-		return diag.Errorf("[ERR] SSH key could not be found")
+	if err := d.Set("public_key", sshKey.PublicKey); err != nil {
+		return diag.Errorf("[ERR] error setting 'public_key': %s", err)
 	}
 
 	return nil
