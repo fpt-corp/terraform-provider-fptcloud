@@ -104,8 +104,6 @@ func isPrimitiveType(fieldType schema.ValueType) bool {
 	default:
 		panic("unhandled default case")
 	}
-
-	return false
 }
 
 // Expands a single filter value (which is a string) into the Go type that can actually be

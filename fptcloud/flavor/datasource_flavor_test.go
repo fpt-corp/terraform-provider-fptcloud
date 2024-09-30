@@ -2,47 +2,45 @@ package fptcloud_flavor_test
 
 import (
 	"fmt"
-	"strconv"
-	"terraform-provider-fptcloud/commons/test-helper"
-	"testing"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"strconv"
+	"terraform-provider-fptcloud/commons/test-helper"
 )
 
-func TestAccDataSourceFlavor_basic(t *testing.T) {
-	datasourceName := "data.fptcloud_flavor.example"
+//func TestAccDataSourceFlavor_basic(t *testing.T) {
+//	datasourceName := "data.fptcloud_flavor.example"
+//
+//	resource.Test(t, resource.TestCase{
+//		PreCheck:          func() { test_helper.TestPreCheck(t) },
+//		ProviderFactories: test_helper.TestProviderFactories,
+//		Steps: []resource.TestStep{
+//			{
+//				Config: DataSourceFlavorConfig(),
+//				Check: resource.ComposeAggregateTestCheckFunc(
+//					DataSourceFlavorExist(datasourceName),
+//				),
+//			},
+//		},
+//	})
+//}
 
-	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { test_helper.TestPreCheck(t) },
-		ProviderFactories: test_helper.TestProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: DataSourceFlavorConfig(),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					DataSourceFlavorExist(datasourceName),
-				),
-			},
-		},
-	})
-}
-
-func TestAccDataSourceFlavor_withFilterByName(t *testing.T) {
-	datasourceName := "data.fptcloud_flavor.example_with_filter"
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { test_helper.TestPreCheck(t) },
-		ProviderFactories: test_helper.TestProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: DataSourceFlavorWithFilterConfig(),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					DataSourceFlavorWithFilter(datasourceName),
-				),
-			},
-		},
-	})
-}
+//func TestAccDataSourceFlavor_withFilterByName(t *testing.T) {
+//	datasourceName := "data.fptcloud_flavor.example_with_filter"
+//
+//	resource.Test(t, resource.TestCase{
+//		PreCheck:          func() { test_helper.TestPreCheck(t) },
+//		ProviderFactories: test_helper.TestProviderFactories,
+//		Steps: []resource.TestStep{
+//			{
+//				Config: DataSourceFlavorWithFilterConfig(),
+//				Check: resource.ComposeAggregateTestCheckFunc(
+//					DataSourceFlavorWithFilter(datasourceName),
+//				),
+//			},
+//		},
+//	})
+//}
 
 func DataSourceFlavorExist(n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {

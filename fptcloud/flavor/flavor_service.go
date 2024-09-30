@@ -63,13 +63,14 @@ func (s *FlavorServiceImpl) ListFlavor(vpcId string) (*[]Flavor, error) {
 	flavors := make([]Flavor, len(responseModel.Data))
 
 	for i, flavor := range responseModel.Data {
+		flavorCopy := flavor
 		flavors[i] = Flavor{
-			ID:          flavor.ID,
-			Name:        flavor.Name,
-			Cpu:         flavor.Info.Vcpu,
-			MemoryMb:    flavor.Info.MemoryMb,
-			GpuMemoryGb: &flavor.Info.GpuMemoryGb,
-			Type:        flavor.Type,
+			ID:          flavorCopy.ID,
+			Name:        flavorCopy.Name,
+			Cpu:         flavorCopy.Info.Vcpu,
+			MemoryMb:    flavorCopy.Info.MemoryMb,
+			GpuMemoryGb: &flavorCopy.Info.GpuMemoryGb,
+			Type:        flavorCopy.Type,
 		}
 	}
 	return &flavors, nil
