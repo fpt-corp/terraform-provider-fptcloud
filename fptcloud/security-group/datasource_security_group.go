@@ -46,14 +46,31 @@ func dataSourceSecurityGroupRead(_ context.Context, d *schema.ResourceData, m in
 	}
 
 	// Set other attributes
-	var setError error
 	d.SetId(foundSecurityGroup.ID)
-	setError = d.Set("vpc_id", foundSecurityGroup.VpcId)
-	setError = d.Set("name", foundSecurityGroup.Name)
-	setError = d.Set("edge_gateway_id", foundSecurityGroup.EdgeGatewayId)
-	setError = d.Set("type", foundSecurityGroup.Type)
-	setError = d.Set("apply_to", foundSecurityGroup.ApplyTo)
-	setError = d.Set("created_at", foundSecurityGroup.CreatedAt)
+
+	if err := d.Set("vpc_id", foundSecurityGroup.VpcId); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("name", foundSecurityGroup.Name); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("edge_gateway_id", foundSecurityGroup.EdgeGatewayId); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("type", foundSecurityGroup.Type); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("apply_to", foundSecurityGroup.ApplyTo); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("created_at", foundSecurityGroup.CreatedAt); err != nil {
+		return diag.FromErr(err)
+	}
 
 	rules := make([]interface{}, len(foundSecurityGroup.Rules))
 	for i, rule := range foundSecurityGroup.Rules {
@@ -69,10 +86,8 @@ func dataSourceSecurityGroupRead(_ context.Context, d *schema.ResourceData, m in
 		rules[i] = ruleMap
 	}
 
-	setError = d.Set("rules", rules)
-
-	if setError != nil {
-		return diag.Errorf("[ERR]Security group could not be found")
+	if err := d.Set("rules", rules); err != nil {
+		return diag.FromErr(err)
 	}
 
 	return nil

@@ -5,5 +5,4 @@ import (
 )
 
 func TestResourceStorage_basic(t *testing.T) {
-	return
 }

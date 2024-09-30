@@ -5,5 +5,4 @@ import (
 )
 
 func TestResourceSSHKey_basic(t *testing.T) {
-	return
 }
