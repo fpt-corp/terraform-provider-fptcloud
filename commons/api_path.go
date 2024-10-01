@@ -40,6 +40,7 @@ var ApiPath = struct {
 	ListSubnets                func(vpcId string) string
 
 	Subnet                     func(vpcId string) string
+	EdgeGatewayList            func(vpcId string) string
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
 	DedicatedFKEGet            func(vpcId string, clusterId string) string
 	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
@@ -153,6 +154,10 @@ var ApiPath = struct {
 	},
 
 	Subnet: func(vpcId string) string { return fmt.Sprintf("/v1/vmware/vpc/%s/network/subnets", vpcId) },
+
+	EdgeGatewayList: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/edge_gateway/list", vpcId)
+	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {
 		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/kubernetes?page=%d&page_size=%d", vpcId, page, pageSize)

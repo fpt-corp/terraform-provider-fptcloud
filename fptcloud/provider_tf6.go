@@ -12,6 +12,7 @@ import (
 	"os"
 	common "terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
 )
 
@@ -150,6 +151,7 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 	return []func() datasource.DataSource{
 		fptcloud_dfke.NewDataSourceDedicatedKubernetesEngine,
 		fptcloud_mfke.NewDataSourceManagedKubernetesEngine,
+		fptcloud_edge_gateway.NewDataSourceEdgeGateway,
 	}
 }
 
