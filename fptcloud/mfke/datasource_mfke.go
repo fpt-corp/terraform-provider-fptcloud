@@ -23,7 +23,7 @@ var (
 type datasourceManagedKubernetesEngine struct {
 	client       *commons.Client
 	mfkeClient   *MfkeApiClient
-	subnetClient *fptcloud_subnet.SubnetClient
+	subnetClient fptcloud_subnet.SubnetService
 }
 
 func (d *datasourceManagedKubernetesEngine) Configure(ctx context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) {
@@ -43,7 +43,7 @@ func (d *datasourceManagedKubernetesEngine) Configure(ctx context.Context, reque
 
 	d.client = client
 	d.mfkeClient = newMfkeApiClient(d.client)
-	d.subnetClient = fptcloud_subnet.NewSubnetClient(d.client)
+	d.subnetClient = fptcloud_subnet.NewSubnetService(d.client)
 }
 
 func (d *datasourceManagedKubernetesEngine) Metadata(ctx context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
