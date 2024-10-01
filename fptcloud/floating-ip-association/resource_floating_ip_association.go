@@ -90,13 +90,18 @@ func resourceFloatingIpAssociationCreate(ctx context.Context, d *schema.Resource
 		return diag.Errorf("[ERR] Failed to associate floating ip: %s", err)
 	}
 
-	var setError error
 	d.SetId(createModel.FloatingIpId)
-	setError = d.Set("vpc_id", createModel.VpcId)
-	setError = d.Set("floating_ip_id", createModel.FloatingIpId)
-	setError = d.Set("instance_id", createModel.InstanceId)
-	if setError != nil {
-		return diag.Errorf("[ERR] Failed to associate floating ip")
+
+	if err := d.Set("vpc_id", createModel.VpcId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	}
+
+	if err := d.Set("floating_ip_id", createModel.FloatingIpId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'floating_ip_id': %s", err)
+	}
+
+	if err := d.Set("instance_id", createModel.InstanceId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'instance_id': %s", err)
 	}
 
 	//Waiting for status active
@@ -147,13 +152,18 @@ func resourceFloatingIpAssociationRead(_ context.Context, d *schema.ResourceData
 		return diag.Errorf("[ERR] Floating ip could not be found")
 	}
 
-	var setError error
 	d.SetId(result.ID)
-	setError = d.Set("vpc_id", findModel.VpcId)
-	setError = d.Set("floating_ip_id", result.ID)
-	setError = d.Set("instance_id", result.Instance.ID)
-	if setError != nil {
-		return diag.Errorf("[ERR] Floating ip could not be found")
+
+	if err := d.Set("vpc_id", findModel.VpcId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	}
+
+	if err := d.Set("floating_ip_id", result.ID); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'floating_ip_id': %s", err)
+	}
+
+	if err := d.Set("instance_id", result.Instance.ID); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'instance_id': %s", err)
 	}
 
 	return nil
