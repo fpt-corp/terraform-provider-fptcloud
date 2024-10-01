@@ -108,12 +108,14 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 		return diag.Errorf("[ERR] Failed to create a new instance group: %s", err)
 	}
 
-	var setError error
 	d.SetId("")
-	setError = d.Set("vpc_id", vpcId)
-	setError = d.Set("policy_name", name)
-	if setError != nil {
-		return diag.Errorf("[ERR] Failed to create a new instance group")
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	}
+
+	if err := d.Set("policy_name", name); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'policy_name': %s", err)
 	}
 
 	//Waiting for status active
@@ -176,18 +178,28 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 		return nil
 	}
 
-	var setError error
 	data := (*result)[0]
 
 	d.SetId(data.ID)
-	setError = d.Set("name", data.Name)
-	setError = d.Set("policy", data.Policy)
-	setError = d.Set("vms", data.Vms)
-	setError = d.Set("vpc_id", data.VpcId)
-	setError = d.Set("created_at", data.CreatedAt)
 
-	if setError != nil {
-		return diag.Errorf("[ERR] Instance group could not be found")
+	if err := d.Set("name", data.Name); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'name': %s", err)
+	}
+
+	if err := d.Set("policy", data.Policy); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'policy': %s", err)
+	}
+
+	if err := d.Set("vms", data.Vms); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vms': %s", err)
+	}
+
+	if err := d.Set("vpc_id", data.VpcId); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	}
+
+	if err := d.Set("created_at", data.CreatedAt); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'created_at': %s", err)
 	}
 
 	return nil

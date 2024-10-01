@@ -200,20 +200,34 @@ func resourceSecurityGroupRuleRead(_ context.Context, d *schema.ResourceData, m 
 	}
 
 	// Set other attributes
-	var setError error
 	d.SetId(foundSecurityGroupRule.ID)
-	setError = d.Set("vpc_id", foundSecurityGroupRule.VpcId)
-	setError = d.Set("direction", foundSecurityGroupRule.Direction)
-	setError = d.Set("action", foundSecurityGroupRule.Action)
-	setError = d.Set("protocol", foundSecurityGroupRule.Protocol)
-	setError = d.Set("port_range", foundSecurityGroupRule.PortRange)
-	setError = d.Set("sources", foundSecurityGroupRule.Sources)
-	setError = d.Set("ip_type", foundSecurityGroupRule.IpType)
-	setError = d.Set("description", foundSecurityGroupRule.Description)
-	setError = d.Set("security_group_id", foundSecurityGroupRule.SecurityGroupId)
 
-	if setError != nil {
-		return diag.Errorf("[ERR]Security group rule could not be found")
+	if err := d.Set("vpc_id", foundSecurityGroupRule.VpcId); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("direction", foundSecurityGroupRule.Direction); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("action", foundSecurityGroupRule.Action); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("protocol", foundSecurityGroupRule.Protocol); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("port_range", foundSecurityGroupRule.PortRange); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("sources", foundSecurityGroupRule.Sources); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("ip_type", foundSecurityGroupRule.IpType); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("description", foundSecurityGroupRule.Description); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("security_group_id", foundSecurityGroupRule.SecurityGroupId); err != nil {
+		return diag.FromErr(err)
 	}
 
 	return nil

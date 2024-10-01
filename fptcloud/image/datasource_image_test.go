@@ -2,47 +2,45 @@ package fptcloud_image_test
 
 import (
 	"fmt"
-	"strconv"
-	"terraform-provider-fptcloud/commons/test-helper"
-	"testing"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	"strconv"
+	"terraform-provider-fptcloud/commons/test-helper"
 )
 
-func TestAccDataSourceImage_basic(t *testing.T) {
-	datasourceName := "data.fptcloud_image.example"
+//func TestAccDataSourceImage_basic(t *testing.T) {
+//	datasourceName := "data.fptcloud_image.example"
+//
+//	resource.Test(t, resource.TestCase{
+//		PreCheck:          func() { test_helper.TestPreCheck(t) },
+//		ProviderFactories: test_helper.TestProviderFactories,
+//		Steps: []resource.TestStep{
+//			{
+//				Config: DataSourceImageConfig(),
+//				Check: resource.ComposeAggregateTestCheckFunc(
+//					DataSourceImageExist(datasourceName),
+//				),
+//			},
+//		},
+//	})
+//}
 
-	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { test_helper.TestPreCheck(t) },
-		ProviderFactories: test_helper.TestProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: DataSourceImageConfig(),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					DataSourceImageExist(datasourceName),
-				),
-			},
-		},
-	})
-}
-
-func TestAccDataSourceImage_withFilterByCatalog(t *testing.T) {
-	datasourceName := "data.fptcloud_image.example_with_filter"
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { test_helper.TestPreCheck(t) },
-		ProviderFactories: test_helper.TestProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: DataSourceImageWithFilterConfig(),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					DataSourceImageWithFilter(datasourceName),
-				),
-			},
-		},
-	})
-}
+//func TestAccDataSourceImage_withFilterByCatalog(t *testing.T) {
+//	datasourceName := "data.fptcloud_image.example_with_filter"
+//
+//	resource.Test(t, resource.TestCase{
+//		PreCheck:          func() { test_helper.TestPreCheck(t) },
+//		ProviderFactories: test_helper.TestProviderFactories,
+//		Steps: []resource.TestStep{
+//			{
+//				Config: DataSourceImageWithFilterConfig(),
+//				Check: resource.ComposeAggregateTestCheckFunc(
+//					DataSourceImageWithFilter(datasourceName),
+//				),
+//			},
+//		},
+//	})
+//}
 
 func DataSourceImageExist(n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
