@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"terraform-provider-fptcloud/commons"
 )
 
@@ -15,17 +16,17 @@ func newMfkeApiClient(c *commons.Client) *MfkeApiClient {
 	return &MfkeApiClient{c}
 }
 
-func (m *MfkeApiClient) sendGet(requestURL string) ([]byte, error) {
+func (m *MfkeApiClient) sendGet(requestURL string, infraType string) ([]byte, error) {
 	u := m.Client.PrepareClientURL(requestURL)
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return m.sendRequestWithHeader(req)
+	return m.sendRequestWithHeader(req, infraType)
 }
 
-func (m *MfkeApiClient) sendPost(requestURL string, params interface{}) ([]byte, error) {
+func (m *MfkeApiClient) sendPost(requestURL string, infraType string, params interface{}) ([]byte, error) {
 	u := m.Client.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
@@ -35,10 +36,10 @@ func (m *MfkeApiClient) sendPost(requestURL string, params interface{}) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	return m.sendRequestWithHeader(req)
+	return m.sendRequestWithHeader(req, infraType)
 }
 
-func (m *MfkeApiClient) sendPatch(requestURL string, params interface{}) ([]byte, error) {
+func (m *MfkeApiClient) sendPatch(requestURL string, infraType string, params interface{}) ([]byte, error) {
 	u := m.Client.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
@@ -48,11 +49,11 @@ func (m *MfkeApiClient) sendPatch(requestURL string, params interface{}) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	return m.sendRequestWithHeader(req)
+	return m.sendRequestWithHeader(req, infraType)
 }
 
-func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request) ([]byte, error) {
+func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType string) ([]byte, error) {
 	request.Header.Set("fpt-region", m.Client.Region)
-	request.Header.Set("infra-type", "VMW")
+	request.Header.Set("infra-type", strings.ToUpper(infraType))
 	return m.Client.SendRequest(request)
 }

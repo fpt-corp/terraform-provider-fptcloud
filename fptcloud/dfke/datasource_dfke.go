@@ -21,7 +21,7 @@ var (
 type datasourceDedicatedKubernetesEngine struct {
 	client           *commons.Client
 	dfkeClient       *dfkeApiClient
-	tenancyApiClient *tenancyApiClient
+	tenancyApiClient *TenancyApiClient
 }
 
 func NewDataSourceDedicatedKubernetesEngine() datasource.DataSource {
@@ -56,7 +56,7 @@ func (d *datasourceDedicatedKubernetesEngine) Configure(ctx context.Context, req
 
 	d.dfkeClient = a
 
-	t := newTenancyApiClient(client)
+	t := NewTenancyApiClient(client)
 	d.tenancyApiClient = t
 }
 
@@ -233,7 +233,7 @@ func (d *datasourceDedicatedKubernetesEngine) internalRead(ctx context.Context, 
 	}
 
 	// resolve edge ID
-	edge, err := d.dfkeClient.FindEdgeByEdgeGatewayId(ctx, vpcId, data.EdgeID)
+	edgeId, err := d.dfkeClient.FindEdgeByEdgeGatewayId(ctx, vpcId, data.EdgeID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (d *datasourceDedicatedKubernetesEngine) internalRead(ctx context.Context, 
 	state.NfsStatus = types.StringValue(awx.NfsStatus)
 	state.NfsDiskSize = types.Int64Value(int64(awx.NfsDiskSize))
 	state.StoragePolicy = types.StringValue(awx.StorageProfile)
-	state.EdgeID = types.StringValue(edge.Id)
+	state.EdgeID = types.StringValue(edgeId)
 	state.ScaleMin = types.Int64Value(int64(awx.ScaleMinSize))
 	state.ScaleMax = types.Int64Value(int64(awx.ScaleMaxSize))
 	state.NodeDNS = types.StringValue(awx.NodeDNS)
