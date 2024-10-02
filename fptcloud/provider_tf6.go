@@ -11,7 +11,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"os"
 	common "terraform-provider-fptcloud/commons"
+	fptcloud_database "terraform-provider-fptcloud/fptcloud/database"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
 )
 
@@ -150,6 +152,7 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 	return []func() datasource.DataSource{
 		fptcloud_dfke.NewDataSourceDedicatedKubernetesEngine,
 		fptcloud_mfke.NewDataSourceManagedKubernetesEngine,
+		fptcloud_edge_gateway.NewDataSourceEdgeGateway,
 	}
 }
 
@@ -158,5 +161,7 @@ func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resourc
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngine,
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngineState,
 		fptcloud_mfke.NewResourceManagedKubernetesEngine,
+		fptcloud_database.NewResourceDatabase,
+		fptcloud_database.NewResourceDatabaseStatus,
 	}
 }
