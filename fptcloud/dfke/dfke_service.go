@@ -8,96 +8,47 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strings"
 	"terraform-provider-fptcloud/commons"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 )
 
 type dfkeApiClient struct {
 	*commons.Client
-	edgeClient *commons.Client
 }
 
 func newDfkeApiClient(c *commons.Client) (*dfkeApiClient, error) {
-	serviceToken := "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzb21lIjoicGF5bG9hZCJ9.Joh1R2dYzkRvDkqv3sygm5YyK8Gi4ShZqbhK2gxcs2U"
-	edgeClient, err := commons.NewClientWithURL(
-		serviceToken,
-		c.BaseURL.String(),
-		c.Region,
-		c.TenantName,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
 	return &dfkeApiClient{
-		Client:     edgeClient,
-		edgeClient: edgeClient,
+		Client: c,
 	}, nil
 }
 
-type EdgeGateway struct {
-	Id            string `json:"id"`
-	VpcId         string `json:"vpc_id"`
-	EdgeGatewayId string `json:"edge_gateway_id"`
-}
-
-type edgeResponse struct {
-	EdgeGateway EdgeGateway `json:"edgeGateway"`
-}
-
 type edgeListResponse struct {
-	Data []EdgeGateway `json:"data"`
+	Data []fptcloud_subnet.EdgeGateway `json:"data"`
 }
 
-func (a *dfkeApiClient) FindEdgeById(ctx context.Context, vpcId string, id string) (*EdgeGateway, error) {
-	tflog.Info(ctx, "Resolving edge by ID "+id)
-	path := fmt.Sprintf("/v1/kubernetes/vpc/%s/find_edge_by_id/%s/false", vpcId, id)
-	r, err := a.internalFindEdge(path)
-	if err != nil {
-		return nil, err
-	}
-
-	return r, nil
-}
-
-func (a *dfkeApiClient) FindEdgeByEdgeGatewayId(ctx context.Context, vpcId string, edgeId string) (*EdgeGateway, error) {
+func (a *dfkeApiClient) FindEdgeByEdgeGatewayId(ctx context.Context, vpcId string, edgeId string) (string, error) {
 	if !strings.HasPrefix(edgeId, "urn:vcloud:gateway") {
-		return nil, errors.New("edge gateway id must be prefixed with \"urn:vcloud:gateway\"")
+		return "", errors.New("edge gateway id must be prefixed with \"urn:vcloud:gateway\"")
 	}
 
 	tflog.Info(ctx, "Resolving edge by gateway ID "+edgeId)
 
 	path := fmt.Sprintf("/v1/vmware/vpc/%s/edge_gateway/list", vpcId)
-	r, err := a.edgeClient.SendGetRequest(path)
+	r, err := a.Client.SendGetRequest(path)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var edgeList edgeListResponse
 	err = json.Unmarshal(r, &edgeList)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	for _, edge := range edgeList.Data {
 		if edge.EdgeGatewayId == edgeId {
-			return &edge, nil
+			return edge.ID, nil
 		}
 	}
 
-	return nil, errors.New("edge gateway not found")
-}
-
-func (a *dfkeApiClient) internalFindEdge(endpoint string) (*EdgeGateway, error) {
-	r, err := a.edgeClient.SendGetRequest(endpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	var edge edgeResponse
-	err = json.Unmarshal(r, &edge)
-	if err != nil {
-		return nil, err
-	}
-
-	return &edge.EdgeGateway, nil
+	return "", errors.New("edge gateway not found")
 }

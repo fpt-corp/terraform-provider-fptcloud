@@ -45,7 +45,7 @@ var ApiPath = struct {
 	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
 	DedicatedFKEManagement     func(vpcId string, clusterId string) string
 
-	ManagedFKEList   func(vpcId string, page int, pageSize int) string
+	ManagedFKEList   func(vpcId string, page int, pageSize int, infraType string) string
 	ManagedFKEGet    func(vpcId string, platform string, clusterId string) string
 	ManagedFKEDelete func(vpcId string, platform string, clusterName string) string
 	ManagedFKECreate func(vpcId string, platform string) string
@@ -167,8 +167,8 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/kubernetes/%s/management", vpcId, clusterId)
 	},
 
-	ManagedFKEList: func(vpcId string, page int, pageSize int) string {
-		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/vmw/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, page, pageSize)
+	ManagedFKEList: func(vpcId string, page int, pageSize int, infraType string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
 	},
 	ManagedFKEDelete: func(vpcId string, platform string, clusterName string) string {
 		return fmt.Sprintf(

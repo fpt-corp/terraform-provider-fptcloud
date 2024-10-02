@@ -35,7 +35,7 @@ var (
 type resourceDedicatedKubernetesEngine struct {
 	client           *commons.Client
 	dfkeClient       *dfkeApiClient
-	tenancyApiClient *tenancyApiClient
+	tenancyApiClient *TenancyApiClient
 }
 
 func (r *resourceDedicatedKubernetesEngine) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
@@ -74,6 +74,8 @@ func (r *resourceDedicatedKubernetesEngine) Create(ctx context.Context, request 
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error()))
 		return
 	}
+
+	tflog.Info(ctx, "create response was "+string(a))
 
 	tflog.Info(ctx, "Created cluster with id "+createResponse.Cluster.ID)
 
@@ -381,7 +383,7 @@ func (r *resourceDedicatedKubernetesEngine) Configure(ctx context.Context, reque
 
 	r.dfkeClient = a
 
-	t := newTenancyApiClient(client)
+	t := NewTenancyApiClient(client)
 	r.tenancyApiClient = t
 }
 
@@ -410,7 +412,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	}
 
 	// resolve edge ID
-	edge, err := r.dfkeClient.FindEdgeByEdgeGatewayId(ctx, vpcId, data.EdgeID)
+	edgeId, err := r.dfkeClient.FindEdgeByEdgeGatewayId(ctx, vpcId, data.EdgeID)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +434,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	state.NfsStatus = types.StringValue(awx.NfsStatus)
 	state.NfsDiskSize = types.Int64Value(int64(awx.NfsDiskSize))
 	state.StoragePolicy = types.StringValue(awx.StorageProfile)
-	state.EdgeID = types.StringValue(edge.Id)
+	state.EdgeID = types.StringValue(edgeId)
 	state.ScaleMin = types.Int64Value(int64(awx.ScaleMinSize))
 	state.ScaleMax = types.Int64Value(int64(awx.ScaleMaxSize))
 	state.NodeDNS = types.StringValue(awx.NodeDNS)
@@ -474,6 +476,13 @@ func (r *resourceDedicatedKubernetesEngine) checkForError(a []byte) *diag2.Error
 
 		if errorField != nil {
 			res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
+			return &res
+		}
+	}
+
+	if errorCode, ok := re["error_code"]; ok {
+		if errorCode != nil {
+			res := diag2.NewErrorDiagnostic("Response contained an error code field", "Response body was "+string(a))
 			return &res
 		}
 	}
@@ -772,7 +781,7 @@ func (e *dedicatedKubernetesEngine) vpcId() string {
 func (e *dedicatedKubernetesEngine) clusterUUID() string {
 	return e.Id.ValueString()
 }
-func getRegionFromVpcId(client *tenancyApiClient, ctx context.Context, vpcId string) (string, error) {
+func getRegionFromVpcId(client *TenancyApiClient, ctx context.Context, vpcId string) (string, error) {
 	t, err := client.GetTenancy(ctx)
 	if err != nil {
 		return "", err

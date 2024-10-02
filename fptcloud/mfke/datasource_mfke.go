@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strings"
 	"terraform-provider-fptcloud/commons"
+	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 )
 
@@ -21,9 +22,10 @@ var (
 )
 
 type datasourceManagedKubernetesEngine struct {
-	client       *commons.Client
-	mfkeClient   *MfkeApiClient
-	subnetClient fptcloud_subnet.SubnetService
+	client        *commons.Client
+	mfkeClient    *MfkeApiClient
+	subnetClient  fptcloud_subnet.SubnetService
+	tenancyClient *fptcloud_dfke.TenancyApiClient
 }
 
 func (d *datasourceManagedKubernetesEngine) Configure(ctx context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) {
@@ -44,6 +46,7 @@ func (d *datasourceManagedKubernetesEngine) Configure(ctx context.Context, reque
 	d.client = client
 	d.mfkeClient = newMfkeApiClient(d.client)
 	d.subnetClient = fptcloud_subnet.NewSubnetService(d.client)
+	d.tenancyClient = fptcloud_dfke.NewTenancyApiClient(d.client)
 }
 
 func (d *datasourceManagedKubernetesEngine) Metadata(ctx context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
@@ -108,8 +111,15 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
 
-	path := commons.ApiPath.ManagedFKEGet(vpcId, "vmw", id)
-	a, err := d.mfkeClient.sendGet(path)
+	platform, err := d.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		return nil, err
+	}
+
+	platform = strings.ToLower(platform)
+
+	path := commons.ApiPath.ManagedFKEGet(vpcId, platform, id)
+	a, err := d.mfkeClient.sendGet(path, platform)
 	if err != nil {
 		return nil, err
 	}
@@ -168,11 +178,11 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			continue
 		}
 
-		flavorId, ok := data.Metadata.Labels["fptcloud.com/flavor_pool_test"]
-		//if !ok {
-		//	return errors.New("missing flavor ID on label fptcloud.com/flavor_pool_test")
-		//}
-		flavorId = "c89d97cd-c9cb-4d70-a0c1-01f190ea1b02"
+		flavorPoolKey := "fptcloud.com/flavor_pool_" + name
+		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
+		if !ok {
+			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
+		}
 
 		autoRepair := false
 		for _, item := range w.Annotations {
@@ -181,6 +191,9 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			}
 		}
 
+		tflog.Info(ctx, "")
+
+		// TODO: OSP không có thông tin network ID????
 		networkId, e := getNetworkId(ctx, d.subnetClient, vpcId, w.ProviderConfig.NetworkName)
 		if e != nil {
 			return nil, e
