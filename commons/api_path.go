@@ -39,7 +39,15 @@ var ApiPath = struct {
 	FindSubnet                 func(vpcId string, subnetId string) string
 	ListSubnets                func(vpcId string) string
 
-	Subnet                     func(vpcId string) string
+	Subnet          func(vpcId string) string
+	EdgeGatewayList func(vpcId string) string
+
+	DatabaseGet    func(databaseId string) string
+	DatabaseCreate func() string
+	DatabaseDelete func(databaseId string) string
+	DatabaseStop   func() string
+	DatabaseStart  func() string
+
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
 	DedicatedFKEGet            func(vpcId string, clusterId string) string
 	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
@@ -153,6 +161,26 @@ var ApiPath = struct {
 	},
 
 	Subnet: func(vpcId string) string { return fmt.Sprintf("/v1/vmware/vpc/%s/network/subnets", vpcId) },
+
+	EdgeGatewayList: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/edge_gateway/list", vpcId)
+	},
+
+	DatabaseGet: func(databaseId string) string {
+		return fmt.Sprintf("/v1/xplat/database/management/cluster/detail/%s", databaseId)
+	},
+	DatabaseCreate: func() string {
+		return fmt.Sprintf("/v1/xplat/database/provision/create")
+	},
+	DatabaseDelete: func(databaseId string) string {
+		return fmt.Sprintf("/v1/xplat/database/provision/delete/%s", databaseId)
+	},
+	DatabaseStop: func() string {
+		return fmt.Sprintf("/v1/xplat/database/management/cluster/stop")
+	},
+	DatabaseStart: func() string {
+		return fmt.Sprintf("/v1/xplat/database/management/cluster/start")
+	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {
 		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/kubernetes?page=%d&page_size=%d", vpcId, page, pageSize)
