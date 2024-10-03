@@ -17,8 +17,7 @@ var (
 )
 
 type datasourceEdgeGateway struct {
-	client            *common.Client
-	edgeGatewayClient *edgeGatewayApiClient
+	client *common.Client
 }
 
 func NewDataSourceEdgeGateway() datasource.DataSource {
@@ -111,16 +110,6 @@ func (d *datasourceEdgeGateway) Configure(ctx context.Context, request datasourc
 	}
 
 	d.client = client
-	a, err := newEdgeGatewayApiClient(client)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Error configuring API client",
-			fmt.Sprintf("%s", err.Error()),
-		)
-		return
-	}
-
-	d.edgeGatewayClient = a
 }
 
 func (d *datasourceEdgeGateway) internalRead(ctx context.Context, state *edge_gateway) (*[]edgeGatewayData, error) {

@@ -22,8 +22,7 @@ var (
 )
 
 type resourceDatabaseStatus struct {
-	client         *common.Client
-	databaseClient *databaseApiClient
+	client *common.Client
 }
 
 func NewResourceDatabaseStatus() resource.Resource {
@@ -183,15 +182,16 @@ func (r *resourceDatabaseStatus) Configure(ctx context.Context, request resource
 	}
 
 	r.client = client
-	a, err := newDatabaseApiClient(client)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Error configuring API client",
-			fmt.Sprintf("%s", err.Error()),
-		)
-		return
-	}
-	r.databaseClient = a
+
+	//a, err := newDatabaseApiClient(client)
+	//if err != nil {
+	//	response.Diagnostics.AddError(
+	//		"Error configuring API client",
+	//		fmt.Sprintf("%s", err.Error()),
+	//	)
+	//	return
+	//}
+	//r.databaseClient = a
 }
 
 // Get current status of database (running, stopped, failed)
