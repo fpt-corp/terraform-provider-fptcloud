@@ -131,7 +131,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	}
 
 	if response.Error {
-		return nil, errors.New(fmt.Sprintf("Error: %v", response.Mess))
+		return nil, fmt.Errorf("error: %v", response.Mess)
 	}
 
 	data := response.Data
@@ -153,7 +153,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 		for _, pool := range state.Pools {
 			name := pool.WorkerPoolID.ValueString()
 			if _, ok := existingPool[name]; ok {
-				return nil, errors.New(fmt.Sprintf("Pool %s already exists", name))
+				return nil, fmt.Errorf("pool %s already exists", name)
 			}
 
 			existingPool[name] = pool

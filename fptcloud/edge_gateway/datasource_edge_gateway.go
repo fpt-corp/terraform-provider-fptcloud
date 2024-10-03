@@ -112,7 +112,7 @@ func (d *datasourceEdgeGateway) Configure(ctx context.Context, request datasourc
 	d.client = client
 }
 
-func (d *datasourceEdgeGateway) internalRead(ctx context.Context, state *edge_gateway) (*[]edgeGatewayData, error) {
+func (d *datasourceEdgeGateway) internalRead(_ context.Context, state *edge_gateway) (*[]edgeGatewayData, error) {
 	vpcId := state.VpcId.ValueString()
 
 	res, err := d.client.SendGetRequest(common.ApiPath.EdgeGatewayList(vpcId))

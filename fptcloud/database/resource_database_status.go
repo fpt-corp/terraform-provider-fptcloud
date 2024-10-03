@@ -129,7 +129,6 @@ func (r *resourceDatabaseStatus) Delete(ctx context.Context, request resource.De
 	if response.Diagnostics.HasError() {
 		return
 	}
-	return
 }
 
 func (r *resourceDatabaseStatus) Schema(ctx context.Context, request resource.SchemaRequest, response *resource.SchemaResponse) {
@@ -228,6 +227,9 @@ func (r *resourceDatabaseStatus) getDatabaseCurrentStatus(ctx context.Context, d
 		err = json.Unmarshal(a, &d)
 		if d.Code != "200" {
 			return status, fmt.Errorf("Database not found")
+		}
+		if err != nil {
+			return "", err
 		}
 		cluster = d.Data.Cluster
 

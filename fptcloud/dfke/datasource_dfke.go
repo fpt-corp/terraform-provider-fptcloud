@@ -44,17 +44,7 @@ func (d *datasourceDedicatedKubernetesEngine) Configure(ctx context.Context, req
 	}
 
 	d.client = client
-	a, err := newDfkeApiClient(client)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Error configuring API client",
-			fmt.Sprintf("%s", err.Error()),
-		)
-
-		return
-	}
-
-	d.dfkeClient = a
+	d.dfkeClient = newDfkeApiClient(client)
 
 	t := NewTenancyApiClient(client)
 	d.tenancyApiClient = t
@@ -273,7 +263,7 @@ func (d *datasourceDedicatedKubernetesEngine) internalRead(ctx context.Context, 
 	return &readResponse, nil
 }
 
-func (d *datasourceDedicatedKubernetesEngine) findClusterUUID(ctx context.Context, vpcId string, clusterId string) (string, error) {
+func (d *datasourceDedicatedKubernetesEngine) findClusterUUID(_ context.Context, vpcId string, clusterId string) (string, error) {
 	total := 1
 	found := 0
 

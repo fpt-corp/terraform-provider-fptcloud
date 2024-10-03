@@ -38,7 +38,7 @@ func (r *resourceDedicatedKubernetesEngineState) ImportState(ctx context.Context
 	// TODO fix
 	state.VpcId = types.StringValue("188af427-269b-418a-90bb-0cb27afc6c1e")
 
-	_, err := r.internalRead(ctx, request.ID, &state)
+	err := r.internalRead(ctx, request.ID, &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
 		return
@@ -51,8 +51,7 @@ func (r *resourceDedicatedKubernetesEngineState) ImportState(ctx context.Context
 	}
 
 	// lack of ability to import without VPC ID
-	//response.Diagnostics.Append(diag2.NewErrorDiagnostic("Unimplemented", "Importing DFKE clusters isn't currently supported"))
-	//return
+	response.Diagnostics.Append(diag2.NewErrorDiagnostic("Unimplemented", "Importing DFKE clusters isn't currently supported"))
 }
 
 func (r *resourceDedicatedKubernetesEngineState) Metadata(ctx context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
@@ -90,7 +89,7 @@ func (r *resourceDedicatedKubernetesEngineState) Create(ctx context.Context, req
 		return
 	}
 
-	if _, err := r.internalRead(ctx, state.Id.ValueString(), &state); err != nil {
+	if err := r.internalRead(ctx, state.Id.ValueString(), &state); err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading cluster state", err.Error()))
 		return
 	}
@@ -111,7 +110,7 @@ func (r *resourceDedicatedKubernetesEngineState) Read(ctx context.Context, reque
 		return
 	}
 
-	if _, err := r.internalRead(ctx, state.Id.ValueString(), &state); err != nil {
+	if err := r.internalRead(ctx, state.Id.ValueString(), &state); err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading cluster state", err.Error()))
 		return
 	}
@@ -149,33 +148,33 @@ func (r *resourceDedicatedKubernetesEngineState) Configure(ctx context.Context, 
 	r.client = client
 }
 
-func (r *resourceDedicatedKubernetesEngineState) internalRead(ctx context.Context, clusterId string, state *dedicatedKubernetesEngineState) (*dedicatedKubernetesEngineReadResponse, error) {
+func (r *resourceDedicatedKubernetesEngineState) internalRead(ctx context.Context, clusterId string, state *dedicatedKubernetesEngineState) error {
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+clusterId+", VPC ID "+vpcId)
 
 	a, err := r.client.SendGetRequest(commons.ApiPath.DedicatedFKEGet(vpcId, clusterId))
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var d dedicatedKubernetesEngineReadResponse
 	err = json.Unmarshal(a, &d)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	data := d.Cluster
-	if data.Status != "STOPPED" && data.IsRunning == false {
-		return &d, errors.New("cluster is not running, but status is " + data.Status + " instead of STOPPED")
+	if data.Status != "STOPPED" && !data.IsRunning {
+		return errors.New("cluster is not running, but status is " + data.Status + " instead of STOPPED")
 	}
 
-	if data.Status != "SUCCEEDED" && data.IsRunning == true {
-		return &d, errors.New("cluster is running, but status is " + data.Status + " instead of SUCCEEDED")
+	if data.Status != "SUCCEEDED" && data.IsRunning {
+		return errors.New("cluster is running, but status is " + data.Status + " instead of SUCCEEDED")
 	}
 
 	state.IsRunning = types.BoolValue(data.IsRunning)
-	return &d, nil
+	return nil
 }
 
 type dedicatedKubernetesEngineState struct {
