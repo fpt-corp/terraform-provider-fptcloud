@@ -371,17 +371,7 @@ func (r *resourceDedicatedKubernetesEngine) Configure(ctx context.Context, reque
 	}
 
 	r.client = client
-	a, err := newDfkeApiClient(client)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Error configuring API client",
-			fmt.Sprintf("%s", err.Error()),
-		)
-
-		return
-	}
-
-	r.dfkeClient = a
+	r.dfkeClient = newDfkeApiClient(client)
 
 	t := NewTenancyApiClient(client)
 	r.tenancyApiClient = t
@@ -462,7 +452,7 @@ func (r *resourceDedicatedKubernetesEngine) checkForError(a []byte) *diag2.Error
 
 	if errorField, ok := re["error"]; ok {
 		e2, isBool := errorField.(bool)
-		if isBool && e2 != false {
+		if isBool && e2 {
 			res := diag2.NewErrorDiagnostic(
 				fmt.Sprintf("Response contained an error field and value was %t", e2),
 				"Response body was "+string(a),
@@ -524,7 +514,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 	// status: EXTENDING
 	if master != master2 {
 		if master2 < master {
-			d := diag2.NewErrorDiagnostic("Wrong master disk size", "Disk cannot be shrinked")
+			d := diag2.NewErrorDiagnostic("Wrong master disk size", "Disk cannot be shrunk")
 			return &d
 		}
 
@@ -557,7 +547,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 	// status: EXTENDING
 	if worker != worker2 {
 		if worker2 < worker {
-			d := diag2.NewErrorDiagnostic("Wrong worker disk size", "Disk cannot be shrinked")
+			d := diag2.NewErrorDiagnostic("Wrong worker disk size", "Disk cannot be shrunk")
 			return &d
 		}
 

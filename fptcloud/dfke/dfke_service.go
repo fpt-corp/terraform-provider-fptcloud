@@ -15,10 +15,8 @@ type dfkeApiClient struct {
 	*commons.Client
 }
 
-func newDfkeApiClient(c *commons.Client) (*dfkeApiClient, error) {
-	return &dfkeApiClient{
-		Client: c,
-	}, nil
+func newDfkeApiClient(c *commons.Client) *dfkeApiClient {
+	return &dfkeApiClient{Client: c}
 }
 
 type edgeListResponse struct {

@@ -170,16 +170,16 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/xplat/database/management/cluster/detail/%s", databaseId)
 	},
 	DatabaseCreate: func() string {
-		return fmt.Sprintf("/v1/xplat/database/provision/create")
+		return "/v1/xplat/database/provision/create"
 	},
 	DatabaseDelete: func(databaseId string) string {
 		return fmt.Sprintf("/v1/xplat/database/provision/delete/%s", databaseId)
 	},
 	DatabaseStop: func() string {
-		return fmt.Sprintf("/v1/xplat/database/management/cluster/stop")
+		return "/v1/xplat/database/management/cluster/stop"
 	},
 	DatabaseStart: func() string {
-		return fmt.Sprintf("/v1/xplat/database/management/cluster/start")
+		return "/v1/xplat/database/management/cluster/start"
 	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {

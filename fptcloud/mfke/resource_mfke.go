@@ -115,6 +115,10 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 	}
 
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, state.VpcId.ValueString())
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error getting VPC platform", err.Error()))
+		return
+	}
 
 	if strings.ToLower(platform) == "osp" {
 		if state.NetworkID.ValueString() == "" {
@@ -548,10 +552,7 @@ func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *manage
 		from.NetworkNodePrefix = to.NetworkNodePrefix
 	}
 
-	editGroup, err := r.diffPool(ctx, from, to)
-	if err != nil {
-		return err
-	}
+	editGroup := r.diffPool(ctx, from, to)
 
 	if editGroup {
 		d, err := r.internalRead(ctx, from.Id.ValueString(), from)
@@ -604,9 +605,9 @@ func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *manage
 	return nil
 }
 
-func (r *resourceManagedKubernetesEngine) diffPool(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) (bool, *diag2.ErrorDiagnostic) {
-	var fromPool map[string]*managedKubernetesEnginePool
-	var toPool map[string]*managedKubernetesEnginePool
+func (r *resourceManagedKubernetesEngine) diffPool(_ context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) bool {
+	fromPool := map[string]*managedKubernetesEnginePool{}
+	toPool := map[string]*managedKubernetesEnginePool{}
 
 	for _, pool := range from.Pools {
 		fromPool[pool.WorkerPoolID.ValueString()] = pool
@@ -617,18 +618,18 @@ func (r *resourceManagedKubernetesEngine) diffPool(ctx context.Context, from *ma
 	}
 
 	if len(fromPool) != len(toPool) {
-		return true, nil
+		return true
 	}
 
 	for _, pool := range from.Pools {
 		f := fromPool[pool.WorkerPoolID.ValueString()]
 		t := toPool[pool.WorkerPoolID.ValueString()]
 		if f.ScaleMin != t.ScaleMin || f.ScaleMax != t.ScaleMax {
-			return true, nil
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id string, state *managedKubernetesEngine) (*managedKubernetesEngineReadResponse, error) {
@@ -655,7 +656,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 	}
 
 	if d.Error {
-		return nil, errors.New(fmt.Sprintf("Error: %v", d.Mess))
+		return nil, fmt.Errorf("error: %v", d.Mess)
 	}
 
 	data := d.Data
@@ -677,7 +678,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 		for _, pool := range state.Pools {
 			name := pool.WorkerPoolID.ValueString()
 			if _, ok := existingPool[name]; ok {
-				return nil, errors.New(fmt.Sprintf("Pool %s already exists", name))
+				return nil, fmt.Errorf("pool %s already exists", name)
 			}
 
 			existingPool[name] = pool
@@ -702,7 +703,6 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			continue
 		}
 
-		// TODO: OSP does not have flavor ID
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
 		if !ok {
