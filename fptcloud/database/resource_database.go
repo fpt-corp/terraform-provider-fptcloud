@@ -32,8 +32,7 @@ var (
 )
 
 type resourceDatabase struct {
-	client         *common.Client
-	databaseClient *databaseApiClient
+	client *common.Client
 }
 
 type databaseResourceModel struct {
@@ -357,15 +356,6 @@ func (r *resourceDatabase) Configure(ctx context.Context, request resource.Confi
 	}
 
 	r.client = client
-	a, err := newDatabaseApiClient(client)
-	if err != nil {
-		response.Diagnostics.AddError(
-			"Error configuring API client",
-			fmt.Sprintf("%s", err.Error()),
-		)
-		return
-	}
-	r.databaseClient = a
 }
 
 // Get resource data from API, then update to terrafrom state
