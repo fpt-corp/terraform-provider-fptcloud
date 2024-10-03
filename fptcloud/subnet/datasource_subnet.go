@@ -41,6 +41,11 @@ func subnetSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The id of the subnet",
 		},
+		"network_id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The network id of the subnet",
+		},
 		"name": {
 			Type:        schema.TypeString,
 			Computed:    true,
@@ -75,6 +80,7 @@ func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]
 
 	flattened := map[string]interface{}{}
 	flattened["id"] = s.ID
+	flattened["network_id"] = s.NetworkID
 	flattened["name"] = s.Name
 	flattened["network_name"] = s.NetworkName
 	flattened["gateway"] = s.Gateway
