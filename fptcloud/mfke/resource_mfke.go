@@ -703,11 +703,11 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 		}
 
 		// TODO: OSP does not have flavor ID
-		flavorId, ok := data.Metadata.Labels["fptcloud.com/flavor_pool_test"]
-		//if !ok {
-		//	return errors.New("missing flavor ID on label fptcloud.com/flavor_pool_test")
-		//}
-		flavorId = "c89d97cd-c9cb-4d70-a0c1-01f190ea1b02"
+		flavorPoolKey := "fptcloud.com/flavor_pool_" + name
+		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
+		if !ok {
+			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
+		}
 
 		autoRepair := false
 		for _, item := range w.Annotations {
@@ -716,7 +716,13 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			}
 		}
 
-		networkId, e := getNetworkId(ctx, r.subnetClient, vpcId, w.ProviderConfig.NetworkName)
+		var networkId string
+		var e error
+		if strings.ToLower(platform) == "vmw" {
+			networkId, e = getNetworkId(ctx, r.subnetClient, vpcId, w.ProviderConfig.NetworkName, "")
+		} else {
+			networkId, e = getNetworkId(ctx, r.subnetClient, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
+		}
 		if e != nil {
 			return nil, e
 		}
@@ -798,11 +804,20 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	return nil, &diag
 }
 
-func getNetworkId(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId string, networkName string) (string, error) {
-	tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network "+networkName)
+func getNetworkId(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId string, networkName string, networkId string) (string, error) {
+	if networkName != "" && networkId != "" {
+		return "", errors.New("only specify network name or id")
+	}
+
+	if networkName != "" {
+		tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network "+networkName)
+	} else {
+		tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network ID "+networkId)
+	}
 
 	networks, err := client.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{
 		NetworkName: networkName,
+		NetworkID:   networkId,
 		VpcId:       vpcId,
 	})
 	if err != nil {
@@ -996,6 +1011,7 @@ type managedKubernetesEngineDataSpec struct {
 	Provider struct {
 		InfrastructureConfig struct {
 			Networks struct {
+				Id             string `json:"id"`
 				LbIPRangeEnd   string `json:"lbIpRangeEnd"`
 				LbIPRangeStart string `json:"lbIpRangeStart"`
 				Workers        string `json:"workers"`

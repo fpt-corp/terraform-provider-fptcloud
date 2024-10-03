@@ -193,8 +193,13 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 
 		tflog.Info(ctx, "")
 
-		// TODO: OSP không có thông tin network ID????
-		networkId, e := getNetworkId(ctx, d.subnetClient, vpcId, w.ProviderConfig.NetworkName)
+		var networkId string
+		var e error
+		if strings.ToLower(platform) == "vmw" {
+			networkId, e = getNetworkId(ctx, d.subnetClient, vpcId, w.ProviderConfig.NetworkName, "")
+		} else {
+			networkId, e = getNetworkId(ctx, d.subnetClient, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
+		}
 		if e != nil {
 			return nil, e
 		}
