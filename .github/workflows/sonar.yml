@@ -28,3 +28,5 @@ jobs:
           args:
             -Dsonar.projectKey=Terraform-provider
             -Dsonar.qualitygate.wait=true
+            -Dsonar.sources=fptcloud
+            -Dsonar.host.url=https://compute-sonarqube.bss.works/sonar
