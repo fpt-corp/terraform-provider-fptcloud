@@ -27,3 +27,5 @@ jobs:
         with:
           args:
             -Dsonar.projectKey=Terraform-provider
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.sources=fptcloud
