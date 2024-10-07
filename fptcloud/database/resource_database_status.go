@@ -117,7 +117,6 @@ func (r *resourceDatabaseStatus) Read(ctx context.Context, request resource.Read
 }
 
 func (r *resourceDatabaseStatus) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
-	//TODO implement me
 	panic("implement me")
 }
 

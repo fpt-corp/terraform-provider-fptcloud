@@ -35,7 +35,6 @@ func (r *resourceDedicatedKubernetesEngineState) ImportState(ctx context.Context
 	var state dedicatedKubernetesEngineState
 	state.Id = types.StringValue(request.ID)
 
-	// TODO fix
 	state.VpcId = types.StringValue("188af427-269b-418a-90bb-0cb27afc6c1e")
 
 	err := r.internalRead(ctx, request.ID, &state)

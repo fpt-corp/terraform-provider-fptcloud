@@ -40,6 +40,10 @@ var (
 	}
 )
 
+const (
+	errorCallingApi = "Error calling API"
+)
+
 type resourceManagedKubernetesEngine struct {
 	client        *commons.Client
 	mfkeClient    *MfkeApiClient
@@ -51,10 +55,10 @@ func NewResourceManagedKubernetesEngine() resource.Resource {
 	return &resourceManagedKubernetesEngine{}
 }
 
-func (r *resourceManagedKubernetesEngine) Metadata(ctx context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
+func (r *resourceManagedKubernetesEngine) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
 	response.TypeName = request.ProviderTypeName + "_managed_kubernetes_engine_v1"
 }
-func (r *resourceManagedKubernetesEngine) Schema(ctx context.Context, request resource.SchemaRequest, response *resource.SchemaResponse) {
+func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	topLevelAttributes := r.topFields()
 	poolAttributes := r.poolFields()
 
@@ -156,7 +160,7 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 	a, err := r.mfkeClient.sendPost(path, platform, f)
 
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 
@@ -199,7 +203,7 @@ func (r *resourceManagedKubernetesEngine) Read(ctx context.Context, request reso
 
 	_, err := r.internalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 
@@ -259,7 +263,7 @@ func (r *resourceManagedKubernetesEngine) Delete(ctx context.Context, request re
 		commons.ApiPath.ManagedFKEDelete(state.VpcId.ValueString(), "vmw", state.ClusterName.ValueString()),
 	)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 }
@@ -284,7 +288,7 @@ func (r *resourceManagedKubernetesEngine) ImportState(ctx context.Context, reque
 
 	_, err := r.internalRead(ctx, clusterId, &state)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 
@@ -294,7 +298,7 @@ func (r *resourceManagedKubernetesEngine) ImportState(ctx context.Context, reque
 		return
 	}
 }
-func (r *resourceManagedKubernetesEngine) Configure(ctx context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
+func (r *resourceManagedKubernetesEngine) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
 	if request.ProviderData == nil {
 		return
 	}
@@ -548,7 +552,6 @@ func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *manage
 		}
 	}
 	if from.NetworkNodePrefix != to.NetworkNodePrefix {
-		// TODO: patch it to retrieve data from API
 		from.NetworkNodePrefix = to.NetworkNodePrefix
 	}
 
@@ -779,7 +782,7 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 
 	res, err := r.mfkeClient.sendGet(path, platform)
 	if err != nil {
-		diag := diag2.NewErrorDiagnostic("Error calling API", err.Error())
+		diag := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
 		return nil, &diag
 	}
 
@@ -790,7 +793,7 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 
 	var list managedKubernetesEngineOsVersionResponse
 	if err = json.Unmarshal(res, &list); err != nil {
-		diag := diag2.NewErrorDiagnostic("Error calling API", err.Error())
+		diag := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
 		return nil, &diag
 	}
 
