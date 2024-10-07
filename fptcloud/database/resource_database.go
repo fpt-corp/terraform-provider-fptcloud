@@ -31,6 +31,10 @@ var (
 	}
 )
 
+const (
+	errorCallingApi = "Error calling API"
+)
+
 type resourceDatabase struct {
 	client *common.Client
 }
@@ -104,7 +108,7 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	tflog.Info(ctx, "Response: "+string(a))
 
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 
@@ -147,7 +151,7 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 
 	err := r.internalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 
@@ -174,7 +178,7 @@ func (r *resourceDatabase) Delete(ctx context.Context, request resource.DeleteRe
 	path := common.ApiPath.DatabaseDelete(state.Id.ValueString())
 	_, err := r.client.SendDeleteRequest(path)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 }

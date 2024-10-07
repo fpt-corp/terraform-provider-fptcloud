@@ -86,8 +86,8 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 	}
 	token := os.Getenv("FPTCLOUD_TOKEN")
 	region := os.Getenv("FPTCLOUD_REGION")
-	tenant_name := os.Getenv("FPTCLOUD_TENANT_NAME")
-	api_endpoint := os.Getenv("FPTCLOUD_API_URL")
+	tenantName := os.Getenv("FPTCLOUD_TENANT_NAME")
+	apiEndpoint := os.Getenv("FPTCLOUD_API_URL")
 
 	if !config.Token.IsNull() {
 		token = config.Token.ValueString()
@@ -98,15 +98,15 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 	}
 
 	if !config.TenantName.IsNull() {
-		tenant_name = config.TenantName.ValueString()
+		tenantName = config.TenantName.ValueString()
 	}
 
 	if !config.ApiEndpoint.IsNull() {
-		api_endpoint = config.ApiEndpoint.ValueString()
+		apiEndpoint = config.ApiEndpoint.ValueString()
 	}
 
-	if api_endpoint == "" {
-		api_endpoint = ProdAPI
+	if apiEndpoint == "" {
+		apiEndpoint = ProdAPI
 	}
 
 	if token == "" {
@@ -125,7 +125,7 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "token")
 	tflog.Debug(ctx, "Creating FPTCloud client")
 
-	client, err := common.NewClientWithURL(token, api_endpoint, region, tenant_name)
+	client, err := common.NewClientWithURL(token, apiEndpoint, region, tenantName)
 
 	if err != nil {
 		response.Diagnostics.AddError("Error creating client", err.Error())
@@ -143,8 +143,8 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 
 	tflog.Info(ctx, "Configured FPTCloud client", map[string]any{
 		"success":      true,
-		"api_endpoint": api_endpoint,
-		"tenant_name":  tenant_name,
+		"api_endpoint": apiEndpoint,
+		"tenant_name":  tenantName,
 	})
 }
 

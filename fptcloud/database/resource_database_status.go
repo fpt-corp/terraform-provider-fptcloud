@@ -233,7 +233,7 @@ func (r *resourceDatabaseStatus) getDatabaseCurrentStatus(ctx context.Context, d
 		}
 		cluster = d.Data.Cluster
 
-		tflog.Info(ctx, "Waiting for database to be provisioned. Time waited: "+strconv.Itoa(int(time.Since(timeStart).Seconds()))+" seconds.")
+		tflog.Info(ctx, "Waiting for database to be provisioned. Time waited: "+time.Since(timeStart).String())
 		time.Sleep(30 * time.Second)
 	}
 
@@ -269,7 +269,7 @@ func (r *resourceDatabaseStatus) stopDatabase(ctx context.Context, databaseId st
 			return nil
 		}
 
-		tflog.Info(ctx, "Waiting for nodes to be stopped. Time waited: "+strconv.Itoa(int(time.Since(timeStart).Seconds()))+" seconds.")
+		tflog.Info(ctx, "Waiting for nodes to be stopped. Time waited: "+time.Since(timeStart).String())
 		time.Sleep(60 * time.Second)
 	}
 
@@ -297,7 +297,7 @@ func (r *resourceDatabaseStatus) startDatabase(ctx context.Context, databaseId s
 		if status == "running" {
 			return nil
 		}
-		tflog.Info(ctx, "Waiting for nodes to be provisioned. Time waited: "+strconv.Itoa(int(time.Since(timeStart).Seconds()))+" seconds.")
+		tflog.Info(ctx, "Waiting for nodes to be provisioned. Time waited: "+time.Since(timeStart).String())
 		time.Sleep(60 * time.Second)
 	}
 

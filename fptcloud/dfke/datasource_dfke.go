@@ -18,6 +18,10 @@ var (
 	_ datasource.DataSourceWithConfigure = &datasourceDedicatedKubernetesEngine{}
 )
 
+const (
+	noSuchClusterId = "no cluster with such ID found"
+)
+
 type datasourceDedicatedKubernetesEngine struct {
 	client           *commons.Client
 	dfkeClient       *dfkeApiClient
@@ -282,11 +286,11 @@ func (d *datasourceDedicatedKubernetesEngine) findClusterUUID(_ context.Context,
 		}
 
 		if list.Total == 0 {
-			return "", errors.New("no cluster with such ID found")
+			return "", errors.New(noSuchClusterId)
 		}
 
 		if len(list.Data) == 0 {
-			return "", errors.New("no cluster with such ID found")
+			return "", errors.New(noSuchClusterId)
 		}
 
 		total = list.Total

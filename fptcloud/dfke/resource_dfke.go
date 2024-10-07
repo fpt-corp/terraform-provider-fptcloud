@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strings"
 	"terraform-provider-fptcloud/commons"
+	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 	"time"
 )
 
@@ -30,6 +31,11 @@ var (
 	forceNewPlanModifiersInt = []planmodifier.Int64{
 		int64planmodifier.RequiresReplace(),
 	}
+)
+
+const (
+	errorCallingApi    = "Error calling API"
+	responseBodyPrefix = "Response body was "
 )
 
 type resourceDedicatedKubernetesEngine struct {
@@ -63,7 +69,7 @@ func (r *resourceDedicatedKubernetesEngine) Create(ctx context.Context, request 
 		return
 	}
 
-	errorResponse := r.checkForError(a)
+	errorResponse := checkForError(a)
 	if errorResponse != nil {
 		response.Diagnostics.Append(errorResponse)
 		return
@@ -108,7 +114,7 @@ func (r *resourceDedicatedKubernetesEngine) Read(ctx context.Context, request re
 
 	_, err := r.internalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 
@@ -173,7 +179,7 @@ func (r *resourceDedicatedKubernetesEngine) Delete(ctx context.Context, request 
 
 	_, err := r.client.SendDeleteRequest(fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/delete", state.vpcId(), state.Id))
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 }
@@ -199,7 +205,7 @@ func (r *resourceDedicatedKubernetesEngine) ImportState(ctx context.Context, req
 	state.Id = types.StringValue(clusterId)
 	_, err := r.internalRead(ctx, clusterId, &state)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
 
@@ -442,7 +448,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	return &d, nil
 }
 
-func (r *resourceDedicatedKubernetesEngine) checkForError(a []byte) *diag2.ErrorDiagnostic {
+func checkForError(a []byte) *diag2.ErrorDiagnostic {
 	var re map[string]interface{}
 	err := json.Unmarshal(a, &re)
 	if err != nil {
@@ -455,7 +461,7 @@ func (r *resourceDedicatedKubernetesEngine) checkForError(a []byte) *diag2.Error
 		if isBool && e2 {
 			res := diag2.NewErrorDiagnostic(
 				fmt.Sprintf("Response contained an error field and value was %t", e2),
-				"Response body was "+string(a),
+				responseBodyPrefix+string(a),
 			)
 			return &res
 		}
@@ -465,14 +471,14 @@ func (r *resourceDedicatedKubernetesEngine) checkForError(a []byte) *diag2.Error
 		}
 
 		if errorField != nil {
-			res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
+			res := diag2.NewErrorDiagnostic("Response contained an error field", responseBodyPrefix+string(a))
 			return &res
 		}
 	}
 
 	if errorCode, ok := re["error_code"]; ok {
 		if errorCode != nil {
-			res := diag2.NewErrorDiagnostic("Response contained an error code field", "Response body was "+string(a))
+			res := diag2.NewErrorDiagnostic("Response contained an error code field", responseBodyPrefix+string(a))
 			return &res
 		}
 	}
@@ -512,118 +518,29 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 	master := from.MasterDiskSize.ValueInt64()
 	master2 := to.MasterDiskSize.ValueInt64()
 	// status: EXTENDING
-	if master != master2 {
-		if master2 < master {
-			d := diag2.NewErrorDiagnostic("Wrong master disk size", "Disk cannot be shrunk")
-			return &d
-		}
 
-		tflog.Info(ctx, fmt.Sprintf("Resizing master from %d to %d", master, master2))
-
-		time.Sleep(5 * time.Second)
-		management := dedicatedKubernetesEngineManagement{
-			ClusterId:  to.clusterUUID(),
-			MgmtAction: "",
-			DiskExtend: fmt.Sprintf("%d", master2-master),
-			ExtendType: "master",
-			Flavor:     "",
-			NodeType:   "",
-		}
-
-		if err := r.manage(from, management); err != nil {
-			return err
-		}
-		tflog.Info(ctx, fmt.Sprintf("Resized master from %d to %d", master, master2))
-
-		err := r.waitForSucceeded(ctx, from, 5*time.Minute, false)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error waiting for cluster after resizing master disk to return to SUCCEEDED state", err.Error())
-			return &d
-		}
+	if err := r.diskExtend(ctx, from, to, "master", master, master2); err != nil {
+		return err
 	}
 
 	worker := from.WorkerDiskSize.ValueInt64()
 	worker2 := to.WorkerDiskSize.ValueInt64()
 	// status: EXTENDING
-	if worker != worker2 {
-		if worker2 < worker {
-			d := diag2.NewErrorDiagnostic("Wrong worker disk size", "Disk cannot be shrunk")
-			return &d
-		}
 
-		tflog.Info(ctx, fmt.Sprintf("Resizing worker from %d to %d", worker, worker2))
-		management := dedicatedKubernetesEngineManagement{
-			ClusterId:  to.clusterUUID(),
-			MgmtAction: "",
-			DiskExtend: fmt.Sprintf("%d", worker2-worker),
-			ExtendType: "worker",
-			Flavor:     "",
-			NodeType:   "",
-		}
-
-		if err := r.manage(from, management); err != nil {
-			return err
-		}
-		tflog.Info(ctx, fmt.Sprintf("Resized worker from %d to %d", worker, worker2))
-
-		err := r.waitForSucceeded(ctx, from, 5*time.Minute, false)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error waiting for cluster after resizing worker disk to return to SUCCEEDED state", err.Error())
-			return &d
-		}
+	if err := r.diskExtend(ctx, from, to, "worker", worker, worker2); err != nil {
+		return err
 	}
 
 	masterType := from.MasterType.ValueString()
 	master2Type := to.MasterType.ValueString()
-	if masterType != master2Type {
-		tflog.Info(ctx, fmt.Sprintf("Changing master from %s to %s", masterType, master2Type))
-
-		management := dedicatedKubernetesEngineManagement{
-			ClusterId:  from.clusterUUID(),
-			MgmtAction: "",
-			DiskExtend: "0",
-			ExtendType: "",
-			Flavor:     master2Type,
-			NodeType:   "master",
-		}
-
-		if err := r.manage(from, management); err != nil {
-			return err
-		}
-		tflog.Info(ctx, fmt.Sprintf("Changed master from %s to %s", masterType, master2Type))
-
-		err := r.waitForSucceeded(ctx, from, 20*time.Minute, false)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error waiting for cluster after changing master type to return to SUCCEEDED state", err.Error())
-			return &d
-		}
+	if err := r.changeFlavor(ctx, from, to, "master", masterType, master2Type); err != nil {
+		return err
 	}
 
 	workerType := from.WorkerType.ValueString()
 	worker2Type := to.WorkerType.ValueString()
-	if from.WorkerType != to.WorkerType {
-		tflog.Info(ctx, fmt.Sprintf("Changing worker from %s to %s", workerType, worker2Type))
-
-		management := dedicatedKubernetesEngineManagement{
-			ClusterId:  from.clusterUUID(),
-			MgmtAction: "",
-			DiskExtend: "0",
-			ExtendType: "",
-			Flavor:     worker2Type,
-			NodeType:   "worker",
-		}
-
-		if err := r.manage(from, management); err != nil {
-			return err
-		}
-
-		tflog.Info(ctx, fmt.Sprintf("Changed worker from %s to %s", workerType, worker2Type))
-
-		err := r.waitForSucceeded(ctx, from, 20*time.Minute, false)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error waiting for cluster after changing worker type to return to SUCCEEDED state", err.Error())
-			return &d
-		}
+	if err := r.changeFlavor(ctx, from, to, "worker", workerType, worker2Type); err != nil {
+		return err
 	}
 
 	if (from.ScaleMin.ValueInt64() != to.ScaleMin.ValueInt64()) || (from.ScaleMax.ValueInt64() != to.ScaleMax.ValueInt64()) {
@@ -639,7 +556,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 			ActionScale: "update",
 		}
 
-		if err := r.manage(from, autoScale); err != nil {
+		if err := r.manage(from, autoScale, true); err != nil {
 			return err
 		}
 
@@ -655,6 +572,53 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 		}
 	}
 
+	if err := r.upgradeVersion(ctx, from, to); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *resourceDedicatedKubernetesEngine) diskExtend(ctx context.Context, from *dedicatedKubernetesEngine, to *dedicatedKubernetesEngine, node string, fromCount, toCount int64) *diag2.ErrorDiagnostic {
+	if fromCount == toCount {
+		return nil
+	}
+
+	if toCount < fromCount {
+		d := diag2.NewErrorDiagnostic(fmt.Sprintf("Wrong %s disk size", node), "Disk cannot be shrunk")
+		return &d
+	}
+
+	tflog.Info(ctx, fmt.Sprintf("Resizing %s from %d to %d", node, fromCount, toCount))
+	time.Sleep(5 * time.Second)
+
+	management := dedicatedKubernetesEngineManagement{
+		ClusterId:  to.clusterUUID(),
+		MgmtAction: "",
+		DiskExtend: fmt.Sprintf("%d", toCount-fromCount),
+		ExtendType: node,
+		Flavor:     "",
+		NodeType:   "",
+	}
+
+	if err := r.manage(from, management, false); err != nil {
+		return err
+	}
+	tflog.Info(ctx, fmt.Sprintf("Resized disk %s from %d to %d", node, fromCount, toCount))
+
+	err := r.waitForSucceeded(ctx, from, 5*time.Minute, false)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(
+			fmt.Sprintf("Error waiting for cluster after resizing %s disk to return to SUCCEEDED state", node),
+			err.Error(),
+		)
+		return &d
+	}
+
+	return nil
+}
+
+func (r *resourceDedicatedKubernetesEngine) upgradeVersion(ctx context.Context, from *dedicatedKubernetesEngine, to *dedicatedKubernetesEngine) *diag2.ErrorDiagnostic {
 	if from.Version.ValueString() != to.Version.ValueString() {
 		//	version changed, call bump version
 		path := commons.ApiPath.DedicatedFKEUpgradeVersion(from.vpcId(), from.Id.ValueString())
@@ -676,7 +640,7 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 			return &d
 		}
 
-		if diagErr2 := r.checkForError(a); diagErr2 != nil {
+		if diagErr2 := checkForError(a); diagErr2 != nil {
 			return diagErr2
 		}
 
@@ -690,9 +654,40 @@ func (r *resourceDedicatedKubernetesEngine) diff(ctx context.Context, from *dedi
 	return nil
 }
 
-func (r *resourceDedicatedKubernetesEngine) manage(state *dedicatedKubernetesEngine, params interface{}) *diag2.ErrorDiagnostic {
-	//path := commons.ApiPath.DedicatedFKEManagement(state.vpcId(), state.clusterUUID())
-	path := fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/auto-scale", state.vpcId(), state.clusterUUID())
+func (r *resourceDedicatedKubernetesEngine) changeFlavor(ctx context.Context, from *dedicatedKubernetesEngine, _ *dedicatedKubernetesEngine, node string, fromFlavor, toFlavor string) *diag2.ErrorDiagnostic {
+
+	if fromFlavor != toFlavor {
+		tflog.Info(ctx, fmt.Sprintf("Changing %s from %s to %s", node, fromFlavor, toFlavor))
+
+		management := dedicatedKubernetesEngineManagement{
+			ClusterId:  from.clusterUUID(),
+			MgmtAction: "",
+			DiskExtend: "0",
+			ExtendType: "",
+			Flavor:     toFlavor,
+			NodeType:   node,
+		}
+
+		if err := r.manage(from, management, false); err != nil {
+			return err
+		}
+		tflog.Info(ctx, fmt.Sprintf("Changed %s from %s to %s", node, fromFlavor, toFlavor))
+
+		err := r.waitForSucceeded(ctx, from, 20*time.Minute, false)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic(fmt.Sprintf("Error waiting for cluster after changing %s type to return to SUCCEEDED state", node), err.Error())
+			return &d
+		}
+	}
+
+	return nil
+}
+
+func (r *resourceDedicatedKubernetesEngine) manage(state *dedicatedKubernetesEngine, params interface{}, isAutoScale bool) *diag2.ErrorDiagnostic {
+	path := commons.ApiPath.DedicatedFKEManagement(state.vpcId(), state.clusterUUID())
+	if isAutoScale {
+		path = fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/auto-scale", state.vpcId(), state.clusterUUID())
+	}
 
 	a, err2 := r.client.SendPostRequest(path, params)
 	if err2 != nil {
@@ -700,7 +695,7 @@ func (r *resourceDedicatedKubernetesEngine) manage(state *dedicatedKubernetesEng
 		return &d
 	}
 
-	if diagErr2 := r.checkForError(a); diagErr2 != nil {
+	if diagErr2 := checkForError(a); diagErr2 != nil {
 		return diagErr2
 	}
 
@@ -745,17 +740,22 @@ func (r *resourceDedicatedKubernetesEngine) waitForSucceeded(ctx context.Context
 
 					state := status.Cluster.Status
 					tflog.Info(ctx, "Status of cluster "+clusterId+" is currently "+state)
-					if state == "SUCCEEDED" {
-						return nil
+					switch state {
+					case "SUCCEEDED":
+						{
+							return nil
+						}
+					case "ERROR":
+						{
+							return errors.New("cluster in error state")
+						}
+
+					case "STOPPED":
+						{
+							return errors.New("cluster is stopped")
+						}
 					}
 
-					if state == "ERROR" {
-						return errors.New("cluster in error state")
-					}
-
-					if state == "STOPPED" {
-						return errors.New("cluster is stopped")
-					}
 				}
 				if e != nil && !ignoreError {
 					return e
@@ -778,6 +778,8 @@ func getRegionFromVpcId(client *TenancyApiClient, ctx context.Context, vpcId str
 	}
 
 	user := t.UserId
+	var vpcList []fptcloud_vpc.VPC
+	regionMap := map[string]string{}
 
 	for _, tenant := range t.Tenants {
 		regions, e := client.GetRegions(ctx, tenant.Id)
@@ -791,11 +793,17 @@ func getRegionFromVpcId(client *TenancyApiClient, ctx context.Context, vpcId str
 				return "", e2
 			}
 
+			vpcList = append(vpcList, vpcs...)
+
 			for _, vpc := range vpcs {
-				if vpc.Id == vpcId {
-					return region.Abbr, nil
-				}
+				regionMap[vpc.Id] = region.Abbr
 			}
+		}
+	}
+
+	for _, vpc := range vpcList {
+		if vpc.Id == vpcId {
+			return regionMap[vpc.Id], nil
 		}
 	}
 

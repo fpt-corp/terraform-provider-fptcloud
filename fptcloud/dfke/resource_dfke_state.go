@@ -123,11 +123,40 @@ func (r *resourceDedicatedKubernetesEngineState) Read(ctx context.Context, reque
 }
 
 func (r *resourceDedicatedKubernetesEngineState) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
-	//TODO implement me
-	panic("implement me")
+	var state dedicatedKubernetesEngineState
+	diags := request.State.Get(ctx, &state)
+
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	management := dedicatedKubernetesEngineManagement{
+		ClusterId:  state.Id.ValueString(),
+		MgmtAction: "stop",
+		DiskExtend: "0",
+		ExtendType: "",
+		Flavor:     "",
+		NodeType:   "",
+	}
+
+	path := commons.ApiPath.DedicatedFKEManagement(state.VpcId.ValueString(), state.Id.ValueString())
+
+	a, err2 := r.client.SendPostRequest(path, management)
+	if err2 != nil {
+		d := diag2.NewErrorDiagnostic("Error calling management API", err2.Error())
+		response.Diagnostics.Append(d)
+		return
+	}
+
+	if diagErr2 := checkForError(a); diagErr2 != nil {
+		response.Diagnostics.Append(diagErr2)
+		return
+	}
 }
 
 func (r *resourceDedicatedKubernetesEngineState) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
+	response.Diagnostics.AddError("Unsupported operation", "Deleting state of a cluster isn't supported")
 }
 
 func (r *resourceDedicatedKubernetesEngineState) Configure(ctx context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
