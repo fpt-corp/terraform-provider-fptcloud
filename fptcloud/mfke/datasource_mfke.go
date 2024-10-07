@@ -146,19 +146,9 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	cloudPurpose := strings.Split(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "-")
 	state.Purpose = types.StringValue(cloudPurpose[0])
 
-	var poolNames []string
-
-	if len(state.Pools) != 0 {
-		existingPool := map[string]*managedKubernetesEnginePool{}
-		for _, pool := range state.Pools {
-			name := pool.WorkerPoolID.ValueString()
-			if _, ok := existingPool[name]; ok {
-				return nil, fmt.Errorf("pool %s already exists", name)
-			}
-
-			existingPool[name] = pool
-			poolNames = append(poolNames, name)
-		}
+	poolNames, err := validatePoolNames(state.Pools)
+	if err != nil {
+		return nil, err
 	}
 
 	workers := map[string]*managedKubernetesEngineDataWorker{}
@@ -184,22 +174,10 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
 		}
 
-		autoRepair := false
-		for _, item := range w.Annotations {
-			if label, ok := item["worker.fptcloud.com/node-auto-repair"]; ok {
-				autoRepair = label == "true"
-			}
-		}
+		autoRepair := w.AutoRepair()
 
-		tflog.Info(ctx, "")
+		networkId, e := getNetworkIdByPlatform(ctx, d.subnetClient, vpcId, platform, w, &data)
 
-		var networkId string
-		var e error
-		if strings.ToLower(platform) == "vmw" {
-			networkId, e = getNetworkId(ctx, d.subnetClient, vpcId, w.ProviderConfig.NetworkName, "")
-		} else {
-			networkId, e = getNetworkId(ctx, d.subnetClient, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
-		}
 		if e != nil {
 			return nil, e
 		}
