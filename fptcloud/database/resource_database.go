@@ -449,7 +449,6 @@ func (r *resourceDatabase) remap(from *databaseResourceModel, to *databaseJson) 
 	to.WorkerCount = int(from.WorkerCount.ValueInt64())
 	to.NodeCore = int(from.NodeCore.ValueInt64())
 
-	// TODO: Lấy theo Flavor
 	to.NodeCpu = int(from.NodeCpu.ValueInt64())
 	to.NodeRam = int(from.NodeRam.ValueInt64())
 
