@@ -38,6 +38,26 @@ var ApiPath = struct {
 	FindSubnetByName           func(vpcId string) string
 	FindSubnet                 func(vpcId string, subnetId string) string
 	ListSubnets                func(vpcId string) string
+
+	Subnet          func(vpcId string) string
+	EdgeGatewayList func(vpcId string) string
+
+	DatabaseGet    func(databaseId string) string
+	DatabaseCreate func() string
+	DatabaseDelete func(databaseId string) string
+	DatabaseStop   func() string
+	DatabaseStart  func() string
+
+	DedicatedFKEList           func(vpcId string, page, pageSize int) string
+	DedicatedFKEGet            func(vpcId string, clusterId string) string
+	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
+	DedicatedFKEManagement     func(vpcId string, clusterId string) string
+
+	ManagedFKEList   func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedFKEGet    func(vpcId string, platform string, clusterId string) string
+	ManagedFKEDelete func(vpcId string, platform string, clusterName string) string
+	ManagedFKECreate func(vpcId string, platform string) string
+	GetFKEOSVersion  func(vpcId string, platform string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -138,5 +158,65 @@ var ApiPath = struct {
 	},
 	ListSubnets: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/networks", vpcId)
+	},
+
+	Subnet: func(vpcId string) string { return fmt.Sprintf("/v1/vmware/vpc/%s/network/subnets", vpcId) },
+
+	EdgeGatewayList: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/edge_gateway/list", vpcId)
+	},
+
+	DatabaseGet: func(databaseId string) string {
+		return fmt.Sprintf("/v1/xplat/database/management/cluster/detail/%s", databaseId)
+	},
+	DatabaseCreate: func() string {
+		return "/v1/xplat/database/provision/create"
+	},
+	DatabaseDelete: func(databaseId string) string {
+		return fmt.Sprintf("/v1/xplat/database/provision/delete/%s", databaseId)
+	},
+	DatabaseStop: func() string {
+		return "/v1/xplat/database/management/cluster/stop"
+	},
+	DatabaseStart: func() string {
+		return "/v1/xplat/database/management/cluster/start"
+	},
+
+	DedicatedFKEList: func(vpcId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/kubernetes?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	DedicatedFKEGet: func(vpcId string, clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s?page=1&page_size=25", vpcId, clusterId)
+	},
+	DedicatedFKEUpgradeVersion: func(vpcId string, clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/cluster/%s/upgrade-version", vpcId, clusterId)
+	},
+	DedicatedFKEManagement: func(vpcId string, clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/kubernetes/%s/management", vpcId, clusterId)
+	},
+
+	ManagedFKEList: func(vpcId string, page int, pageSize int, infraType string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
+	},
+	ManagedFKEDelete: func(vpcId string, platform string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/delete-shoot-cluster/shoots/%s",
+			vpcId, platform, clusterName,
+		)
+	},
+	ManagedFKECreate: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/create-cluster",
+			vpcId, platform,
+		)
+	},
+	ManagedFKEGet: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/get-shoot-specific/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	GetFKEOSVersion: func(vpcId string, platform string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get_k8s_versions", vpcId, platform)
 	},
 }
