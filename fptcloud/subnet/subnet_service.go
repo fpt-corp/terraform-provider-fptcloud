@@ -32,6 +32,7 @@ type SubnetResponseDto struct {
 type Subnet struct {
 	ID          string      `json:"id"`
 	Name        string      `json:"name"`
+	NetworkID   string      `json:"network_id"`
 	NetworkName string      `json:"network_name"`
 	Gateway     string      `json:"gateway"`
 	VpcId       string      `json:"vpc_id"`
