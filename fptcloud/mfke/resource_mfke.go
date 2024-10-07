@@ -41,7 +41,8 @@ var (
 )
 
 const (
-	errorCallingApi = "Error calling API"
+	errorCallingApi        = "Error calling API"
+	platformVpcErrorPrefix = "Error getting platform for VPC "
 )
 
 type resourceManagedKubernetesEngine struct {
@@ -88,25 +89,9 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 		return
 	}
 
-	if len(state.Pools) == 0 {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Invalid configuration", "At least a worker pool must be configured"))
+	if err := validatePool(state.Pools); err != nil {
+		response.Diagnostics.Append(err)
 		return
-	}
-
-	groupNames := map[string]bool{}
-	for _, pool := range state.Pools {
-		name := pool.WorkerPoolID.ValueString()
-		if name == "worker-new" {
-			response.Diagnostics.Append(diag2.NewErrorDiagnostic("Invalid worker group name", "Worker group name \"worker-new\" is reserved"))
-			return
-		}
-
-		if _, ok := groupNames[name]; ok {
-			response.Diagnostics.Append(diag2.NewErrorDiagnostic("Duplicate worker group name", "Worker group name "+name+" is used twice"))
-			return
-		}
-
-		groupNames[name] = true
 	}
 
 	var f managedKubernetesEngineJson
@@ -124,35 +109,9 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 		return
 	}
 
-	if strings.ToLower(platform) == "osp" {
-		if state.NetworkID.ValueString() == "" {
-			response.Diagnostics.Append(diag2.NewErrorDiagnostic(
-				"Global network ID must be specified",
-				"VPC platform is OSP. Network ID must be specified globally and each worker group's network ID must match",
-			))
-			return
-		}
-
-		network := state.NetworkID.ValueString()
-		for _, pool := range state.Pools {
-			if pool.NetworkID.ValueString() != network {
-				response.Diagnostics.Append(diag2.NewErrorDiagnostic(
-					"Worker network ID mismatch",
-					fmt.Sprintf("VPC platform is OSP. Network ID of worker group \"%s\" must match global one", pool.WorkerPoolID.ValueString()),
-				))
-			}
-		}
-
-		if response.Diagnostics.HasError() {
-			return
-		}
-	} else {
-		if state.NetworkID.ValueString() != "" {
-			response.Diagnostics.Append(diag2.NewErrorDiagnostic(
-				"Global network ID is not supported",
-				"VPC platform is VMW. Network ID must be specified per worker group, not globally",
-			))
-		}
+	if err := validateNetwork(&state, platform); err != nil {
+		response.Diagnostics.Append(err)
+		return
 	}
 
 	path := commons.ApiPath.ManagedFKECreate(state.VpcId.ValueString(), strings.ToLower(platform))
@@ -516,39 +475,8 @@ func (r *resourceManagedKubernetesEngine) checkForError(a []byte) *diag2.ErrorDi
 
 func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	if from.K8SVersion != to.K8SVersion {
-		// upgrade version
-		vpcId := from.VpcId.ValueString()
-		cluster := from.Id.ValueString()
-		targetVersion := to.K8SVersion.ValueString()
-
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, err.Error())
-			return &d
-		}
-
-		platform = strings.ToLower(platform)
-
-		path := fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
-			vpcId,
-			platform,
-			cluster,
-			targetVersion,
-		)
-
-		body, err := r.mfkeClient.sendPatch(path, platform, struct{}{})
-		if err != nil {
-			d := diag2.NewErrorDiagnostic(
-				fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
-				err.Error(),
-			)
-
-			return &d
-		}
-
-		if diagErr2 := r.checkForError(body); diagErr2 != nil {
-			return diagErr2
+		if err := r.upgradeVersion(ctx, from, to); err != nil {
+			return err
 		}
 	}
 	if from.NetworkNodePrefix != to.NetworkNodePrefix {
@@ -581,7 +509,7 @@ func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *manage
 		vpcId := from.VpcId.ValueString()
 		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, err.Error())
+			d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
 			return &d
 		}
 
@@ -603,6 +531,45 @@ func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *manage
 		if e2 := r.checkForError(res); e2 != nil {
 			return e2
 		}
+	}
+
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) upgradeVersion(ctx context.Context, from, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	// upgrade version
+	vpcId := from.VpcId.ValueString()
+	cluster := from.Id.ValueString()
+	targetVersion := to.K8SVersion.ValueString()
+
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+
+	path := fmt.Sprintf(
+		"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+		vpcId,
+		platform,
+		cluster,
+		targetVersion,
+	)
+
+	body, err := r.mfkeClient.sendPatch(path, platform, struct{}{})
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(
+			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
+			err.Error(),
+		)
+
+		return &d
+	}
+
+	if diagErr2 := r.checkForError(body); diagErr2 != nil {
+		return diagErr2
 	}
 
 	return nil
@@ -674,19 +641,9 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 	cloudPurpose := strings.Split(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "-")
 	state.Purpose = types.StringValue(cloudPurpose[0])
 
-	var poolNames []string
-
-	if len(state.Pools) != 0 {
-		existingPool := map[string]*managedKubernetesEnginePool{}
-		for _, pool := range state.Pools {
-			name := pool.WorkerPoolID.ValueString()
-			if _, ok := existingPool[name]; ok {
-				return nil, fmt.Errorf("pool %s already exists", name)
-			}
-
-			existingPool[name] = pool
-			poolNames = append(poolNames, name)
-		}
+	poolNames, err := validatePoolNames(state.Pools)
+	if err != nil {
+		return nil, err
 	}
 
 	workers := map[string]*managedKubernetesEngineDataWorker{}
@@ -712,20 +669,9 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
 		}
 
-		autoRepair := false
-		for _, item := range w.Annotations {
-			if label, ok := item["worker.fptcloud.com/node-auto-repair"]; ok {
-				autoRepair = label == "true"
-			}
-		}
+		autoRepair := w.AutoRepair()
 
-		var networkId string
-		var e error
-		if strings.ToLower(platform) == "vmw" {
-			networkId, e = getNetworkId(ctx, r.subnetClient, vpcId, w.ProviderConfig.NetworkName, "")
-		} else {
-			networkId, e = getNetworkId(ctx, r.subnetClient, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
-		}
+		networkId, e := getNetworkIdByPlatform(ctx, r.subnetClient, vpcId, platform, w, &data)
 		if e != nil {
 			return nil, e
 		}
@@ -770,7 +716,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, version string, vpcId string) (interface{}, *diag2.ErrorDiagnostic) {
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, err.Error())
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
 		return nil, &d
 	}
 
@@ -807,28 +753,6 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	return nil, &diag
 }
 
-func getNetworkId(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId string, networkName string, networkId string) (string, error) {
-	if networkName != "" && networkId != "" {
-		return "", errors.New("only specify network name or id")
-	}
-
-	if networkName != "" {
-		tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network "+networkName)
-	} else {
-		tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network ID "+networkId)
-	}
-
-	networks, err := client.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{
-		NetworkName: networkName,
-		NetworkID:   networkId,
-		VpcId:       vpcId,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return networks.ID, nil
-}
 func getClusterName(name string) string {
 	var indices []int
 	for i, c := range name {
@@ -1086,6 +1010,19 @@ type managedKubernetesEngineDataWorker struct {
 		Type string `json:"type"`
 	} `json:"volume"`
 	Zones []string `json:"zones"`
+}
+
+func (w *managedKubernetesEngineDataWorker) AutoRepair() bool {
+	autoRepair := false
+
+	for _, item := range w.Annotations {
+
+		if label, ok := item["worker.fptcloud.com/node-auto-repair"]; ok {
+			autoRepair = label == "true"
+		}
+	}
+
+	return autoRepair
 }
 
 type managedKubernetesEngineEditWorker struct {
