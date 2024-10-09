@@ -1,3 +1,14 @@
+## [0.2.0] - 2024-10-09
+### Datasource
+- Dedicated kubernetes engine
+- Managed kubernetes engine
+- Edge gateway
+### Resource
+- Dedicated kubernetes engine
+- Managed kubernetes engine
+- Database
+- Database status
+
 ## [0.1.2] - 2024-09-15
 ### Resource
 - Update schema instance (using flavor name and image name)
