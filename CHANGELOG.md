@@ -1,3 +1,7 @@
+## [0.2.1] - 2024-10-17
+### Resource
+- fix set value read storage
+  
 ## [0.2.0] - 2024-10-09
 ### Datasource
 - Dedicated kubernetes engine
