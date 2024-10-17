@@ -192,10 +192,6 @@ func resourceStorageRead(_ context.Context, d *schema.ResourceData, m interface{
 		return diag.FromErr(err)
 	}
 
-	if err := d.Set("storage_policy", foundStorage.StoragePolicy); err != nil {
-		return diag.FromErr(err)
-	}
-
 	if err := d.Set("type", foundStorage.Type); err != nil {
 		return diag.FromErr(err)
 	}
