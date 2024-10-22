@@ -1,6 +1,7 @@
 package fptcloud_edge_gateway
 
 import (
+	"context"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
 	"terraform-provider-fptcloud/commons"
@@ -53,7 +54,7 @@ func TestReadEdgeGatewayDataSource(t *testing.T) {
 		client: mockClient,
 	}
 
-	edgeGatewayList, err := d.internalRead(&state)
+	edgeGatewayList, err := d.internalRead(context.Background(), &state)
 
 	// Check if the edgeGatewayList is correct
 	assert.NoError(t, err)
