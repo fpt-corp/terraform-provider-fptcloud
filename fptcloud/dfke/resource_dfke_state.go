@@ -130,9 +130,14 @@ func (r *resourceDedicatedKubernetesEngineState) Update(ctx context.Context, req
 		return
 	}
 
+	target := "stop"
+	if !state.IsRunning.ValueBool() {
+		target = "start"
+	}
+
 	management := dedicatedKubernetesEngineManagement{
 		ClusterId:  state.Id.ValueString(),
-		MgmtAction: "stop",
+		MgmtAction: target,
 		DiskExtend: "0",
 		ExtendType: "",
 		Flavor:     "",
