@@ -112,6 +112,9 @@ func (c *Client) SendRequest(req *http.Request) ([]byte, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	c.LastJSONResponse = string(body)
+	fmt.Println("resp.StatusCode: ", resp.StatusCode)
+	fmt.Println("resp.BODY: ", string(body))
+	fmt.Println("resp.URL: ", resp.Request.URL.String())
 
 	if resp.StatusCode >= 300 {
 		return nil, HTTPError{Code: resp.StatusCode, Status: resp.Status, Reason: string(body)}
