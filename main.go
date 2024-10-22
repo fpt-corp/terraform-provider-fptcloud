@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
+	"terraform-provider-fptcloud/fptcloud"
+
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov5"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov5/tf5server"
 	"github.com/hashicorp/terraform-plugin-mux/tf5muxserver"
-	"log"
-	"terraform-provider-fptcloud/fptcloud"
 )
 
 //go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name terraform-provider-fptcloud
@@ -24,11 +25,13 @@ func main() {
 		"set to true to run the provider with support for debuggers",
 	)
 	flag.Parse()
+	log.Printf("[DEBUG] Configuring provider...")
 
 	providers := []func() tfprotov5.ProviderServer{
 		providerserver.NewProtocol5(fptcloud.NewXplatProvider("dev")()),
 		fptcloud.Provider().GRPCProvider,
 	}
+	log.Printf("[DEBUG] providers: ", providers)
 
 	muxServer, err := tf5muxserver.NewMuxServer(ctx, providers...)
 	if err != nil {
