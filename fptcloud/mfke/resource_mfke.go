@@ -456,21 +456,7 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 }
 
 func (r *resourceManagedKubernetesEngine) checkForError(a []byte) *diag2.ErrorDiagnostic {
-	var re map[string]interface{}
-	err := json.Unmarshal(a, &re)
-	if err != nil {
-		res := diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error())
-		return &res
-	}
-
-	if e, ok := re["error"]; ok {
-		if e == true {
-			res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
-			return &res
-		}
-	}
-
-	return nil
+	return checkForError(a)
 }
 
 func (r *resourceManagedKubernetesEngine) diff(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
@@ -787,6 +773,24 @@ func parseNumber(s string) int {
 	return f
 }
 
+func checkForError(a []byte) *diag2.ErrorDiagnostic {
+	var re map[string]interface{}
+	err := json.Unmarshal(a, &re)
+	if err != nil {
+		res := diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error())
+		return &res
+	}
+
+	if e, ok := re["error"]; ok {
+		if e == true {
+			res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
+			return &res
+		}
+	}
+
+	return nil
+}
+
 type managedKubernetesEngine struct {
 	Id          types.String `tfsdk:"id"`
 	VpcId       types.String `tfsdk:"vpc_id"`
@@ -946,6 +950,12 @@ type managedKubernetesEngineDataSpec struct {
 		} `json:"infrastructureConfig"`
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
 	} `json:"provider"`
+
+	Hibernation *managedKubernetesEngineDataSpecHibernate `json:"hibernation"`
+}
+
+type managedKubernetesEngineDataSpecHibernate struct {
+	Enabled *bool `json:"enabled"`
 }
 
 type managedKubernetesEngineDataWorker struct {

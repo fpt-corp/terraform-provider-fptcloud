@@ -53,11 +53,13 @@ var ApiPath = struct {
 	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
 	DedicatedFKEManagement     func(vpcId string, clusterId string) string
 
-	ManagedFKEList   func(vpcId string, page int, pageSize int, infraType string) string
-	ManagedFKEGet    func(vpcId string, platform string, clusterId string) string
-	ManagedFKEDelete func(vpcId string, platform string, clusterName string) string
-	ManagedFKECreate func(vpcId string, platform string) string
-	GetFKEOSVersion  func(vpcId string, platform string) string
+	ManagedFKEList      func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedFKEGet       func(vpcId string, platform string, clusterId string) string
+	ManagedFKEDelete    func(vpcId string, platform string, clusterName string) string
+	ManagedFKECreate    func(vpcId string, platform string) string
+	ManagedFKEHibernate func(vpcId, platform, clusterId string) string
+	ManagedFKEWakeup    func(vpcId, platform, clusterId string) string
+	GetFKEOSVersion     func(vpcId string, platform string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -213,6 +215,18 @@ var ApiPath = struct {
 	ManagedFKEGet: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/get-shoot-specific/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEHibernate: func(vpcId, platform, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/hibernate",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEWakeup: func(vpcId, platform, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/wakeup",
 			vpcId, platform, clusterId,
 		)
 	},
