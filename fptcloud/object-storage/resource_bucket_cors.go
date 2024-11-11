@@ -2,6 +2,7 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -76,6 +77,9 @@ func resourceBucketCorsCreate(ctx context.Context, d *schema.ResourceData, m int
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	bucketName := d.Get("bucket_name").(string)
 	corsRule := d.Get("cors_rule").([]interface{})
@@ -114,6 +118,9 @@ func resourceBucketCorsUpdate(ctx context.Context, d *schema.ResourceData, m int
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	corsRule := d.Get("cors_rule").([]interface{})
 

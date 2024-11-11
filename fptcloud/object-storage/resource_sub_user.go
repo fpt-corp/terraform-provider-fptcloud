@@ -2,6 +2,7 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -11,7 +12,7 @@ import (
 func ResourceSubUser() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceSubUserCreate,
-		ReadContext:   dataSourceSubUserRead,
+		ReadContext:   dataSourceSubUserDetailRead,
 		DeleteContext: resourceSubUserDelete,
 		Schema: map[string]*schema.Schema{
 			"role": {
@@ -31,9 +32,7 @@ func ResourceSubUser() *schema.Resource {
 			},
 			"region_name": {
 				Type:     schema.TypeString,
-				Required: false,
-				Default:  "HCM-02",
-				Optional: true,
+				Required: true,
 				ForceNew: true,
 			},
 		},
@@ -43,22 +42,24 @@ func ResourceSubUser() *schema.Resource {
 func resourceSubUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)
-
+	subUserId := d.Get("user_id").(string)
 	vpcId := d.Get("vpc_id").(string)
 	req := SubUser{
 		Role:   d.Get("role").(string),
-		UserId: d.Get("user_id").(string),
+		UserId: subUserId,
 	}
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
-
-	subUser, err := objectStorageService.CreateSubUser(req, vpcId, s3ServiceDetail.S3ServiceId)
-	if err != nil {
-		return diag.FromErr(err)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
 	}
 
-	d.SetId(subUser.UserId)
-	d.Set("role", subUser.Role)
-	return nil
+	subUser := objectStorageService.CreateSubUser(req, vpcId, s3ServiceDetail.S3ServiceId)
+	if !subUser.Status {
+		return diag.FromErr(fmt.Errorf(subUser.Message))
+	}
+
+	d.SetId(subUserId)
+	return dataSourceSubUserDetailRead(ctx, d, m)
 }
 
 func resourceSubUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -66,46 +67,12 @@ func resourceSubUserDelete(ctx context.Context, d *schema.ResourceData, m interf
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 	err := objectStorageService.DeleteSubUser(d.Id(), vpcId, s3ServiceDetail.S3ServiceId)
 	if err != nil {
 		return diag.FromErr(err)
-	}
-
-	return nil
-}
-
-func resourceSubUserAccessKeyCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*common.Client)
-	objectStorageService := NewObjectStorageService(client)
-
-	vpcId := d.Get("vpc_id").(string)
-	s3ServiceId := d.Get("s3_service_id").(string)
-	subUserId := d.Get("sub_user_id").(string)
-
-	accessKey := objectStorageService.CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId)
-	if accessKey == nil {
-		return diag.Errorf("failed to create sub-user access key")
-	}
-
-	d.SetId(accessKey.Credential.AccessKey)
-	d.Set("access_key", accessKey.Credential.AccessKey)
-	d.Set("secret_key", accessKey.Credential.SecretKey)
-
-	return nil
-}
-
-func resourceSubUserAccessKeyDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*common.Client)
-	objectStorageService := NewObjectStorageService(client)
-
-	vpcId := d.Get("vpc_id").(string)
-	s3ServiceId := d.Get("s3_service_id").(string)
-	subUserId := d.Get("sub_user_id").(string)
-	accessKeyId := d.Id()
-
-	resp := objectStorageService.DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId)
-	if !resp.Status {
-		return diag.Errorf("failed to delete sub-user access key")
 	}
 
 	return nil

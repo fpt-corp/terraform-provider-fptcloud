@@ -3,6 +3,7 @@ package fptcloud_object_storage
 import (
 	"context"
 	"fmt"
+	"log"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -24,8 +25,8 @@ func ResourceAccessKey() *schema.Resource {
 			"access_key_id": {
 				Type:        schema.TypeString,
 				Required:    false,
-				Computed:    true,
 				ForceNew:    true,
+				Optional:    true,
 				Description: "The access key ID",
 			},
 			"secret_access_key": {
@@ -40,10 +41,17 @@ func ResourceAccessKey() *schema.Resource {
 				ForceNew:    true,
 				Description: "The region name to create the access key",
 			},
-			"create_access_key_response": {
+			"status": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "The status after creating the access key",
+			},
+			"message": {
 				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The create access key response",
+				Optional:    true,
+				ForceNew:    true,
+				Description: "The message after creating the access key",
 			},
 		},
 		Importer: &schema.ResourceImporter{
@@ -57,23 +65,26 @@ func resourceAccessKeyCreate(ctx context.Context, d *schema.ResourceData, m inte
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
-	resp := service.CreateAccessKey(vpcId, s3ServiceDetail.S3ServiceId)
-	var createAccessKeyResponse CreateAccessKeyResponse
-	if resp.Credential.AccessKey != "" && resp.Credential.SecretKey != "" {
-		createAccessKeyResponse.Credential.AccessKey = resp.Credential.AccessKey
-		createAccessKeyResponse.Credential.SecretKey = resp.Credential.SecretKey
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
 	}
-	if resp.Message != "" {
-		createAccessKeyResponse.Message = resp.Message
-	}
-	createAccessKeyResponse.Status = resp.Status
-	fmt.Println("Create access key response: ", createAccessKeyResponse)
 
-	p := fmt.Sprintf("%v", createAccessKeyResponse)
-	d.Set("access_key_id", createAccessKeyResponse.Credential.AccessKey)
-	d.Set("secret_access_key", createAccessKeyResponse.Credential.SecretKey)
-	d.SetId(resp.Credential.AccessKey)
-	d.Set("create_access_key_response", p)
+	resp := service.CreateAccessKey(vpcId, s3ServiceDetail.S3ServiceId)
+
+	if !resp.Status {
+		return diag.Errorf(resp.Message)
+	}
+
+	if resp.Credential.AccessKey != "" {
+		d.SetId(resp.Credential.AccessKey)
+		d.Set("access_key_id", resp.Credential.AccessKey)
+		d.Set("secret_access_key", resp.Credential.SecretKey)
+	}
+
+	d.Set("status", resp.Status)
+	if resp.Message != "" {
+		d.Set("message", resp.Message)
+	}
 
 	return nil
 }
@@ -107,9 +118,38 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	accessKeyId := d.Get("access_key_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	accessKeyId := d.Id()
+	if accessKeyId == "" {
+		// If the access key ID is not set, try to get it from the data source
+		accessKeyId = d.Get("access_key_id").(string)
+	}
 
-	service.DeleteAccessKey(vpcId, s3ServiceDetail.S3ServiceId, accessKeyId)
+	log.Printf("[DEBUG] Starting deletion of access key. VPC ID: %s, Region: %s, Access Key ID: %s",
+		vpcId, regionName, accessKeyId)
+
+	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		log.Printf("[ERROR] Region %s is not enabled for VPC %s", regionName, vpcId)
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+	}
+
+	log.Printf("[DEBUG] Found S3 service ID: %s", s3ServiceDetail.S3ServiceId)
+
+	if accessKeyId == "" {
+		log.Printf("[ERROR] access_key_id is empty")
+		return diag.Errorf("access_key_id is required for deletion")
+	}
+
+	log.Printf("[INFO] Attempting to delete access key %s for VPC %s in region %s",
+		accessKeyId, vpcId, regionName)
+
+	err := service.DeleteAccessKey(vpcId, s3ServiceDetail.S3ServiceId, accessKeyId)
+	if err != nil {
+		log.Printf("[ERROR] Failed to delete access key %s: %v", accessKeyId, err)
+		return diag.FromErr(err)
+	}
+
+	log.Printf("[INFO] Successfully deleted access key %s", accessKeyId)
+	d.SetId("")
 	return nil
 }

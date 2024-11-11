@@ -2,6 +2,7 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -56,6 +57,9 @@ func dataSourceAccessKeyRead(ctx context.Context, d *schema.ResourceData, m inte
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 	_, err := service.ListAccessKeys(vpcId, s3ServiceDetail.S3ServiceId)
 	if err != nil {
 		return diag.FromErr(err)

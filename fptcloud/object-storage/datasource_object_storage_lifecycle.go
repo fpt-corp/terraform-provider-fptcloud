@@ -30,9 +30,7 @@ func DataSourceBucketLifecycle() *schema.Resource {
 			},
 			"region_name": {
 				Type:        schema.TypeString,
-				Required:    false,
-				Default:     "HCM-02",
-				Optional:    true,
+				Required:    true,
 				Description: "The region name of the bucket",
 			},
 			"page_size": {
@@ -58,6 +56,9 @@ func dataSourceBucketLifecycle(ctx context.Context, d *schema.ResourceData, m in
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 	page := d.Get("page").(string)
 	pageSize := d.Get("page_size").(string)
 
