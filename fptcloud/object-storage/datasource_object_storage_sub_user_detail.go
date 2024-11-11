@@ -2,6 +2,8 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -16,16 +18,6 @@ func DataSourceSubUserDetail() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "The VPC ID",
-			},
-			"s3_service_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The S3 service ID",
-			},
-			"sub_user_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The sub-user ID",
 			},
 			"user_id": {
 				Type:        schema.TypeString,
@@ -66,13 +58,16 @@ func DataSourceSubUserDetail() *schema.Resource {
 
 func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
-	service := NewObjectStorageService(client)
+	objectStorageService := NewObjectStorageService(client)
 
 	vpcId := d.Get("vpc_id").(string)
-	s3ServiceId := d.Get("s3_service_id").(string)
-	subUserId := d.Get("sub_user_id").(string)
+	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
+	subUserId := d.Get("user_id").(string)
 
-	subUser := service.DetailSubUser(vpcId, s3ServiceId, subUserId)
+	subUser := objectStorageService.DetailSubUser(vpcId, s3ServiceDetail.S3ServiceId, subUserId)
 	if subUser == nil {
 		return diag.Errorf("sub-user with ID %s not found", subUserId)
 	}
@@ -82,7 +77,8 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	if subUser.Arn != nil {
 		d.Set("arn", subUser.Arn)
 	}
-	d.Set("active", subUser.Active)
+	fmt.Println("subUser active is: ", subUser.Active)
+	fmt.Println("reflect subUser active is: ", reflect.TypeOf(subUser.Active))
 	d.Set("role", subUser.Role)
 	if subUser.CreatedAt != nil {
 		d.Set("created_at", subUser.CreatedAt)

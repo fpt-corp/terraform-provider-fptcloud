@@ -39,6 +39,9 @@ func dataSourceBucketPolicyRead(ctx context.Context, d *schema.ResourceData, m i
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 	policyResponse := service.GetBucketPolicy(vpcId, bucketName, s3ServiceDetail.S3ServiceId)
 	if !policyResponse.Status {
 		return diag.Errorf("failed to get bucket policy for bucket %s", bucketName)

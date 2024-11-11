@@ -2,6 +2,7 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -23,10 +24,17 @@ func DataSourceBucketVersioning() *schema.Resource {
 				Required:    true,
 				Description: "The VPC ID",
 			},
-			"enabled": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "Enable or suspend versioning",
+			"versioning_status": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "Status of the versioning, must be Enabled or Suspended",
+				ForceNew:    true, // Marking this field as ForceNew to ensure that the resource is recreated when the value is changed
+			},
+			"region_name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The region name to create the access key",
 			},
 		},
 	}
@@ -38,6 +46,9 @@ func dataSourceBucketVersioningRead(ctx context.Context, d *schema.ResourceData,
 
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 	bucketName := d.Get("bucket_name").(string)
 
 	versioning := service.GetBucketVersioning(vpcId, bucketName, s3ServiceDetail.S3ServiceId)
@@ -46,7 +57,7 @@ func dataSourceBucketVersioningRead(ctx context.Context, d *schema.ResourceData,
 	}
 
 	d.SetId(bucketName)
-	d.Set("enabled", versioning.Status == "Enabled")
+	d.Set("versioning_status", versioning.Status)
 
 	return nil
 }

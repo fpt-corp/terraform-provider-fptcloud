@@ -2,6 +2,7 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -24,9 +25,7 @@ func DataSourceBucketStaticWebsite() *schema.Resource {
 			},
 			"region_name": {
 				Type:        schema.TypeString,
-				Required:    false,
-				Default:     "HCM-02",
-				Optional:    true,
+				Required:    true,
 				Description: "The region name of the bucket",
 			},
 			"status": {
@@ -85,13 +84,14 @@ func dataSourceBucketStaticWebsite(ctx context.Context, d *schema.ResourceData, 
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	staticWebsiteResponse := service.GetBucketWebsite(vpcId, bucketName, s3ServiceDetail.S3ServiceId)
 	if !staticWebsiteResponse.Status {
-		return diag.Errorf("failed to get bucket policy for bucket %s", bucketName)
+		return diag.Errorf("failed to get bucket static website config for bucket %s", bucketName)
 	}
-
-	d.SetId(bucketName)
 
 	// Set the computed values
 	if err := d.Set("status", staticWebsiteResponse.Status); err != nil {

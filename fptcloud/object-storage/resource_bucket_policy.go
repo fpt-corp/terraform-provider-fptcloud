@@ -2,6 +2,7 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -28,9 +29,7 @@ func ResourceBucketPolicy() *schema.Resource {
 			},
 			"region_name": {
 				Type:        schema.TypeString,
-				Required:    false,
-				Default:     "HCM-02",
-				Optional:    true,
+				Required:    true,
 				ForceNew:    true,
 				Description: "The region name of the bucket",
 			},
@@ -53,6 +52,9 @@ func resourceBucketPolicyCreate(ctx context.Context, d *schema.ResourceData, m i
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	resp := service.PutBucketPolicy(vpcId, s3ServiceDetail.S3ServiceId, bucketName, BucketPolicyRequest{
 		Policy: policy,
@@ -78,6 +80,9 @@ func resourceBucketPolicyDelete(ctx context.Context, d *schema.ResourceData, m i
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	resp := service.PutBucketPolicy(vpcId, s3ServiceDetail.S3ServiceId, bucketName, BucketPolicyRequest{
 		Policy: "",

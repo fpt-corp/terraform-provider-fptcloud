@@ -2,6 +2,7 @@ package fptcloud_object_storage
 
 import (
 	"context"
+	"fmt"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -16,7 +17,7 @@ func DataSourceSubUser() *schema.Resource {
 			"role": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Role of the sub-user",
+				Description: "Role of the sub-user, should be one of the following: SubUserNone, SubUserRead, SubUserReadWrite, SubUserWrite, SubUserFull",
 			},
 			"user_id": {
 				Type:        schema.TypeString,
@@ -29,6 +30,28 @@ func DataSourceSubUser() *schema.Resource {
 				Required:    true,
 				Description: "The VPC ID",
 			},
+			"region_name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The region name of sub-user",
+			},
+			"list_sub_user": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"user_id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"role": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -38,6 +61,9 @@ func dataSourceSubUserRead(ctx context.Context, d *schema.ResourceData, m interf
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	subUsers, err := service.ListSubUsers(vpcId, s3ServiceDetail.S3ServiceId)
 	if err != nil {
@@ -45,13 +71,14 @@ func dataSourceSubUserRead(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	role := d.Get("role").(string)
-	for _, user := range subUsers {
-		if user.Role == role {
-			d.SetId(user.UserId)
-			d.Set("user_id", user.UserId)
-			return nil
-		}
-	}
+	fmt.Println("subUsers: ", subUsers)
+	// for _, user := range subUsers {
+	// 	if user.Role == role {
+	// 		d.SetId(user.UserId)
+	// 		d.Set("user_id", user.UserId)
+	// 		return nil
+	// 	}
+	// }
 
 	return diag.Errorf("sub-user with role %s not found", role)
 }

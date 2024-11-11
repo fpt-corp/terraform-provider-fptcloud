@@ -35,11 +35,8 @@ func ResourceBucket() *schema.Resource {
 				Description: "The versioning state of the bucket. Accepted values are Enabled or Suspended, default was not set.",
 			},
 			"region_name": {
-				Type:     schema.TypeString,
-				Required: false,
-				// Default:  "HCM-02" if not provided
-				Default:     "HCM-02",
-				Optional:    true,
+				Type:        schema.TypeString,
+				Required:    true,
 				ForceNew:    true,
 				Description: "The region name that's are the same with the region name in the S3 service.",
 			},
@@ -53,6 +50,12 @@ func ResourceBucket() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
+			},
+			"status": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				ForceNew:    true,
+				Description: "The status after create or delete the bucket",
 			},
 		},
 	}
@@ -72,6 +75,9 @@ func getServiceEnableRegion(objectStorageService ObjectStorageService, vpcId, re
 			s3ServiceDetail.S3Platform = service.S3Platform
 			break
 		}
+	}
+	if s3ServiceDetail.S3ServiceId == "" {
+		return S3ServiceDetail{}
 	}
 	return s3ServiceDetail
 }
@@ -102,6 +108,9 @@ func resourceBucketRead(_ context.Context, d *schema.ResourceData, m interface{}
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	bucket := objectStorageService.ListBuckets(vpcId, s3ServiceDetail.S3ServiceId, 1, 99999)
 	if bucket.Total == 0 {
@@ -109,7 +118,6 @@ func resourceBucketRead(_ context.Context, d *schema.ResourceData, m interface{}
 	}
 	for _, b := range bucket.Buckets {
 		if b.Name == d.Get("name").(string) {
-			d.SetId(b.Name)
 			d.Set("name", b.Name)
 			return nil
 		}
@@ -122,10 +130,14 @@ func resourceBucketDelete(ctx context.Context, d *schema.ResourceData, m interfa
 	vpcId := d.Get("vpc_id").(string)
 	bucketName := d.Get("name").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
-
-	err := objectStorageService.DeleteBucket(bucketName, vpcId, s3ServiceDetail.S3ServiceId)
-	if err != nil {
-		return diag.FromErr(err)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
 	}
+
+	satus := objectStorageService.DeleteBucket(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
+	if !satus.Status {
+		return diag.Errorf("failed to delete bucket %s", bucketName)
+	}
+
 	return nil
 }

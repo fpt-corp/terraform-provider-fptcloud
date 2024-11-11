@@ -14,7 +14,6 @@ func ResourceBucketStaticWebsite() *schema.Resource {
 		CreateContext: resourceBucketStaticWebsiteCreate,
 		ReadContext:   dataSourceBucketStaticWebsite,
 		DeleteContext: resourceDeleteBucketStaticWebsite,
-		//UpdateContext: nil,
 		Schema: map[string]*schema.Schema{
 			"bucket_name": {
 				Type:        schema.TypeString,
@@ -24,9 +23,7 @@ func ResourceBucketStaticWebsite() *schema.Resource {
 			},
 			"region_name": {
 				Type:        schema.TypeString,
-				Required:    false,
-				Default:     "HCM-02",
-				Optional:    true,
+				Required:    true,
 				ForceNew:    true,
 				Description: "The region name of the bucket",
 			},
@@ -38,16 +35,18 @@ func ResourceBucketStaticWebsite() *schema.Resource {
 			},
 			"index_document_suffix": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    false,
 				Default:     "index.html",
 				ForceNew:    true,
+				Optional:    true,
 				Description: "Suffix that is appended to a request that is for a directory",
 			},
 			"error_document_key": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    false,
 				Default:     "error.html",
 				ForceNew:    true,
+				Optional:    true,
 				Description: "The object key name to use when a 4XX class error occurs",
 			},
 			"status": {
@@ -73,12 +72,17 @@ func resourceBucketStaticWebsiteCreate(ctx context.Context, d *schema.ResourceDa
 	indexDocument := d.Get("index_document_suffix").(string)
 	errorDocument := d.Get("error_document_key").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 	putBucketWebsite := service.PutBucketWebsite(vpcId, s3ServiceDetail.S3ServiceId, bucketName, BucketWebsiteRequest{
 		Bucket: bucketName,
 		Suffix: indexDocument,
 		Key:    errorDocument,
 	})
-	fmt.Println("\n Put bucket website response: \n", putBucketWebsite)
+	fmt.Println("--------------------------------------- \n:")
+	fmt.Println("--------------------------------------- \n: ", putBucketWebsite)
+	fmt.Println("--------------------------------------- \n: ")
 
 	if !putBucketWebsite.Status {
 		diag.Errorf("failed to create bucket website for bucket %s", bucketName)
@@ -87,7 +91,7 @@ func resourceBucketStaticWebsiteCreate(ctx context.Context, d *schema.ResourceDa
 	}
 	d.Set("status", true)
 	d.SetId(bucketName)
-	return nil
+	return dataSourceBucketStaticWebsite(ctx, d, m)
 }
 
 func resourceDeleteBucketStaticWebsite(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -98,6 +102,9 @@ func resourceDeleteBucketStaticWebsite(ctx context.Context, d *schema.ResourceDa
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
 
 	resp := service.DeleteBucketStaticWebsite(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
 	if !resp.Status {

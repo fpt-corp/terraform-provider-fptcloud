@@ -34,9 +34,30 @@ type CreateAccessKeyResponse struct {
 		CreatedDate interface{} `json:"createdDate"`
 	} `json:"credential,omitempty"`
 }
+type SubUserCreateKeyResponse struct {
+	Status     bool `json:"status"`
+	Credential struct {
+		AccessKey   string      `json:"accessKey"`
+		SecretKey   string      `json:"secretKey"`
+		Active      interface{} `json:"active"`
+		CreatedDate interface{} `json:"createdDate"`
+	} `json:"credential"`
+}
+
 type SubUser struct {
 	Role   string `json:"role"`
-	UserId string `json:"user_id,omitempty"`
+	UserId string `json:"user_id"`
+}
+type SubUserListResponse struct {
+	SubUsers []struct {
+		UserID     string      `json:"user_id"`
+		Arn        string      `json:"arn"`
+		Active     bool        `json:"active"`
+		Role       string      `json:"role"`
+		CreatedAt  interface{} `json:"created_at"`
+		AccessKeys interface{} `json:"access_keys"`
+	} `json:"sub_users"`
+	Total int `json:"total"`
 }
 type CommonResponse struct {
 	Status  bool   `json:"status"`
@@ -199,7 +220,7 @@ type ObjectStorageService interface {
 	// Bucket
 	ListBuckets(vpcId, s3ServiceId string, page, pageSize int) ListBucketResponse
 	CreateBucket(req BucketRequest, vpcId, s3ServiceId string) CommonResponse
-	DeleteBucket(vpcId, s3ServiceId, bucketName string) error
+	DeleteBucket(vpcId, s3ServiceId, bucketName string) CommonResponse
 
 	// Access key
 	ListAccessKeys(vpcId, s3ServiceId string) (AccessKey, error)
@@ -207,11 +228,11 @@ type ObjectStorageService interface {
 	CreateAccessKey(vpcId, s3ServiceId string) *CreateAccessKeyResponse
 
 	// Sub user
-	CreateSubUser(req SubUser, vpcId, s3ServiceId string) (*SubUser, error)
+	CreateSubUser(req SubUser, vpcId, s3ServiceId string) *CommonResponse
 	DeleteSubUser(vpcId, s3ServiceId, subUserId string) error
-	ListSubUsers(vpcId, s3ServiceId string) ([]SubUser, error)
+	ListSubUsers(vpcId, s3ServiceId string) ([]SubUserListResponse, error)
 	DetailSubUser(vpcId, s3ServiceId, subUserId string) *DetailSubUser
-	CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId string) *CreateAccessKeyResponse
+	CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId string) *SubUserCreateKeyResponse
 	DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId string) CommonResponse
 
 	// bucket configuration
@@ -229,7 +250,7 @@ type ObjectStorageService interface {
 
 	// Acl configuration
 	PutBucketAcl(vpcId, s3ServiceId, bucketName string, acl BucketAclRequest) PutBucketAclResponse
-	GetBucketAcl(vpcId, s3ServiceId, bucketName string) (*BucketAclResponse, error)
+	GetBucketAcl(vpcId, s3ServiceId, bucketName string) *BucketAclResponse
 
 	// Static website configuration
 	PutBucketWebsite(vpcId, s3ServiceId, bucketName string, website BucketWebsiteRequest) CommonResponse
@@ -269,7 +290,6 @@ func (s *ObjectStorageServiceImpl) CheckServiceEnable(vpcId string) S3ServiceEna
 func (s *ObjectStorageServiceImpl) CreateBucket(req BucketRequest, vpcId, s3ServiceId string) CommonResponse {
 
 	apiPath := common.ApiPath.CreateBucket(vpcId, s3ServiceId)
-	fmt.Println("apiPath", apiPath)
 	resp, err := s.client.SendPostRequest(apiPath, req)
 	if err != nil {
 		return CommonResponse{Status: false, Message: err.Error()}
@@ -285,26 +305,25 @@ func (s *ObjectStorageServiceImpl) CreateBucket(req BucketRequest, vpcId, s3Serv
 }
 
 // CreateSubUser creates a new sub-user
-func (s *ObjectStorageServiceImpl) CreateSubUser(req SubUser, vpcId, s3ServiceId string) (*SubUser, error) {
+func (s *ObjectStorageServiceImpl) CreateSubUser(req SubUser, vpcId, s3ServiceId string) *CommonResponse {
 	apiPath := common.ApiPath.CreateSubUser(vpcId, s3ServiceId)
 	resp, err := s.client.SendPostRequest(apiPath, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create sub-user: %v", err)
+		return &CommonResponse{Status: false, Message: err.Error()}
 	}
 
-	var subUser SubUser
+	var subUser CommonResponse
 	err = json.Unmarshal(resp, &subUser)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal sub-user response: %v", err)
+		return &CommonResponse{Status: false, Message: err.Error()}
 	}
 
-	return &subUser, nil
+	return &CommonResponse{Status: subUser.Status, Message: "Sub-user created successfully"}
 }
 
 func (s *ObjectStorageServiceImpl) CreateAccessKey(vpcId, s3ServiceId string) *CreateAccessKeyResponse {
 	apiPath := common.ApiPath.CreateAccessKey(vpcId, s3ServiceId)
 	resp, err := s.client.SendPostRequest(apiPath, nil)
-	fmt.Println("resp", resp)
 	if err != nil {
 		return &CreateAccessKeyResponse{Status: false, Message: err.Error()}
 	}
@@ -334,14 +353,14 @@ func (s *ObjectStorageServiceImpl) ListBuckets(vpcId, s3ServiceId string, page, 
 	return buckets
 }
 
-func (s *ObjectStorageServiceImpl) ListSubUsers(vpcId, s3ServiceId string) ([]SubUser, error) {
+func (s *ObjectStorageServiceImpl) ListSubUsers(vpcId, s3ServiceId string) ([]SubUserListResponse, error) {
 	apiPath := common.ApiPath.ListSubUsers(vpcId, s3ServiceId)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sub-users: %v", err)
 	}
 
-	var subUsers []SubUser
+	var subUsers []SubUserListResponse
 	err = json.Unmarshal(resp, &subUsers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal sub-user list response: %v", err)
@@ -366,23 +385,20 @@ func (s *ObjectStorageServiceImpl) ListAccessKeys(vpcId, s3ServiceId string) (Ac
 	return accessKeys, nil
 }
 
-func (s *ObjectStorageServiceImpl) DeleteBucket(vpcId, s3ServiceId, bucketName string) error {
-	apiPath := common.ApiPath.DeleteBucket(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendDeleteRequest(apiPath); err != nil {
-		return fmt.Errorf("failed to delete bucket: %v", err)
+func (s *ObjectStorageServiceImpl) DeleteBucket(vpcId, s3ServiceId, bucketName string) CommonResponse {
+	apiPath := common.ApiPath.DeleteBucket(vpcId, s3ServiceId)
+	payload := map[string]string{"name": bucketName}
+
+	if _, err := s.client.SendDeleteRequestWithBody(apiPath, payload); err != nil {
+
+		return CommonResponse{Status: false}
 	}
-	return nil
+	return CommonResponse{Status: true, Message: "Bucket deleted successfully"}
 }
 
 func (s *ObjectStorageServiceImpl) DeleteAccessKey(vpcId, s3ServiceId, accessKeyId string) error {
 	apiPath := common.ApiPath.DeleteAccessKey(vpcId, s3ServiceId)
 	body := map[string]string{"accessKey": accessKeyId}
-	fmt.Println("-----------------")
-	fmt.Printf("[INFO] Deleting access key: %s\n", accessKeyId)
-	fmt.Printf("[INFO] vpc_id: %s\n", vpcId)
-	fmt.Printf("[INFO] body: %s\n", body)
-	fmt.Printf("[INFO] apiPath: %s\n", apiPath)
-	fmt.Println("-----------------")
 	if _, err := s.client.SendDeleteRequestWithBody(apiPath, body); err != nil {
 		return fmt.Errorf("failed to delete access key: %v", err)
 	}
@@ -508,18 +524,18 @@ func (s *ObjectStorageServiceImpl) PutBucketAcl(vpcId, s3ServiceId, bucketName s
 	return putBucketAclResponse
 }
 
-func (s *ObjectStorageServiceImpl) GetBucketAcl(vpcId, s3ServiceId, bucketName string) (*BucketAclResponse, error) {
+func (s *ObjectStorageServiceImpl) GetBucketAcl(vpcId, s3ServiceId, bucketName string) *BucketAclResponse {
 	apiPath := common.ApiPath.GetBucketAcl(vpcId, s3ServiceId, bucketName)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get bucket ACL: %v", err)
+		return &BucketAclResponse{Status: false}
 	}
 
 	var acl BucketAclResponse
 	if err := json.Unmarshal(resp, &acl); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal bucket ACL: %v", err)
+		return &BucketAclResponse{Status: false}
 	}
-	return &acl, nil
+	return &acl
 }
 
 func (s *ObjectStorageServiceImpl) DeleteSubUser(vpcId, s3ServiceId, subUserId string) error {
@@ -572,18 +588,18 @@ func (s *ObjectStorageServiceImpl) DeleteBucketLifecycle(vpcId, s3ServiceId, buc
 	return &bucketLifecycle, nil
 }
 
-func (s *ObjectStorageServiceImpl) CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId string) *CreateAccessKeyResponse {
+func (s *ObjectStorageServiceImpl) CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId string) *SubUserCreateKeyResponse {
 	apiPath := common.ApiPath.CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId)
 	resp, err := s.client.SendPostRequest(apiPath, nil)
 	if err != nil {
 		return nil
 	}
 
-	var accessKey CreateAccessKeyResponse
-	if err := json.Unmarshal(resp, &accessKey); err != nil {
+	var subUserKeys SubUserCreateKeyResponse
+	if err := json.Unmarshal(resp, &subUserKeys); err != nil {
 		return nil
 	}
-	return &accessKey
+	return &subUserKeys
 }
 
 func (s *ObjectStorageServiceImpl) DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId string) CommonResponse {
