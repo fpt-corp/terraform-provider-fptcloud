@@ -80,11 +80,11 @@ var ApiPath = struct {
 	GetBucketVersioning func(vpcId, s3ServiceId, bucketName string) string
 	PutBucketVersioning func(vpcId, s3ServiceId, bucketName string) string
 	// Bucket Lifecycle
-	GetBucketLifecycle    func(vpcId, s3ServiceId, bucketName, page, pageSize string) string
+	GetBucketLifecycle    func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string
 	PutBucketLifecycle    func(vpcId, s3ServiceId, bucketName string) string
 	DeleteBucketLifecycle func(vpcId, s3ServiceId, bucketName string) string
 	// Bucket CORS
-	GetBucketCORS    func(vpcId, s3ServiceId, bucketName string) string
+	GetBucketCORS    func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string
 	PutBucketCORS    func(vpcId, s3ServiceId, bucketName string) string
 	CreateBucketCors func(vpcId, s3ServiceId, bucketName string) string
 	// Bucket ACL
@@ -92,13 +92,13 @@ var ApiPath = struct {
 	PutBucketAcl func(vpcId, s3ServiceId, bucketName string) string
 
 	// Sub-user
-	ListSubUsers           func(vpcId, s3ServiceId string) string
+	ListSubUsers           func(vpcId, s3ServiceId string, page, pageSize int) string
 	CreateSubUser          func(vpcId, s3ServiceId string) string
 	UpdateSubUser          func(vpcId, s3ServiceId, subUserId string) string
 	DeleteSubUser          func(vpcId, s3ServiceId, subUserId string) string
 	DetailSubUser          func(vpcId, s3ServiceId, subUserId string) string
 	CreateSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
-	DeleteSubUserAccessKey func(vpcId, s3ServiceId, subUserId, accessKeyId string) string
+	DeleteSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
 	// Access Key
 	ListAccessKeys  func(vpcId, s3ServiceId string) string
 	CreateAccessKey func(vpcId, s3ServiceId string) string
@@ -308,18 +308,18 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/delete-config", vpcId, s3ServiceId, bucketName)
 	},
 	// Bucket Lifecycle
-	GetBucketLifecycle: func(vpcId, s3ServiceId, bucketName, page, pageSize string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/lifecycles?page=%s&page_size=%s", vpcId, s3ServiceId, bucketName, page, pageSize)
+	GetBucketLifecycle: func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/lifecycles?page=%d&page_size=%d", vpcId, s3ServiceId, bucketName, page, pageSize)
 	},
 	PutBucketLifecycle: func(vpcId, s3ServiceId, bucketName string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/create-bucket-lifecycle-configuration`", vpcId, s3ServiceId, bucketName)
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/create-bucket-lifecycle-configuration", vpcId, s3ServiceId, bucketName)
 	},
 	DeleteBucketLifecycle: func(vpcId, s3ServiceId, bucketName string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/delete-bucket-lifecycle-configuration", vpcId, s3ServiceId, bucketName)
 	},
 	// Bucket CORS
-	GetBucketCORS: func(vpcId, s3ServiceId, bucketName string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/cors", vpcId, s3ServiceId, bucketName)
+	GetBucketCORS: func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/cors?page=%d&page_size=%d", vpcId, s3ServiceId, bucketName, page, pageSize)
 	},
 	PutBucketCORS: func(vpcId, s3ServiceId, bucketName string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/put-bucket-cors", vpcId, s3ServiceId, bucketName)
@@ -335,8 +335,8 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/acl", vpcId, s3ServiceId, bucketName)
 	},
 	// Sub-user
-	ListSubUsers: func(vpcId, serviceId string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/list", vpcId, serviceId)
+	ListSubUsers: func(vpcId, serviceId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/list?page=%d&page_size=%d", vpcId, serviceId, page, pageSize)
 	},
 	CreateSubUser: func(vpcId, s3ServiceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/create", vpcId, s3ServiceId)
@@ -354,8 +354,8 @@ var ApiPath = struct {
 	CreateSubUserAccessKey: func(vpcId, s3ServiceId, subUserId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/credentials/create", vpcId, s3ServiceId, subUserId)
 	},
-	DeleteSubUserAccessKey: func(vpcId, s3ServiceId, subUserId, accessKeyId string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/credentials/%s/delete", vpcId, s3ServiceId, subUserId, accessKeyId)
+	DeleteSubUserAccessKey: func(vpcId, s3ServiceId, subUserId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/credentials/delete", vpcId, s3ServiceId, subUserId)
 	},
 
 	// Access Key

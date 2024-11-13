@@ -3,7 +3,6 @@ package fptcloud_object_storage
 import (
 	"context"
 	"fmt"
-	"reflect"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -68,7 +67,7 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	subUserId := d.Get("user_id").(string)
 
 	subUser := objectStorageService.DetailSubUser(vpcId, s3ServiceDetail.S3ServiceId, subUserId)
-	if subUser == nil {
+	if subUser.UserID == "" {
 		return diag.Errorf("sub-user with ID %s not found", subUserId)
 	}
 
@@ -77,8 +76,7 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	if subUser.Arn != nil {
 		d.Set("arn", subUser.Arn)
 	}
-	fmt.Println("subUser active is: ", subUser.Active)
-	fmt.Println("reflect subUser active is: ", reflect.TypeOf(subUser.Active))
+	d.Set("active", subUser.Active)
 	d.Set("role", subUser.Role)
 	if subUser.CreatedAt != nil {
 		d.Set("created_at", subUser.CreatedAt)

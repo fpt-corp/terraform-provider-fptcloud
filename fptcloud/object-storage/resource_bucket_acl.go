@@ -32,7 +32,7 @@ func ResourceBucketAcl() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The region name where the bucket is located, e.g., HCM-02, can be retrieved when creating the bucket",
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 			"canned_acl": {
 				Type:        schema.TypeString,
@@ -65,7 +65,6 @@ func resourceBucketAclCreate(ctx context.Context, d *schema.ResourceData, m inte
 	regionName := d.Get("region_name").(string)
 	cannedAcl := d.Get("canned_acl").(string)
 	applyObjects := d.Get("apply_objects").(bool)
-	fmt.Println("applyObjects", applyObjects)
 	if cannedAcl != "private" && cannedAcl != "public-read" {
 		return diag.Errorf("canned_acl must be either private or public-read, got %s", cannedAcl)
 	}
@@ -108,6 +107,5 @@ func resourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interf
 func resourceBucketAclDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	// Remove the resource from the state
 	d.SetId("")
-	fmt.Println("Delete operation is not supported for bucket ACLs. This is a no-op.")
-	return nil
+	return diag.Errorf("Delete operation is not supported for bucket ACLs. This is a no-op.")
 }

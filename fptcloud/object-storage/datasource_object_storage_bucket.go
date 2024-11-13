@@ -13,30 +13,59 @@ func DataSourceBucket() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceBucketRead,
 		Schema: map[string]*schema.Schema{
-			"vpd_id": {
+			"vpc_id": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "The VPC ID",
 			},
-			"name": {
+			"region_name": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Name of the bucket",
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
-			"region": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Region where the bucket is located",
+			"page": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: "Page number",
 			},
-			"versioning": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "Whether versioning is enabled",
+			"page_size": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: "Number of items per page",
 			},
-			"acl": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Access control list",
+			"list_bucket_result": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{Schema: map[string]*schema.Schema{
+					"endpoint": {
+						Type:        schema.TypeString,
+						Required:    true,
+						Description: "The endpoint of the bucket",
+					},
+					"is_enabled_logging": {
+						Type:     schema.TypeBool,
+						Required: true,
+					},
+					"bucket_name": {
+						Type:        schema.TypeString,
+						Required:    true,
+						Description: "The name of the bucket",
+					},
+					"creation_date": {
+						Type:        schema.TypeString,
+						Required:    true,
+						Description: "The creation date of the bucket",
+					},
+					"s3_service_id": {
+						Type:     schema.TypeString,
+						Required: true,
+					},
+					"is_empty": {
+						Type:        schema.TypeBool,
+						Required:    true,
+						Description: "The bucket is empty or not",
+					},
+				}},
 			},
 		},
 	}
@@ -46,30 +75,38 @@ func dataSourceBucketRead(ctx context.Context, d *schema.ResourceData, m interfa
 	client := m.(*common.Client)
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
-	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
-	}
 	page := 1
-	if d.Get("page") != nil {
+	if d.Get("page").(int) > 0 {
 		page = d.Get("page").(int)
 	}
 	pageSize := 25
-	if d.Get("page_size") != nil {
+	if d.Get("page_size").(int) > 0 {
 		pageSize = d.Get("page_size").(int)
+	}
+	regionName := d.Get("region_name").(string)
+	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
 	}
 	buckets := service.ListBuckets(vpcId, s3ServiceDetail.S3ServiceId, page, pageSize)
 	if buckets.Total == 0 {
 		return diag.Errorf("no buckets found")
 	}
-
-	bucketName := d.Get("name").(string)
+	var formattedData []interface{}
 	for _, bucket := range buckets.Buckets {
-		if bucket.Name == bucketName {
-			d.SetId(bucket.Name)
-			return nil
-		}
+		formattedData = append(formattedData, map[string]interface{}{
+			"endpoint":           bucket.Endpoint,
+			"is_enabled_logging": bucket.IsEnabledLogging,
+			"bucket_name":        bucket.Name,
+			"creation_date":      bucket.CreationDate,
+			"s3_service_id":      bucket.S3ServiceID,
+			"is_empty":           bucket.IsEmpty,
+		})
 	}
+	if err := d.Set("list_bucket_result", formattedData); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting data: %v", err))
+	}
+	d.SetId(vpcId)
 
-	return diag.Errorf("bucket with name %s not found", bucketName)
+	return nil
 }

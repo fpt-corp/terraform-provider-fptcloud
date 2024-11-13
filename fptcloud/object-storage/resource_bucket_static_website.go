@@ -25,7 +25,7 @@ func ResourceBucketStaticWebsite() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The region name of the bucket",
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 			"vpc_id": {
 				Type:        schema.TypeString,
@@ -80,9 +80,6 @@ func resourceBucketStaticWebsiteCreate(ctx context.Context, d *schema.ResourceDa
 		Suffix: indexDocument,
 		Key:    errorDocument,
 	})
-	fmt.Println("--------------------------------------- \n:")
-	fmt.Println("--------------------------------------- \n: ", putBucketWebsite)
-	fmt.Println("--------------------------------------- \n: ")
 
 	if !putBucketWebsite.Status {
 		diag.Errorf("failed to create bucket website for bucket %s", bucketName)
@@ -91,7 +88,7 @@ func resourceBucketStaticWebsiteCreate(ctx context.Context, d *schema.ResourceDa
 	}
 	d.Set("status", true)
 	d.SetId(bucketName)
-	return dataSourceBucketStaticWebsite(ctx, d, m)
+	return nil
 }
 
 func resourceDeleteBucketStaticWebsite(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -110,6 +107,7 @@ func resourceDeleteBucketStaticWebsite(ctx context.Context, d *schema.ResourceDa
 	if !resp.Status {
 		return diag.Errorf("failed to delete bucket website for bucket %s", bucketName)
 	}
+	d.SetId("")
 
 	return nil
 }

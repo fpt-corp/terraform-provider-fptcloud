@@ -38,7 +38,7 @@ func ResourceBucket() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The region name that's are the same with the region name in the S3 service.",
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 			"acl": {
 				Type:     schema.TypeString,

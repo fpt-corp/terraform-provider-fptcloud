@@ -39,7 +39,7 @@ func ResourceAccessKey() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The region name to create the access key",
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 			"status": {
 				Type:        schema.TypeBool,
@@ -72,7 +72,7 @@ func resourceAccessKeyCreate(ctx context.Context, d *schema.ResourceData, m inte
 	resp := service.CreateAccessKey(vpcId, s3ServiceDetail.S3ServiceId)
 
 	if !resp.Status {
-		return diag.Errorf(resp.Message)
+		return diag.Errorf("failed to delete sub-user access key: %s", resp.Message)
 	}
 
 	if resp.Credential.AccessKey != "" {
@@ -124,9 +124,6 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 		accessKeyId = d.Get("access_key_id").(string)
 	}
 
-	log.Printf("[DEBUG] Starting deletion of access key. VPC ID: %s, Region: %s, Access Key ID: %s",
-		vpcId, regionName, accessKeyId)
-
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		log.Printf("[ERROR] Region %s is not enabled for VPC %s", regionName, vpcId)
@@ -140,16 +137,12 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("access_key_id is required for deletion")
 	}
 
-	log.Printf("[INFO] Attempting to delete access key %s for VPC %s in region %s",
-		accessKeyId, vpcId, regionName)
-
 	err := service.DeleteAccessKey(vpcId, s3ServiceDetail.S3ServiceId, accessKeyId)
 	if err != nil {
 		log.Printf("[ERROR] Failed to delete access key %s: %v", accessKeyId, err)
 		return diag.FromErr(err)
 	}
-
-	log.Printf("[INFO] Successfully deleted access key %s", accessKeyId)
+	d.Set("status", true)
 	d.SetId("")
 	return nil
 }

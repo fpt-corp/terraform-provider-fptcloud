@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -112,6 +113,7 @@ func (c *Client) SendRequest(req *http.Request) ([]byte, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	c.LastJSONResponse = string(body)
+	log.Printf("[DEBUG] Response: %s - URL: %s", c.LastJSONResponse, resp.Request.URL.String())
 
 	if resp.StatusCode >= 300 {
 		return nil, HTTPError{Code: resp.StatusCode, Status: resp.Status, Reason: string(body)}
@@ -166,7 +168,6 @@ func (c *Client) SendDeleteRequest(requestURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return c.SendRequest(req)
 }
 
@@ -175,10 +176,7 @@ func (c *Client) SendDeleteRequestWithBody(requestURL string, params interface{}
 	u := c.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
-	jsonValue, err := json.Marshal(params)
-	if err != nil {
-		return nil, err
-	}
+	jsonValue, _ := json.Marshal(params)
 
 	req, err := http.NewRequest("DELETE", u.String(), bytes.NewBuffer(jsonValue))
 	if err != nil {

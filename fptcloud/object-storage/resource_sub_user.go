@@ -31,9 +31,10 @@ func ResourceSubUser() *schema.Resource {
 				ForceNew: true,
 			},
 			"region_name": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 		},
 	}
@@ -48,20 +49,39 @@ func resourceSubUserCreate(ctx context.Context, d *schema.ResourceData, m interf
 		Role:   d.Get("role").(string),
 		UserId: subUserId,
 	}
+
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
 	}
 
-	subUser := objectStorageService.CreateSubUser(req, vpcId, s3ServiceDetail.S3ServiceId)
-	if !subUser.Status {
-		return diag.FromErr(fmt.Errorf(subUser.Message))
+	err := objectStorageService.CreateSubUser(req, vpcId, s3ServiceDetail.S3ServiceId)
+	if !err.Status {
+		return diag.FromErr(fmt.Errorf("error creating sub-user: %s", err.Message))
 	}
 
+	// Set the resource ID after successful creation
 	d.SetId(subUserId)
-	return dataSourceSubUserDetailRead(ctx, d, m)
-}
+	d.Set("user_id", subUserId)
 
+	return nil
+}
+func readDetailSubUserOnly(ctx context.Context, d *schema.ResourceData, m interface{}, subUserId string) diag.Diagnostics {
+	client := m.(*common.Client)
+	objectStorageService := NewObjectStorageService(client)
+	vpcId := d.Get("vpc_id").(string)
+	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+	}
+	subUser := objectStorageService.DetailSubUser(subUserId, vpcId, s3ServiceDetail.S3ServiceId)
+	if subUser == nil {
+		d.SetId("")
+		return nil
+	}
+	d.SetId(subUserId)
+	return nil
+}
 func resourceSubUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)

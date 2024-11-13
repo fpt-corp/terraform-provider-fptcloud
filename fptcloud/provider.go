@@ -81,9 +81,11 @@ func Provider() *schema.Provider {
 			"fptcloud_object_storage_bucket_policy":     fptcloud_object_storage.DataSourceBucketPolicy(),
 			"fptcloud_object_storage_bucket_cors":       fptcloud_object_storage.DataSourceBucketCors(),
 			"fptcloud_object_storage_bucket_versioning": fptcloud_object_storage.DataSourceBucketVersioning(),
-			"fptcloud_object_storage_lifecycle":         fptcloud_object_storage.DataSourceBucketLifecycle(),
-			"fptcloud_object_storage_static_website":    fptcloud_object_storage.DataSourceBucketStaticWebsite(),
+			"fptcloud_object_storage_bucket_lifecycle":         fptcloud_object_storage.DataSourceBucketLifecycle(),
+			"fptcloud_object_storage_bucket_static_website":    fptcloud_object_storage.DataSourceBucketStaticWebsite(),
 			"fptcloud_object_storage_sub_user_detail":   fptcloud_object_storage.DataSourceSubUserDetail(),
+			"fptcloud_s3_service_enable":                fptcloud_object_storage.DataSourceS3ServiceEnableResponse(),
+			"fptcloud_object_storage_bucket_acl":        fptcloud_object_storage.DataSourceBucketAcl(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
@@ -104,6 +106,7 @@ func Provider() *schema.Provider {
 			"fptcloud_object_storage_bucket_static_website": fptcloud_object_storage.ResourceBucketStaticWebsite(),
 			"fptcloud_object_storage_bucket_acl":            fptcloud_object_storage.ResourceBucketAcl(),
 			"fptcloud_object_storage_sub_user_key":          fptcloud_object_storage.ResourceSubUserKeys(),
+			"fptcloud_object_storage_bucket_lifecycle":      fptcloud_object_storage.ResourceBucketLifeCycle(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
