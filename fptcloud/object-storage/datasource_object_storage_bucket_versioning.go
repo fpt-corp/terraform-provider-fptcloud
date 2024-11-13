@@ -19,14 +19,14 @@ func DataSourceBucketVersioning() *schema.Resource {
 				ForceNew:    true,
 				Description: "Name of the bucket",
 			},
-			"vpd_id": {
+			"vpc_id": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "The VPC ID",
 			},
 			"versioning_status": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Optional:    true,
 				Description: "Status of the versioning, must be Enabled or Suspended",
 				ForceNew:    true, // Marking this field as ForceNew to ensure that the resource is recreated when the value is changed
 			},
@@ -34,7 +34,7 @@ func DataSourceBucketVersioning() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The region name to create the access key",
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 		},
 	}
@@ -51,13 +51,16 @@ func dataSourceBucketVersioningRead(ctx context.Context, d *schema.ResourceData,
 	}
 	bucketName := d.Get("bucket_name").(string)
 
-	versioning := service.GetBucketVersioning(vpcId, bucketName, s3ServiceDetail.S3ServiceId)
-	if versioning == nil {
-		return diag.Errorf("failed to get bucket versioning for bucket %s", bucketName)
+	versioning := service.GetBucketVersioning(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
+	if !versioning.Status {
+		return diag.Errorf("Could not get versioning status for bucket %s", bucketName)
 	}
 
+	if err := d.Set("versioning_status", versioning.Config); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
 	d.SetId(bucketName)
-	d.Set("versioning_status", versioning.Status)
 
 	return nil
 }

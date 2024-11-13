@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // SubUserCreateRequest represents the request body for creating a sub-user
@@ -35,13 +34,14 @@ type CreateAccessKeyResponse struct {
 	} `json:"credential,omitempty"`
 }
 type SubUserCreateKeyResponse struct {
-	Status     bool `json:"status"`
+	Status     bool   `json:"status"`
+	Message    string `json:"message,omitempty"`
 	Credential struct {
-		AccessKey   string      `json:"accessKey"`
-		SecretKey   string      `json:"secretKey"`
-		Active      interface{} `json:"active"`
-		CreatedDate interface{} `json:"createdDate"`
-	} `json:"credential"`
+		AccessKey   string      `json:"accessKey,omitempty"`
+		SecretKey   string      `json:"secretKey,omitempty"`
+		Active      interface{} `json:"active,omitempty"`
+		CreatedDate interface{} `json:"createdDate,omitempty"`
+	} `json:"credential,omitempty"`
 }
 
 type SubUser struct {
@@ -67,17 +67,24 @@ type CorsRule struct {
 	ID             string   `json:"ID,omitempty"`
 	AllowedOrigins []string `json:"AllowedOrigins"`
 	AllowedMethods []string `json:"AllowedMethods"`
-	MaxAgeSeconds  int      `json:"MaxAgeSeconds,omitempty"`
 	ExposeHeaders  []string `json:"ExposeHeaders,omitempty"`
 	AllowedHeaders []string `json:"AllowedHeaders,omitempty"`
+	MaxAgeSeconds  int      `json:"MaxAgeSeconds"`
 }
 type BucketCors struct {
 	CorsRules []CorsRule `json:"CORSRules"`
 }
 type BucketCorsResponse struct {
-	Status    bool       `json:"status"`
-	Total     int        `json:"total"`
-	CorsRules []CorsRule `json:"cors_rules"`
+	Status    bool `json:"status"`
+	CorsRules []struct {
+		ID             string   `json:"ID"`
+		AllowedHeaders []string `json:"AllowedHeaders,omitempty"`
+		AllowedMethods []string `json:"AllowedMethods"`
+		AllowedOrigins []string `json:"AllowedOrigins"`
+		ExposeHeaders  []string `json:"ExposeHeaders,omitempty"`
+		MaxAgeSeconds  int      `json:"MaxAgeSeconds"`
+	} `json:"cors_rules"`
+	Total int `json:"total"`
 }
 
 type BucketPolicyResponse struct {
@@ -97,6 +104,10 @@ type Statement struct {
 
 type BucketVersioningRequest struct {
 	Status string `json:"status"` // "Enabled" or "Suspended"
+}
+type BucketVersioningResponse struct {
+	Status bool   `json:"status"`
+	Config string `json:"config"` // "Enabled" or "Suspended"
 }
 
 type BucketAclResponse struct {
@@ -177,12 +188,12 @@ type BucketRequest struct {
 }
 type ListBucketResponse struct {
 	Buckets []struct {
-		Name             string    `json:"Name"`
-		CreationDate     time.Time `json:"CreationDate"`
-		IsEmpty          bool      `json:"isEmpty"`
-		S3ServiceID      string    `json:"s3_service_id"`
-		IsEnabledLogging bool      `json:"isEnabledLogging"`
-		Endpoint         string    `json:"endpoint"`
+		Name             string `json:"Name"`
+		CreationDate     string `json:"CreationDate"`
+		IsEmpty          bool   `json:"isEmpty"`
+		S3ServiceID      string `json:"s3_service_id"`
+		IsEnabledLogging bool   `json:"isEnabledLogging"`
+		Endpoint         string `json:"endpoint"`
 	} `json:"buckets"`
 	Total int `json:"total"`
 }
@@ -190,16 +201,21 @@ type BucketLifecycleResponse struct {
 	Status bool `json:"status"`
 	Rules  []struct {
 		Expiration struct {
-			Days int `json:"Days"`
+			ExpiredObjectDeleteMarker bool `json:"ExpiredObjectDeleteMarker,omitempty"`
+			Days                      int  `json:"Days,omitempty"`
 		} `json:"Expiration"`
 		ID     string `json:"ID"`
 		Filter struct {
 			Prefix string `json:"Prefix"`
-		} `json:"Filter"`
-		Status                         string `json:"Status"`
+		} `json:"Filter,omitempty"`
+		Status                      string `json:"Status"`
+		NoncurrentVersionExpiration struct {
+			NoncurrentDays int `json:"NoncurrentDays"`
+		} `json:"NoncurrentVersionExpiration"`
 		AbortIncompleteMultipartUpload struct {
 			DaysAfterInitiation int `json:"DaysAfterInitiation"`
 		} `json:"AbortIncompleteMultipartUpload"`
+		Prefix string `json:"Prefix,omitempty"`
 	} `json:"rules"`
 	Total int `json:"total"`
 }
@@ -211,6 +227,31 @@ type DetailSubUser struct {
 	Role       string      `json:"role"`
 	CreatedAt  interface{} `json:"created_at"`
 	AccessKeys []string    `json:"access_keys"`
+}
+
+type S3BucketLifecycleConfig struct {
+	ID                             string                         `json:"ID"`
+	Filter                         Filter                         `json:"Filter"`
+	Expiration                     Expiration                     `json:"Expiration"`
+	NoncurrentVersionExpiration    NoncurrentVersionExpiration    `json:"NoncurrentVersionExpiration"`
+	AbortIncompleteMultipartUpload AbortIncompleteMultipartUpload `json:"AbortIncompleteMultipartUpload"`
+}
+
+type Filter struct {
+	Prefix string `json:"Prefix"`
+}
+
+type Expiration struct {
+	Days                      int  `json:"Days,omitempty"`
+	ExpiredObjectDeleteMarker bool `json:"ExpiredObjectDeleteMarker,omitempty"`
+}
+
+type NoncurrentVersionExpiration struct {
+	NoncurrentDays int `json:"NoncurrentDays"`
+}
+
+type AbortIncompleteMultipartUpload struct {
+	DaysAfterInitiation int `json:"DaysAfterInitiation"`
 }
 
 // ObjectStorageService defines the interface for object storage operations
@@ -230,23 +271,23 @@ type ObjectStorageService interface {
 	// Sub user
 	CreateSubUser(req SubUser, vpcId, s3ServiceId string) *CommonResponse
 	DeleteSubUser(vpcId, s3ServiceId, subUserId string) error
-	ListSubUsers(vpcId, s3ServiceId string) ([]SubUserListResponse, error)
+	ListSubUsers(vpcId, s3ServiceId string, page, pageSize int) (SubUserListResponse, error)
 	DetailSubUser(vpcId, s3ServiceId, subUserId string) *DetailSubUser
 	CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId string) *SubUserCreateKeyResponse
 	DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId string) CommonResponse
 
 	// bucket configuration
-	PutBucketPolicy(vpcId, s3ServiceId, bucketName string, policy BucketPolicyRequest) CommonResponse
+	PutBucketPolicy(vpcId, s3ServiceId, bucketName string, policy interface{}) CommonResponse
 	GetBucketPolicy(vpcId, s3ServiceId, bucketName string) *BucketPolicyResponse
 
 	// CORS configuration
-	PutBucketCors(bucketName, vpcId, s3ServiceId string, cors CorsRule) (CommonResponse, error)
-	UpdateBucketCors(bucketName, vpcId, s3ServiceId string, cors BucketCors) (CommonResponse, error)
-	GetBucketCors(vpcId, s3ServiceId, bucketName string) (*BucketCors, error)
+	CreateBucketCors(vpcId, s3ServiceId, bucketName string, cors map[string]interface{}) CommonResponse
+	UpdateBucketCors(vpcId, s3ServiceId, bucketName string, cors []map[string]interface{}) CommonResponse
+	GetBucketCors(vpcId, s3ServiceId, bucketName string, page, pageSize int) (*BucketCorsResponse, error)
 
 	// Versioning configuration
 	PutBucketVersioning(vpcId, s3ServiceId, bucketName string, versioning BucketVersioningRequest) error
-	GetBucketVersioning(vpcId, s3ServiceId, bucketName string) *BucketVersioningRequest
+	GetBucketVersioning(vpcId, s3ServiceId, bucketName string) *BucketVersioningResponse
 
 	// Acl configuration
 	PutBucketAcl(vpcId, s3ServiceId, bucketName string, acl BucketAclRequest) PutBucketAclResponse
@@ -258,9 +299,9 @@ type ObjectStorageService interface {
 	DeleteBucketStaticWebsite(vpcId, s3ServiceId, bucketName string) CommonResponse
 
 	// Lifecycle configuration
-	GetBucketLifecycle(vpcId, s3ServiceId, bucketName, page, pageSize string) (*BucketLifecycleResponse, error)
-	PutBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle interface{}) (*BucketLifecycleResponse, error)
-	DeleteBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle interface{}) (*BucketLifecycleResponse, error)
+	GetBucketLifecycle(vpcId, s3ServiceId, bucketName string, page, pageSize int) BucketLifecycleResponse
+	PutBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle map[string]interface{}) CommonResponse
+	DeleteBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle map[string]interface{}) CommonResponse
 }
 
 // ObjectStorageServiceImpl is the implementation of ObjectStorageService
@@ -353,17 +394,17 @@ func (s *ObjectStorageServiceImpl) ListBuckets(vpcId, s3ServiceId string, page, 
 	return buckets
 }
 
-func (s *ObjectStorageServiceImpl) ListSubUsers(vpcId, s3ServiceId string) ([]SubUserListResponse, error) {
-	apiPath := common.ApiPath.ListSubUsers(vpcId, s3ServiceId)
+func (s *ObjectStorageServiceImpl) ListSubUsers(vpcId, s3ServiceId string, page, pageSize int) (SubUserListResponse, error) {
+	apiPath := common.ApiPath.ListSubUsers(vpcId, s3ServiceId, page, pageSize)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list sub-users: %v", err)
+		return SubUserListResponse{Total: 0}, fmt.Errorf("failed to list sub-users: %v", err)
 	}
 
-	var subUsers []SubUserListResponse
+	var subUsers SubUserListResponse
 	err = json.Unmarshal(resp, &subUsers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal sub-user list response: %v", err)
+		return SubUserListResponse{Total: 0}, fmt.Errorf("failed to unmarshal sub-user list response: %v", err)
 	}
 
 	return subUsers, nil
@@ -376,13 +417,13 @@ func (s *ObjectStorageServiceImpl) ListAccessKeys(vpcId, s3ServiceId string) (Ac
 		return AccessKey{}, fmt.Errorf("failed to list access keys: %v", err)
 	}
 
-	var accessKeys AccessKey
-	err = json.Unmarshal(resp, &accessKeys)
+	var accessKey AccessKey
+	err = json.Unmarshal(resp, &accessKey)
 	if err != nil {
 		return AccessKey{}, fmt.Errorf("failed to unmarshal access key list response: %v", err)
 	}
 
-	return accessKeys, nil
+	return accessKey, nil
 }
 
 func (s *ObjectStorageServiceImpl) DeleteBucket(vpcId, s3ServiceId, bucketName string) CommonResponse {
@@ -406,7 +447,7 @@ func (s *ObjectStorageServiceImpl) DeleteAccessKey(vpcId, s3ServiceId, accessKey
 }
 
 // Implement bucket policy methods
-func (s *ObjectStorageServiceImpl) PutBucketPolicy(vpcId, s3ServiceId, bucketName string, policy BucketPolicyRequest) CommonResponse {
+func (s *ObjectStorageServiceImpl) PutBucketPolicy(vpcId, s3ServiceId, bucketName string, policy interface{}) CommonResponse {
 	apiPath := common.ApiPath.PutBucketPolicy(vpcId, s3ServiceId, bucketName)
 	if _, err := s.client.SendPutRequest(apiPath, policy); err != nil {
 		return CommonResponse{Status: false}
@@ -429,30 +470,30 @@ func (s *ObjectStorageServiceImpl) GetBucketPolicy(vpcId, s3ServiceId, bucketNam
 }
 
 // Implement CORS methods
-func (s *ObjectStorageServiceImpl) PutBucketCors(bucketName, vpcId, s3ServiceId string, cors CorsRule) (CommonResponse, error) {
-	apiPath := common.ApiPath.PutBucketCORS(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendPutRequest(apiPath, cors); err != nil {
-		return CommonResponse{Status: false}, fmt.Errorf("failed to update bucket CORS: %v", err)
+func (s *ObjectStorageServiceImpl) CreateBucketCors(vpcId, s3ServiceId, bucketName string, cors map[string]interface{}) CommonResponse {
+	apiPath := common.ApiPath.CreateBucketCors(vpcId, s3ServiceId, bucketName)
+	if _, err := s.client.SendPostRequest(apiPath, cors); err != nil {
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true}, nil
+	return CommonResponse{Status: true, Message: "Bucket CORS configuration updated successfully"}
 }
 
-func (s *ObjectStorageServiceImpl) UpdateBucketCors(bucketName, vpcId, s3ServiceId string, cors BucketCors) (CommonResponse, error) {
+func (s *ObjectStorageServiceImpl) UpdateBucketCors(vpcId, s3ServiceId, bucketName string, cors []map[string]interface{}) CommonResponse {
 	apiPath := common.ApiPath.PutBucketCORS(vpcId, s3ServiceId, bucketName)
 	if _, err := s.client.SendPutRequest(apiPath, cors); err != nil {
-		return CommonResponse{Status: false}, fmt.Errorf("failed to update bucket CORS: %v", err)
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true}, nil
+	return CommonResponse{Status: true, Message: "Bucket CORS configuration updated successfully"}
 }
 
-func (s *ObjectStorageServiceImpl) GetBucketCors(vpcId, s3ServiceId, bucketName string) (*BucketCors, error) {
-	apiPath := common.ApiPath.GetBucketCORS(vpcId, s3ServiceId, bucketName)
+func (s *ObjectStorageServiceImpl) GetBucketCors(vpcId, s3ServiceId, bucketName string, page, pageSize int) (*BucketCorsResponse, error) {
+	apiPath := common.ApiPath.GetBucketCORS(vpcId, s3ServiceId, bucketName, page, pageSize)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get bucket CORS: %v", err)
 	}
 
-	var cors BucketCors
+	var cors BucketCorsResponse
 	if err := json.Unmarshal(resp, &cors); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal bucket CORS: %v", err)
 	}
@@ -468,16 +509,16 @@ func (s *ObjectStorageServiceImpl) PutBucketVersioning(vpcId, s3ServiceId, bucke
 	return nil
 }
 
-func (s *ObjectStorageServiceImpl) GetBucketVersioning(vpcId, s3ServiceId, bucketName string) *BucketVersioningRequest {
+func (s *ObjectStorageServiceImpl) GetBucketVersioning(vpcId, s3ServiceId, bucketName string) *BucketVersioningResponse {
 	apiPath := common.ApiPath.GetBucketVersioning(vpcId, s3ServiceId, bucketName)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return &BucketVersioningRequest{}
+		return &BucketVersioningResponse{Status: false}
 	}
 
-	var versioning BucketVersioningRequest
+	var versioning BucketVersioningResponse
 	if err := json.Unmarshal(resp, &versioning); err != nil {
-		return &BucketVersioningRequest{}
+		return &BucketVersioningResponse{Status: false}
 	}
 	return &versioning
 }
@@ -546,68 +587,69 @@ func (s *ObjectStorageServiceImpl) DeleteSubUser(vpcId, s3ServiceId, subUserId s
 	return nil
 }
 
-func (s *ObjectStorageServiceImpl) GetBucketLifecycle(vpcId, s3ServiceId, bucketName, page, pageSize string) (*BucketLifecycleResponse, error) {
+func (s *ObjectStorageServiceImpl) GetBucketLifecycle(vpcId, s3ServiceId, bucketName string, page, pageSize int) BucketLifecycleResponse {
 	apiPath := common.ApiPath.GetBucketLifecycle(vpcId, s3ServiceId, bucketName, page, pageSize)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get bucket lifecycle: %v", err)
+		return BucketLifecycleResponse{Total: 0, Status: false}
 	}
 
 	var bucketLifecycle BucketLifecycleResponse
 	if err := json.Unmarshal(resp, &bucketLifecycle); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal bucket lifecycle: %v", err)
+		return BucketLifecycleResponse{Total: 0, Status: false}
 	}
-	return &bucketLifecycle, nil
+	return bucketLifecycle
 }
 
-func (s *ObjectStorageServiceImpl) PutBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle interface{}) (*BucketLifecycleResponse, error) {
+func (s *ObjectStorageServiceImpl) PutBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle map[string]interface{}) CommonResponse {
 	apiPath := common.ApiPath.PutBucketLifecycle(vpcId, s3ServiceId, bucketName)
-	resp, err := s.client.SendPutRequest(apiPath, lifecycle)
+	resp, err := s.client.SendPostRequest(apiPath, lifecycle)
 	if err != nil {
-		return nil, fmt.Errorf("failed to put bucket lifecycle: %v", err)
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
 
-	var bucketLifecycle BucketLifecycleResponse
+	var bucketLifecycle CommonResponse
 	if err := json.Unmarshal(resp, &bucketLifecycle); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal bucket lifecycle: %v", err)
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return &bucketLifecycle, nil
+	return bucketLifecycle
 }
 
-func (s *ObjectStorageServiceImpl) DeleteBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle interface{}) (*BucketLifecycleResponse, error) {
+func (s *ObjectStorageServiceImpl) DeleteBucketLifecycle(vpcId, s3ServiceId, bucketName string, lifecycle map[string]interface{}) CommonResponse {
 	apiPath := common.ApiPath.DeleteBucketLifecycle(vpcId, s3ServiceId, bucketName)
 	resp, err := s.client.SendPutRequest(apiPath, lifecycle)
 	if err != nil {
-		return nil, fmt.Errorf("failed to delete bucket lifecycle: %v", err)
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
 
-	var bucketLifecycle BucketLifecycleResponse
+	var bucketLifecycle CommonResponse
 	if err := json.Unmarshal(resp, &bucketLifecycle); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal bucket lifecycle: %v", err)
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return &bucketLifecycle, nil
+	return bucketLifecycle
 }
 
 func (s *ObjectStorageServiceImpl) CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId string) *SubUserCreateKeyResponse {
 	apiPath := common.ApiPath.CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId)
 	resp, err := s.client.SendPostRequest(apiPath, nil)
 	if err != nil {
-		return nil
+		return &SubUserCreateKeyResponse{Status: false, Message: err.Error()}
 	}
 
 	var subUserKeys SubUserCreateKeyResponse
 	if err := json.Unmarshal(resp, &subUserKeys); err != nil {
-		return nil
+		return &SubUserCreateKeyResponse{Status: false, Message: err.Error()}
 	}
 	return &subUserKeys
 }
 
 func (s *ObjectStorageServiceImpl) DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId string) CommonResponse {
-	apiPath := common.ApiPath.DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId)
-	if _, err := s.client.SendDeleteRequest(apiPath); err != nil {
-		return CommonResponse{Status: false}
+	apiPath := common.ApiPath.DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId)
+	payload := map[string]string{"accessKey": accessKeyId}
+	if _, err := s.client.SendDeleteRequestWithBody(apiPath, payload); err != nil {
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true}
+	return CommonResponse{Status: true, Message: "Access key deleted successfully"}
 }
 
 func (s *ObjectStorageServiceImpl) DetailSubUser(vpcId, s3ServiceId, subUserId string) *DetailSubUser {

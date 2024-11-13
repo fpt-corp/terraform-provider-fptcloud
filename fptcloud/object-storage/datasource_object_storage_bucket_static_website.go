@@ -9,9 +9,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func DataSourceBucketPolicy() *schema.Resource {
+func DataSourceBucketStaticWebsite() *schema.Resource {
 	return &schema.Resource{
-		ReadContext: dataSourceBucketPolicyRead,
+		ReadContext: dataSourceBucketStaticWebsite,
 		Schema: map[string]*schema.Schema{
 			"vpc_id": {
 				Type:        schema.TypeString,
@@ -28,16 +28,19 @@ func DataSourceBucketPolicy() *schema.Resource {
 				Required:    true,
 				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
-			"policy": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The bucket policy in JSON format",
+			"index_document_suffix": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+			"error_document_key": {
+				Type:     schema.TypeString,
+				Optional: true,
 			},
 		},
 	}
 }
 
-func dataSourceBucketPolicyRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func dataSourceBucketStaticWebsite(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	service := NewObjectStorageService(client)
 
@@ -47,18 +50,22 @@ func dataSourceBucketPolicyRead(ctx context.Context, d *schema.ResourceData, m i
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
 	}
-	policyResponse := service.GetBucketPolicy(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
-	if !policyResponse.Status {
-		return diag.Errorf("failed to get bucket policy for bucket %s", bucketName)
-	}
 
-	// Set the policy field in the schema
-	if err := d.Set("policy", policyResponse.Policy); err != nil {
+	staticWebsiteResponse := service.GetBucketWebsite(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
+	if !staticWebsiteResponse.Status {
+		return diag.Errorf("failed to get bucket static website config for bucket %s", bucketName)
+	}
+	if staticWebsiteResponse.Config.IndexDocument.Suffix == "" && staticWebsiteResponse.Config.ErrorDocument.Key == "" {
+		return diag.Errorf("bucket %s does not have static website configuration", bucketName)
+	}
+	if err := d.Set("index_document_suffix", staticWebsiteResponse.Config.IndexDocument.Suffix); err != nil {
 		d.SetId("")
 		return diag.FromErr(err)
 	}
-	// Set the ID to be a combination of bucket name to ensure unique data source
-	d.SetId(fmt.Sprintf("bucket_policy_%s", bucketName))
-
+	if err := d.Set("error_document_key", staticWebsiteResponse.Config.ErrorDocument.Key); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
+	d.SetId(bucketName)
 	return nil
 }

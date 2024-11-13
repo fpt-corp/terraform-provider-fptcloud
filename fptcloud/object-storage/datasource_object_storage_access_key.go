@@ -21,28 +21,20 @@ func DataSourceAccessKey() *schema.Resource {
 			"region_name": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "The region name to create the access key",
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
-			"access_keys": {
+			"credentials": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"credentials": {
-							Type:     schema.TypeList,
+						"access_key": {
+							Type:     schema.TypeString,
 							Computed: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"access_key": {
-										Type:     schema.TypeString,
-										Computed: true,
-									},
-									"active": {
-										Type:     schema.TypeBool,
-										Computed: true,
-									},
-								},
-							},
+						},
+						"active": {
+							Type:     schema.TypeBool,
+							Computed: true,
 						},
 					},
 				},
@@ -58,49 +50,26 @@ func dataSourceAccessKeyRead(ctx context.Context, d *schema.ResourceData, m inte
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
 	}
-	_, err := service.ListAccessKeys(vpcId, s3ServiceDetail.S3ServiceId)
+	keys, err := service.ListAccessKeys(vpcId, s3ServiceDetail.S3ServiceId)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	// if len(accessKeys.Credentials) > 0 {
-	// 	d.SetId(fmt.Sprintf("access_keys_%d", len(accessKeys)))
-	// 	if err := d.Set("access_keys", flattenAccessKeys(accessKeys)); err != nil {
-	// 		return diag.FromErr(err)
-	// 	}
-	// }
+	var formattedData []interface{}
+	for _, key := range keys.Credentials {
+		for _, cred := range key.Credentials {
+			formattedData = append(formattedData, map[string]interface{}{
+				"access_key": cred.AccessKey,
+				"active":     cred.Active,
+			})
+		}
+	}
+	if err := d.Set("credentials", formattedData); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting data: %v", err))
+	}
+	d.SetId(vpcId)
 
 	return nil
-}
-
-// func flattenAccessKeys(accessKeys AccessKey) []interface{} {
-// 	var result []interface{}
-// 	for _, ak := range accessKeys.Credentials {
-// 		for _, cred := range ak.Credentials {
-// 			credMap := map[string]interface{}{
-// 				"id":          cred.ID,
-// 				"credentials": flattenCredentials(cred.Credentials),
-// 			}
-// 			result = append(result, credMap)
-// 		}
-// 	}
-// 	return result
-// }
-
-func flattenCredentials(credentials []struct {
-	AccessKey   string      `json:"accessKey"`
-	Active      bool        `json:"active"`
-	CreatedDate interface{} `json:"createdDate"`
-}) []interface{} {
-	var result []interface{}
-	for _, cred := range credentials {
-		credMap := map[string]interface{}{
-			"access_key": cred.AccessKey,
-			"active":     cred.Active,
-		}
-		result = append(result, credMap)
-	}
-	return result
 }
