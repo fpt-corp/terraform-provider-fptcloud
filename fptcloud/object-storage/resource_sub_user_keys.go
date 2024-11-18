@@ -63,8 +63,14 @@ func resourceSubUserAccessKeyCreate(ctx context.Context, d *schema.ResourceData,
 	}
 
 	d.SetId(resp.Credential.AccessKey)
-	d.Set("access_key", resp.Credential.AccessKey)
-	d.Set("secret_key", resp.Credential.SecretKey)
+	if err := d.Set("access_key", resp.Credential.AccessKey); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
+	if err := d.Set("secret_key", resp.Credential.SecretKey); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
 
 	return nil
 }
@@ -83,7 +89,9 @@ func resourceReadUserDetail(ctx context.Context, d *schema.ResourceData, m inter
 	if subUser.UserID == "" {
 		return diag.Errorf("sub-user with ID %s not found", subUserId)
 	}
-	d.Set("user_id", subUser.UserID)
+	if err := d.Set("user_id", subUser.UserID); err != nil {
+		return diag.FromErr(err)
+	}
 	return nil
 }
 func resourceSubUserAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {

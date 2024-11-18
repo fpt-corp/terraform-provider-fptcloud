@@ -31,7 +31,6 @@ func main() {
 		providerserver.NewProtocol5(fptcloud.NewXplatProvider("dev")()),
 		fptcloud.Provider().GRPCProvider,
 	}
-	log.Printf("[DEBUG] providers: ", providers)
 
 	muxServer, err := tf5muxserver.NewMuxServer(ctx, providers...)
 	if err != nil {

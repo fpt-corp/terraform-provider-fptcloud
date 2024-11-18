@@ -62,26 +62,14 @@ func resourceSubUserCreate(ctx context.Context, d *schema.ResourceData, m interf
 
 	// Set the resource ID after successful creation
 	d.SetId(subUserId)
-	d.Set("user_id", subUserId)
+	if err := d.Set("user_id", subUserId); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
 
 	return nil
 }
-func readDetailSubUserOnly(ctx context.Context, d *schema.ResourceData, m interface{}, subUserId string) diag.Diagnostics {
-	client := m.(*common.Client)
-	objectStorageService := NewObjectStorageService(client)
-	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
-	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
-	}
-	subUser := objectStorageService.DetailSubUser(subUserId, vpcId, s3ServiceDetail.S3ServiceId)
-	if subUser == nil {
-		d.SetId("")
-		return nil
-	}
-	d.SetId(subUserId)
-	return nil
-}
+
 func resourceSubUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)

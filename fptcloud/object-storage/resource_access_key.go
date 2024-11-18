@@ -77,13 +77,25 @@ func resourceAccessKeyCreate(ctx context.Context, d *schema.ResourceData, m inte
 
 	if resp.Credential.AccessKey != "" {
 		d.SetId(resp.Credential.AccessKey)
-		d.Set("access_key_id", resp.Credential.AccessKey)
-		d.Set("secret_access_key", resp.Credential.SecretKey)
+		if err := d.Set("access_key_id", resp.Credential.AccessKey); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
+		if err := d.Set("secret_access_key", resp.Credential.SecretKey); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
 	}
 
-	d.Set("status", resp.Status)
+	if err := d.Set("status", resp.Status); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
 	if resp.Message != "" {
-		d.Set("message", resp.Message)
+		if err := d.Set("message", resp.Message); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
 	}
 
 	return nil
@@ -104,8 +116,14 @@ func resourceAccessKeyRead(ctx context.Context, d *schema.ResourceData, m interf
 	for _, accessKey := range resp.Credentials {
 		for _, key := range accessKey.Credentials {
 			if key.AccessKey == accessKeyId {
-				d.Set("access_key_id", key.AccessKey)
-				d.Set("secret_access_key", secretAccessKey)
+				if err := d.Set("access_key_id", key.AccessKey); err != nil {
+					d.SetId("")
+					return diag.FromErr(err)
+				}
+				if err := d.Set("secret_access_key", secretAccessKey); err != nil {
+					d.SetId("")
+					return diag.FromErr(err)
+				}
 				break
 			}
 		}
@@ -142,7 +160,10 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 		log.Printf("[ERROR] Failed to delete access key %s: %v", accessKeyId, err)
 		return diag.FromErr(err)
 	}
-	d.Set("status", true)
+	if err := d.Set("status", true); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
 	d.SetId("")
 	return nil
 }

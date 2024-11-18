@@ -114,12 +114,16 @@ func resourceBucketLifeCycleCreate(ctx context.Context, d *schema.ResourceData, 
 		payload["Expiration"] = map[string]interface{}{"ExpiredObjectDeleteMarker": jsonMap.Expiration.ExpiredObjectDeleteMarker}
 	}
 	r := service.PutBucketLifecycle(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
+	d.SetId(bucketName)
 	if !r.Status {
-		d.Set("state", false)
+		if err := d.Set("state", false); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
 		return diag.FromErr(fmt.Errorf("%s", r.Message))
 	}
-	d.SetId(bucketName)
 	if err := d.Set("state", true); err != nil {
+		d.SetId("")
 		return diag.FromErr(err)
 	}
 
@@ -145,7 +149,10 @@ func resourceBucketLifeCycleRead(_ context.Context, d *schema.ResourceData, m in
 	d.SetId(bucketName)
 	var formattedData []interface{}
 	if lifeCycleResponse.Total == 0 {
-		d.Set("life_cycle_rules", make([]interface{}, 0))
+		if err := d.Set("life_cycle_rules", make([]interface{}, 0)); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
 	}
 	for _, lifecycleRule := range lifeCycleResponse.Rules {
 		data := map[string]interface{}{
@@ -204,7 +211,9 @@ func resourceBucketLifeCycleDelete(ctx context.Context, d *schema.ResourceData, 
 	}
 	r := service.DeleteBucketLifecycle(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 	if !r.Status {
-		d.Set("state", false)
+		if err := d.Set("state", false); err != nil {
+			return diag.FromErr(err)
+		}
 		return diag.FromErr(fmt.Errorf("%s", r.Message))
 	}
 	d.SetId(bucketName)

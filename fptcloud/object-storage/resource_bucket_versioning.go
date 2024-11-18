@@ -67,7 +67,10 @@ func resourceBucketVersioningCreate(ctx context.Context, d *schema.ResourceData,
 		return diag.FromErr(err)
 	}
 	d.SetId(fmt.Sprintf("%s:%s", bucketName, versioningStatus))
-	d.Set("versioning_status", versioningStatus)
+	if err := d.Set("versioning_status", versioningStatus); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
 	return nil
 }
 

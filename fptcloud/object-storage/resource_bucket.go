@@ -99,7 +99,7 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 
 	bucket := objectStorageService.CreateBucket(req, vpcId, s3ServiceDetail.S3ServiceId)
 	if !bucket.Status {
-		return diag.Errorf(bucket.Message)
+		return diag.Errorf("%s", bucket.Message)
 	}
 	return resourceBucketRead(ctx, d, m)
 }
@@ -118,7 +118,9 @@ func resourceBucketRead(_ context.Context, d *schema.ResourceData, m interface{}
 	}
 	for _, b := range bucket.Buckets {
 		if b.Name == d.Get("name").(string) {
-			d.Set("name", b.Name)
+			if err := d.Set("name", b.Name); err != nil {
+				return diag.FromErr(err)
+			}
 			return nil
 		}
 	}

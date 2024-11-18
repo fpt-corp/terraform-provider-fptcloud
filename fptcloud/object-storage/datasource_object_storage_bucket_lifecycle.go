@@ -143,7 +143,10 @@ func dataSourceBucketLifecycleRead(ctx context.Context, d *schema.ResourceData, 
 	d.SetId(bucketName)
 	var formattedData []interface{}
 	if lifeCycleResponse.Total == 0 {
-		d.Set("life_cycle_rules", make([]interface{}, 0))
+		if err := d.Set("life_cycle_rules", make([]interface{}, 0)); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
 	}
 	for _, lifecycleRule := range lifeCycleResponse.Rules {
 		data := map[string]interface{}{

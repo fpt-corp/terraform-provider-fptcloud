@@ -96,8 +96,10 @@ func resourceBucketPolicyCreate(ctx context.Context, d *schema.ResourceData, m i
 	resp := service.PutBucketPolicy(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 
 	if !resp.Status {
-		d.Set("status", false)
-		return diag.Errorf(fmt.Sprintf("Error create bucket policy: %s", resp.Message))
+		if err := d.Set("status", false); err != nil {
+			return diag.Errorf("failed to create bucket policy: %s", resp.Message)
+		}
+		return diag.FromErr(fmt.Errorf("error create bucket policy: %s", resp.Message))
 	}
 	d.SetId(bucketName)
 	if err := d.Set("status", true); err != nil {

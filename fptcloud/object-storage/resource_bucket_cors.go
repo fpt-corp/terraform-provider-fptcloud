@@ -112,7 +112,9 @@ func resourceBucketCorsCreate(ctx context.Context, d *schema.ResourceData, m int
 	}
 	r := service.CreateBucketCors(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 	if !r.Status {
-		d.Set("status", false)
+		if err := d.Set("status", false); err != nil {
+			return diag.FromErr(err)
+		}
 		return diag.FromErr(fmt.Errorf("%s", r.Message))
 	}
 	d.SetId(bucketName)
@@ -141,7 +143,10 @@ func resourceBucketCorsRead(_ context.Context, d *schema.ResourceData, m interfa
 	d.SetId(bucketName)
 	var formattedData []interface{}
 	if bucketCorsDetails.Total == 0 {
-		d.Set("bucket_cors_rules", make([]interface{}, 0))
+		if err := d.Set("bucket_cors_rules", make([]interface{}, 0)); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
 	}
 	for _, corsRuleDetail := range bucketCorsDetails.CorsRules {
 		data := map[string]interface{}{
@@ -198,7 +203,9 @@ func resourceBucketCorsDelete(ctx context.Context, d *schema.ResourceData, m int
 	}
 	r := service.UpdateBucketCors(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 	if !r.Status {
-		d.Set("status", false)
+		if err := d.Set("status", false); err != nil {
+			return diag.FromErr(err)
+		}
 		return diag.FromErr(fmt.Errorf("%s", r.Message))
 	}
 	d.SetId(bucketName)
