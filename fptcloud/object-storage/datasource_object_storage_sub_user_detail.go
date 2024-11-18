@@ -72,16 +72,29 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	}
 
 	d.SetId(subUser.UserID)
-	d.Set("user_id", subUser.UserID)
+	if err := d.Set("user_id", subUser.UserID); err != nil {
+		return diag.FromErr(err)
+	}
 	if subUser.Arn != nil {
-		d.Set("arn", subUser.Arn)
+		if err := d.Set("arn", subUser.Arn); err != nil {
+			return diag.FromErr(err)
+		}
 	}
-	d.Set("active", subUser.Active)
-	d.Set("role", subUser.Role)
+
+	if err := d.Set("role", subUser.Role); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("active", subUser.Active); err != nil {
+		return diag.FromErr(err)
+	}
 	if subUser.CreatedAt != nil {
-		d.Set("created_at", subUser.CreatedAt)
+		if err := d.Set("created_at", subUser.CreatedAt); err != nil {
+			return diag.FromErr(err)
+		}
 	}
-	d.Set("access_keys", subUser.AccessKeys)
+	if err := d.Set("access_keys", subUser.AccessKeys); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }

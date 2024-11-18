@@ -80,14 +80,18 @@ func resourceBucketStaticWebsiteCreate(ctx context.Context, d *schema.ResourceDa
 		Suffix: indexDocument,
 		Key:    errorDocument,
 	})
-
+	d.SetId(bucketName)
 	if !putBucketWebsite.Status {
-		diag.Errorf("failed to create bucket website for bucket %s", bucketName)
-		d.Set("status", false)
+		if err := d.Set("status", false); err != nil {
+			d.SetId("")
+			return diag.Errorf("failed to create bucket website for bucket %s", bucketName)
+		}
 		return nil
 	}
-	d.Set("status", true)
-	d.SetId(bucketName)
+	if err := d.Set("status", true); err != nil {
+		d.SetId("")
+		return diag.FromErr(err)
+	}
 	return nil
 }
 

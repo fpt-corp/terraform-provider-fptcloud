@@ -78,10 +78,14 @@ func resourceBucketAclCreate(ctx context.Context, d *schema.ResourceData, m inte
 
 	r := service.PutBucketAcl(vpcId, s3ServiceDetail.S3ServiceId, bucketName, bucketAclRequest)
 	if !r.Status {
-		d.Set("status", false)
+		if err := d.Set("status", false); err != nil {
+			return diag.Errorf("failed to create bucket ACL for bucket %s", bucketName)
+		}
 		return diag.Errorf("failed to create bucket ACL for bucket %s", bucketName)
 	}
-	d.Set("status", true)
+	if err := d.Set("status", true); err != nil {
+		return diag.FromErr(err)
+	}
 	return resourceBucketAclRead(ctx, d, m)
 }
 
@@ -99,8 +103,12 @@ func resourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interf
 	if !r.Status {
 		return diag.Errorf("failed to get bucket ACL for bucket %s", bucketName)
 	}
-	d.Set("canned_acl", r.CannedACL)
-	d.Set("status", r.Status)
+	if err := d.Set("canned_acl", r.CannedACL); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("status", r.Status); err != nil {
+		return diag.FromErr(err)
+	}
 	return nil
 }
 
