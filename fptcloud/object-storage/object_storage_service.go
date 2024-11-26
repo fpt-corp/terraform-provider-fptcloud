@@ -6,254 +6,6 @@ import (
 	common "terraform-provider-fptcloud/commons"
 )
 
-// SubUserCreateRequest represents the request body for creating a sub-user
-type SubUserCreateRequest struct {
-	Username    string   `json:"username"`
-	DisplayName string   `json:"display_name"`
-	Email       string   `json:"email"`
-	Permissions []string `json:"permissions"`
-}
-type AccessKey struct {
-	Credentials []struct {
-		ID          string `json:"id"`
-		Credentials []struct {
-			AccessKey   string      `json:"accessKey"`
-			Active      bool        `json:"active"`
-			CreatedDate interface{} `json:"createdDate"`
-		} `json:"credentials"`
-	} `json:"credentials"`
-}
-type CreateAccessKeyResponse struct {
-	Status     bool   `json:"status"`
-	Message    string `json:"message,omitempty"`
-	Credential struct {
-		AccessKey   string      `json:"accessKey"`
-		SecretKey   string      `json:"secretKey"`
-		Active      interface{} `json:"active"`
-		CreatedDate interface{} `json:"createdDate"`
-	} `json:"credential,omitempty"`
-}
-type SubUserCreateKeyResponse struct {
-	Status     bool   `json:"status"`
-	Message    string `json:"message,omitempty"`
-	Credential struct {
-		AccessKey   string      `json:"accessKey,omitempty"`
-		SecretKey   string      `json:"secretKey,omitempty"`
-		Active      interface{} `json:"active,omitempty"`
-		CreatedDate interface{} `json:"createdDate,omitempty"`
-	} `json:"credential,omitempty"`
-}
-
-type SubUser struct {
-	Role   string `json:"role"`
-	UserId string `json:"user_id"`
-}
-type SubUserListResponse struct {
-	SubUsers []struct {
-		UserID     string      `json:"user_id"`
-		Arn        string      `json:"arn"`
-		Active     bool        `json:"active"`
-		Role       string      `json:"role"`
-		CreatedAt  interface{} `json:"created_at"`
-		AccessKeys interface{} `json:"access_keys"`
-	} `json:"sub_users"`
-	Total int `json:"total"`
-}
-type CommonResponse struct {
-	Status  bool   `json:"status"`
-	Message string `json:"message,omitempty"`
-}
-type CorsRule struct {
-	ID             string   `json:"ID,omitempty"`
-	AllowedOrigins []string `json:"AllowedOrigins"`
-	AllowedMethods []string `json:"AllowedMethods"`
-	ExposeHeaders  []string `json:"ExposeHeaders,omitempty"`
-	AllowedHeaders []string `json:"AllowedHeaders,omitempty"`
-	MaxAgeSeconds  int      `json:"MaxAgeSeconds"`
-}
-type BucketCors struct {
-	CorsRules []CorsRule `json:"CORSRules"`
-}
-type BucketCorsResponse struct {
-	Status    bool `json:"status"`
-	CorsRules []struct {
-		ID             string   `json:"ID"`
-		AllowedHeaders []string `json:"AllowedHeaders,omitempty"`
-		AllowedMethods []string `json:"AllowedMethods"`
-		AllowedOrigins []string `json:"AllowedOrigins"`
-		ExposeHeaders  []string `json:"ExposeHeaders,omitempty"`
-		MaxAgeSeconds  int      `json:"MaxAgeSeconds"`
-	} `json:"cors_rules"`
-	Total int `json:"total"`
-}
-
-type BucketPolicyResponse struct {
-	Status bool   `json:"status"`
-	Policy string `json:"policy"`
-}
-type BucketPolicyRequest struct {
-	Policy string `json:"policy"`
-}
-type Statement struct {
-	Sid       string                 `json:"Sid"`
-	Effect    string                 `json:"Effect"`
-	Principal map[string]interface{} `json:"Principal"`
-	Action    []string               `json:"Action"`
-	Resource  []string               `json:"Resource"`
-}
-
-type BucketVersioningRequest struct {
-	Status string `json:"status"` // "Enabled" or "Suspended"
-}
-type BucketVersioningResponse struct {
-	Status bool   `json:"status"`
-	Config string `json:"config"` // "Enabled" or "Suspended"
-}
-
-type BucketAclResponse struct {
-	Status bool `json:"status"`
-	Owner  struct {
-		DisplayName string `json:"DisplayName"`
-		ID          string `json:"ID"`
-	} `json:"Owner"`
-	Grants []struct {
-		Grantee struct {
-			DisplayName string `json:"DisplayName"`
-			ID          string `json:"ID"`
-			Type        string `json:"Type"`
-		} `json:"Grantee"`
-		Permission string `json:"Permission"`
-	} `json:"Grants"`
-	CannedACL string `json:"CannedACL"`
-}
-type BucketAclRequest struct {
-	CannedAcl    string `json:"cannedAcl"`
-	ApplyObjects bool   `json:"applyObjects"`
-}
-type PutBucketAclResponse struct {
-	Status bool `json:"status"`
-	// TaskID may be empty if applyObjects is false, if applyObjects is true, the taskID will be returned
-	TaskID string `json:"taskId"`
-}
-type BucketWebsiteRequest struct {
-	Key    string `json:"key"`
-	Suffix string `json:"suffix"`
-	Bucket string `json:"bucket"`
-}
-type BucketWebsiteResponse struct {
-	Status bool `json:"status"`
-	Config struct {
-		ResponseMetadata struct {
-			RequestID      string `json:"RequestId"`
-			HostID         string `json:"HostId"`
-			HTTPStatusCode int    `json:"HTTPStatusCode"`
-			HTTPHeaders    struct {
-				XAmzRequestID string `json:"x-amz-request-id"`
-				ContentType   string `json:"content-type"`
-				ContentLength string `json:"content-length"`
-				Date          string `json:"date"`
-			} `json:"HTTPHeaders"`
-			RetryAttempts int `json:"RetryAttempts"`
-		} `json:"ResponseMetadata"`
-		IndexDocument struct {
-			Suffix string `json:"Suffix"`
-		} `json:"IndexDocument"`
-		ErrorDocument struct {
-			Key string `json:"Key"`
-		} `json:"ErrorDocument"`
-	} `json:"config,omitempty"`
-}
-
-type S3ServiceEnableResponse struct {
-	Data []struct {
-		S3ServiceName      string      `json:"s3_service_name"`
-		S3ServiceID        string      `json:"s3_service_id"`
-		S3Platform         string      `json:"s3_platform"`
-		DefaultUser        interface{} `json:"default_user"`
-		MigrateQuota       int         `json:"migrate_quota"`
-		SyncQuota          int         `json:"sync_quota"`
-		RgwTotalNodes      int         `json:"rgw_total_nodes"`
-		RgwUserActiveNodes int         `json:"rgw_user_active_nodes"`
-		HasUnusualConfig   interface{} `json:"has_unusual_config"`
-	} `json:"data"`
-	Total int `json:"total"`
-}
-
-// Bucket represents the response structure for a created bucket
-type BucketRequest struct {
-	Name       string `json:"name"`
-	Region     string `json:"region"`
-	Versioning string `json:"versioning"`
-	Acl        string `json:"acl"`
-}
-type ListBucketResponse struct {
-	Buckets []struct {
-		Name             string `json:"Name"`
-		CreationDate     string `json:"CreationDate"`
-		IsEmpty          bool   `json:"isEmpty"`
-		S3ServiceID      string `json:"s3_service_id"`
-		IsEnabledLogging bool   `json:"isEnabledLogging"`
-		Endpoint         string `json:"endpoint"`
-	} `json:"buckets"`
-	Total int `json:"total"`
-}
-type BucketLifecycleResponse struct {
-	Status bool `json:"status"`
-	Rules  []struct {
-		Expiration struct {
-			ExpiredObjectDeleteMarker bool `json:"ExpiredObjectDeleteMarker,omitempty"`
-			Days                      int  `json:"Days,omitempty"`
-		} `json:"Expiration"`
-		ID     string `json:"ID"`
-		Filter struct {
-			Prefix string `json:"Prefix"`
-		} `json:"Filter,omitempty"`
-		Status                      string `json:"Status"`
-		NoncurrentVersionExpiration struct {
-			NoncurrentDays int `json:"NoncurrentDays"`
-		} `json:"NoncurrentVersionExpiration"`
-		AbortIncompleteMultipartUpload struct {
-			DaysAfterInitiation int `json:"DaysAfterInitiation"`
-		} `json:"AbortIncompleteMultipartUpload"`
-		Prefix string `json:"Prefix,omitempty"`
-	} `json:"rules"`
-	Total int `json:"total"`
-}
-
-type DetailSubUser struct {
-	UserID     string      `json:"user_id"`
-	Arn        interface{} `json:"arn"`
-	Active     bool        `json:"active"`
-	Role       string      `json:"role"`
-	CreatedAt  interface{} `json:"created_at"`
-	AccessKeys []string    `json:"access_keys"`
-}
-
-type S3BucketLifecycleConfig struct {
-	ID                             string                         `json:"ID"`
-	Filter                         Filter                         `json:"Filter"`
-	Expiration                     Expiration                     `json:"Expiration"`
-	NoncurrentVersionExpiration    NoncurrentVersionExpiration    `json:"NoncurrentVersionExpiration"`
-	AbortIncompleteMultipartUpload AbortIncompleteMultipartUpload `json:"AbortIncompleteMultipartUpload"`
-}
-
-type Filter struct {
-	Prefix string `json:"Prefix"`
-}
-
-type Expiration struct {
-	Days                      int  `json:"Days,omitempty"`
-	ExpiredObjectDeleteMarker bool `json:"ExpiredObjectDeleteMarker,omitempty"`
-}
-
-type NoncurrentVersionExpiration struct {
-	NoncurrentDays int `json:"NoncurrentDays"`
-}
-
-type AbortIncompleteMultipartUpload struct {
-	DaysAfterInitiation int `json:"DaysAfterInitiation"`
-}
-
 // ObjectStorageService defines the interface for object storage operations
 type ObjectStorageService interface {
 	CheckServiceEnable(vpcId string) S3ServiceEnableResponse
@@ -265,7 +17,7 @@ type ObjectStorageService interface {
 
 	// Access key
 	ListAccessKeys(vpcId, s3ServiceId string) (AccessKey, error)
-	DeleteAccessKey(vpcId, s3ServiceId, accessKeyId string) error
+	DeleteAccessKey(vpcId, s3ServiceId, accessKeyId string) CommonResponse
 	CreateAccessKey(vpcId, s3ServiceId string) *CreateAccessKeyResponse
 
 	// Sub user
@@ -318,12 +70,12 @@ func (s *ObjectStorageServiceImpl) CheckServiceEnable(vpcId string) S3ServiceEna
 	apiPath := common.ApiPath.CheckS3ServiceEnable(vpcId)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return S3ServiceEnableResponse{}
+		return S3ServiceEnableResponse{Total: 0}
 	}
 
 	var response S3ServiceEnableResponse
 	if err := json.Unmarshal(resp, &response); err != nil {
-		return S3ServiceEnableResponse{}
+		return S3ServiceEnableResponse{Total: 0}
 	}
 	return response
 }
@@ -336,13 +88,13 @@ func (s *ObjectStorageServiceImpl) CreateBucket(req BucketRequest, vpcId, s3Serv
 		return CommonResponse{Status: false, Message: err.Error()}
 	}
 
-	var bucket BucketRequest
+	var bucket CommonResponse
 	err = json.Unmarshal(resp, &bucket)
 	if err != nil {
 		return CommonResponse{Status: false, Message: err.Error()}
 	}
 
-	return CommonResponse{Status: true, Message: "Bucket created successfully"}
+	return CommonResponse{Status: bucket.Status, Message: bucket.Message}
 }
 
 // CreateSubUser creates a new sub-user
@@ -358,7 +110,6 @@ func (s *ObjectStorageServiceImpl) CreateSubUser(req SubUser, vpcId, s3ServiceId
 	if err != nil {
 		return &CommonResponse{Status: false, Message: err.Error()}
 	}
-
 	return &CommonResponse{Status: subUser.Status, Message: "Sub-user created successfully"}
 }
 
@@ -437,13 +188,14 @@ func (s *ObjectStorageServiceImpl) DeleteBucket(vpcId, s3ServiceId, bucketName s
 	return CommonResponse{Status: true, Message: "Bucket deleted successfully"}
 }
 
-func (s *ObjectStorageServiceImpl) DeleteAccessKey(vpcId, s3ServiceId, accessKeyId string) error {
+func (s *ObjectStorageServiceImpl) DeleteAccessKey(vpcId, s3ServiceId, accessKeyId string) CommonResponse {
 	apiPath := common.ApiPath.DeleteAccessKey(vpcId, s3ServiceId)
 	body := map[string]string{"accessKey": accessKeyId}
+
 	if _, err := s.client.SendDeleteRequestWithBody(apiPath, body); err != nil {
-		return fmt.Errorf("failed to delete access key: %v", err)
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return nil
+	return CommonResponse{Status: true, Message: "Access key deleted successfully"}
 }
 
 // Implement bucket policy methods

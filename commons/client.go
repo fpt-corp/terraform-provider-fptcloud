@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -113,7 +112,6 @@ func (c *Client) SendRequest(req *http.Request) ([]byte, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	c.LastJSONResponse = string(body)
-	log.Printf("[DEBUG] Response: %s - URL: %s", c.LastJSONResponse, resp.Request.URL.String())
 
 	if resp.StatusCode >= 300 {
 		return nil, HTTPError{Code: resp.StatusCode, Status: resp.Status, Reason: string(body)}
