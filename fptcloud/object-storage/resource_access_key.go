@@ -155,10 +155,10 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("access_key_id is required for deletion")
 	}
 
-	err := service.DeleteAccessKey(vpcId, s3ServiceDetail.S3ServiceId, accessKeyId)
-	if err != nil {
-		log.Printf("[ERROR] Failed to delete access key %s: %v", accessKeyId, err)
-		return diag.FromErr(err)
+	data := service.DeleteAccessKey(vpcId, s3ServiceDetail.S3ServiceId, accessKeyId)
+	if !data.Status {
+		log.Printf("[ERROR] Failed to delete access key %s: %v", accessKeyId, data.Message)
+		return diag.Errorf(data.Message)
 	}
 	if err := d.Set("status", true); err != nil {
 		d.SetId("")
