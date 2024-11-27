@@ -208,12 +208,12 @@ type S3ServiceEnableResponse struct {
 		S3ServiceName      string      `json:"s3_service_name"`
 		S3ServiceID        string      `json:"s3_service_id"`
 		S3Platform         string      `json:"s3_platform"`
-		DefaultUser        interface{} `json:"default_user"`
+		DefaultUser        interface{} `json:"default_user,omitempty"`
 		MigrateQuota       int         `json:"migrate_quota"`
 		SyncQuota          int         `json:"sync_quota"`
-		RgwTotalNodes      int         `json:"rgw_total_nodes"`
-		RgwUserActiveNodes int         `json:"rgw_user_active_nodes"`
-		HasUnusualConfig   interface{} `json:"has_unusual_config"`
+		RgwTotalNodes      int         `json:"rgw_total_nodes,omitempty"`
+		RgwUserActiveNodes int         `json:"rgw_user_active_nodes,omitempty"`
+		HasUnusualConfig   interface{} `json:"has_unusual_config,omitempty"`
 	} `json:"data"`
 	Total int `json:"total"`
 }

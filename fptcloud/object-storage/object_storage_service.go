@@ -70,12 +70,12 @@ func (s *ObjectStorageServiceImpl) CheckServiceEnable(vpcId string) S3ServiceEna
 	apiPath := common.ApiPath.CheckS3ServiceEnable(vpcId)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
-		return S3ServiceEnableResponse{}
+		return S3ServiceEnableResponse{Total: 0}
 	}
 
 	var response S3ServiceEnableResponse
 	if err := json.Unmarshal(resp, &response); err != nil {
-		return S3ServiceEnableResponse{}
+		return S3ServiceEnableResponse{Total: 0}
 	}
 	return response
 }

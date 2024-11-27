@@ -1,7 +1,6 @@
 package fptcloud_object_storage_test
 
 import (
-	"fmt"
 	"testing"
 
 	common "terraform-provider-fptcloud/commons"
@@ -228,7 +227,6 @@ func TestCreateSubUser_ReturnsTrueWhenSuccess(t *testing.T) {
 		UserId: "user_id",
 	}
 	r := service.CreateSubUser(subUserRequest, vpcId, s3ServiceId)
-	fmt.Println("Response: ", r)
 	assert.NotNil(t, r)
 	assert.Equal(t, true, r.Status)
 	assert.Equal(t, "Sub-user created successfully", r.Message)
@@ -250,7 +248,6 @@ func TestCreateSubUser_ReturnsFalseWhenFailed(t *testing.T) {
 		UserId: "user_id",
 	}
 	r := service.CreateSubUser(subUserRequest, vpcId, s3ServiceId)
-	fmt.Println("Response: ", r)
 	assert.NotNil(t, r)
 	assert.Equal(t, false, r.Status)
 }
@@ -289,8 +286,6 @@ func TestListSubUsers_ReturnsSubUsersWhenSuccess(t *testing.T) {
 	vpcId := "vpc_id"
 	s3ServiceId := "s3_service_id"
 	subUsers, err := service.ListSubUsers(vpcId, s3ServiceId, 5, 25)
-	fmt.Println("SubUsers: ", subUsers)
-	fmt.Println("err: ", err)
 	assert.NotNil(t, subUsers)
 	assert.Nil(t, err)
 	assert.Equal(t, 1, subUsers.Total)
@@ -359,7 +354,6 @@ func TestCreateSubUserAccessKey_ReturnsAccessKeyWhenSuccess(t *testing.T) {
 	s3ServiceId := "s3_service_id"
 	subUserId := "sub_user_id"
 	accessKey := service.CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId)
-	fmt.Println("AccessKey: ", accessKey)
 	assert.NotNil(t, accessKey)
 	assert.Equal(t, "example_access_key", accessKey.Credential.AccessKey)
 	assert.Equal(t, "example_secret_key", accessKey.Credential.SecretKey)
@@ -379,7 +373,6 @@ func TestCreateSubUserAccessKey_ReturnsErrorWhenFailed(t *testing.T) {
 	s3ServiceId := "s3_service_id"
 	subUserId := "sub_user_id"
 	accessKey := service.CreateSubUserAccessKey(vpcId, s3ServiceId, subUserId)
-	fmt.Println("AccessKey: ", accessKey)
 	assert.NotNil(t, accessKey)
 	assert.Equal(t, "", accessKey.Credential.AccessKey)
 	assert.Equal(t, "", accessKey.Credential.SecretKey)
@@ -387,5 +380,648 @@ func TestCreateSubUserAccessKey_ReturnsErrorWhenFailed(t *testing.T) {
 }
 
 func TestDeleteSubUserAccessKey_ReturnOkWhenSuccess(t *testing.T) {
-	
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/sub-users/sub_user_id/credentials/delete": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	s3ServiceId := "s3_service_id"
+	subUserId := "sub_user_id"
+	accessKeyId := "access_key_id"
+	res := service.DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestPutBucketPolicy_ReturnOkWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/put-policy": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	s3ServiceId := "s3_service_id"
+	bucketName := "bucket_name"
+	policy := map[string]interface {
+	}{"Version": "2012-10-17"}
+	res := service.PutBucketPolicy(vpcId, s3ServiceId, bucketName, policy)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestGetBucketPolicy_ReturnsPolicyWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowAllS3Actions\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":\"arn:aws:s3:::bucket_name/*\"}]}",
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/get-policy": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	s3ServiceId := "s3_service_id"
+	bucketName := "bucket_name"
+	policy := service.GetBucketPolicy(vpcId, s3ServiceId, bucketName)
+	assert.NotNil(t, policy)
+	assert.Equal(t, "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowAllS3Actions\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":\"arn:aws:s3:::bucket_name/*\"}]}", policy.Policy)
+	assert.Equal(t, true, policy.Status)
+}
+
+func TestGetBucketPolicy_ReturnsFalseWhenFailed(t *testing.T) {
+	mockResponse := `{
+		"policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowAllS3Actions\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":\"arn:aws:s3:::bucket_name/*\"}]}",
+		"status": false,
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/get-policy": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	s3ServiceId := "s3_service_id"
+	bucketName := "bucket_name"
+	policy := service.GetBucketPolicy(vpcId, s3ServiceId, bucketName)
+	assert.NotNil(t, policy)
+	assert.Equal(t, false, policy.Status)
+}
+
+func TestCreateBucketCors_ReturnOkWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/create-bucket-cors": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	cors := map[string]interface{}{
+		"AllowedHeaders": []string{"*"},
+	}
+	res := service.CreateBucketCors("vpc_id", "s3_service_id", bucketName, cors)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestUpdateBucketCors_ReturnOkWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/create-bucket-cors": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	cors := map[string]interface{}{
+		"AllowedHeaders": []string{"*"},
+	}
+	arrCors := append([]map[string]interface{}{}, cors)
+	res := service.UpdateBucketCors("vpc_id", "s3_service_id", bucketName, arrCors)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestGetBucketCors_ReturnCorsWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"cors_rules": [
+			{
+				"AllowedHeaders": [
+					"*"
+				]
+			}
+		],
+		"status": true,
+		"total": 1
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/cors?page=5&page_size=25": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	cors, err := service.GetBucketCors("vpc_id", "s3_service_id", bucketName, 5, 25)
+	assert.NotNil(t, cors)
+	assert.Nil(t, err)
+	assert.Equal(t, true, cors.Status)
+	assert.Equal(t, "*", cors.CorsRules[0].AllowedHeaders[0])
+}
+
+func TestGetBucketCors_ReturnFalseWhenFailed(t *testing.T) {
+	mockResponse := `{
+		"cors_rules": [],
+		"status": false,
+		"total": 0,
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/cors?page=5&page_size=25": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	cors, err := service.GetBucketCors("vpc_id", "s3_service_id", bucketName, 5, 25)
+	assert.Nil(t, cors)
+	assert.NotNil(t, err)
+}
+
+func TestPutBucketVersioning_ReturnNilWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/put-versioning": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	versioning := fptcloud_object_storage.BucketVersioningRequest{
+		Status: "Enabled",
+	}
+	res := service.PutBucketVersioning("vpc_id", "s3_service_id", bucketName, versioning)
+	assert.Nil(t, res)
+}
+
+func TestGetBucketVersioning_ReturnBucketVersioning(t *testing.T) {
+	mockResponse := `{
+		"status": true,
+		"config": "Enabled"
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/get-versioning": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	versioning := service.GetBucketVersioning("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, versioning)
+	assert.Equal(t, true, versioning.Status)
+}
+
+func TestPutBucketAcl_ReturnAclWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true,
+		"taskId": "task_id"
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/acl": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	acl := fptcloud_object_storage.BucketAclRequest{
+		CannedAcl:    "private",
+		ApplyObjects: true,
+	}
+	res := service.PutBucketAcl("vpc_id", "s3_service_id", bucketName, acl)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+	assert.Equal(t, "task_id", res.TaskID)
+}
+
+func TestGetBucketAcl_ReturnAclWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true,
+		"Owner": {
+			"DisplayName": "example_user_id",
+			"ID": "example_user_id"
+		},
+		"Grants": [
+			{
+				"Grantee": {
+					"DisplayName": "example_user_id",
+					"ID": "example_user_id",
+					"Type": "CanonicalUser"
+				},
+				"Permission": "FULL_CONTROL"
+			}
+		],
+		"CannedACL": "private"
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/acl": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	acl := service.GetBucketAcl("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, acl)
+	assert.Equal(t, true, acl.Status)
+	assert.Equal(t, "example_user_id", acl.Owner.DisplayName)
+	assert.Equal(t, "example_user_id", acl.Owner.ID)
+	assert.Equal(t, "example_user_id", acl.Grants[0].Grantee.DisplayName)
+	assert.Equal(t, "example_user_id", acl.Grants[0].Grantee.ID)
+	assert.Equal(t, "CanonicalUser", acl.Grants[0].Grantee.Type)
+	assert.Equal(t, "FULL_CONTROL", acl.Grants[0].Permission)
+}
+
+func TestGetBucketAcl_ReturnFalseWhenFailed(t *testing.T) {
+	mockResponse := `{
+		"status": false
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/acl-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	acl := service.GetBucketAcl("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, acl)
+	assert.Equal(t, false, acl.Status)
+}
+
+func TestGetBucketAcl_ReturnFalseWhenFailedUnmarshalJson(t *testing.T) {
+	mockResponse := `{
+		"status": false,,,
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/acl-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	acl := service.GetBucketAcl("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, acl)
+	assert.Equal(t, false, acl.Status)
+}
+
+func TestPutBucketWebsite_ReturnOkWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true,
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/put-config": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	website := fptcloud_object_storage.BucketWebsiteRequest{
+		Key:    "index.html",
+		Suffix: "index2.html",
+		Bucket: "bucket_name",
+	}
+	res := service.PutBucketWebsite("vpc_id", "s3_service_id", bucketName, website)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestPutBucketWebsite_ReturnOFalseWhenFailed(t *testing.T) {
+	mockResponse := `{
+		"status": false,
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/put-config": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	website := fptcloud_object_storage.BucketWebsiteRequest{
+		Key:    "index.html",
+		Suffix: "index2.html",
+		Bucket: "bucket_name",
+	}
+	res := service.PutBucketWebsite("vpc_id", "s3_service_id", bucketName, website)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestDeleteBucketStaticWebsite_ReturnTrueWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/delete-config": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	res := service.DeleteBucketStaticWebsite("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestDeleteBucketStaticWebsite_ReturnFalseWhenError(t *testing.T) {
+	mockResponse := `{
+		"status": false
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/delete-config-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	res := service.DeleteBucketStaticWebsite("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestGetBucketWebsite_ReturnWebsiteWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true,
+		"config": {
+			"ResponseMetadata": {
+				"RequestId": "tx000000976595dcbf0f8e1-006746c273-326c5-han02-1",
+				"HostId": "",
+				"HTTPStatusCode": 200,
+				"HTTPHeaders": {
+					"x-amz-request-id": "tx000000976595dcbf0f8e1-006746c273-326c5-han02-1",
+					"content-type": "application/xml",
+					"content-length": "241",
+					"date": "Wed, 27 Nov 2024 06:55:47 GMT",
+					"strict-transport-security": "max-age=16000000; includeSubDomains; preload;",
+					"access-control-allow-origin": "*"
+				},
+				"RetryAttempts": 0
+			},
+			"IndexDocument": {
+				"Suffix": "index.html"
+			},
+			"ErrorDocument": {
+				"Key": "error.html"
+			}
+		}
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/get-config": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	website := service.GetBucketWebsite("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, website)
+	assert.Equal(t, true, website.Status)
+	assert.Equal(t, "index.html", website.Config.IndexDocument.Suffix)
+	assert.Equal(t, "error.html", website.Config.ErrorDocument.Key)
+}
+
+func TestGetBucketWebsite_ReturnFalseWhenError(t *testing.T) {
+	mockResponse := `{
+		"status": false
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/get-config-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	website := service.GetBucketWebsite("vpc_id", "s3_service_id", bucketName)
+	assert.NotNil(t, website)
+	assert.Equal(t, false, website.Status)
+}
+
+func TestGetBucketLifecycle_ReturnRuleWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true,
+		"rules": [
+			{
+				"ID": "rule_id",
+				"Prefix": "prefix",
+				"Status": "Enabled",
+				"Expiration": {
+					"Days": 30
+				}
+			}
+		],
+		"total": 1
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/lifecycles?page=5&page_size=25": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	lifecycle := service.GetBucketLifecycle("vpc_id", "s3_service_id", bucketName, 5, 25)
+	assert.NotNil(t, lifecycle)
+	assert.Equal(t, true, lifecycle.Status)
+	assert.Equal(t, "rule_id", lifecycle.Rules[0].ID)
+	assert.Equal(t, "prefix", lifecycle.Rules[0].Prefix)
+	assert.Equal(t, "Enabled", lifecycle.Rules[0].Status)
+	assert.Equal(t, 30, lifecycle.Rules[0].Expiration.Days)
+	assert.Equal(t, 1, lifecycle.Total)
+}
+
+func TestGetBucketLifecycle_ReturnFalseWhenFailed(t *testing.T) {
+	mockResponse := `{
+		"status": false,
+		"rules": [],
+		"total": 0
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/lifecycles-wrong-endpoint?page=5&page_size=25": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	lifecycle := service.GetBucketLifecycle("vpc_id", "s3_service_id", bucketName, 5, 25)
+	assert.NotNil(t, lifecycle)
+	assert.Equal(t, false, lifecycle.Status)
+	assert.Equal(t, 0, lifecycle.Total)
+}
+
+func TestPutBucketLifecycle_ReturnOkWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/create-bucket-lifecycle-configuration": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	rule := map[string]interface{}{
+		"ID":     "rule_id",
+		"Prefix": "prefix",
+		"Status": "Enabled",
+		"Expiration": map[string]interface{}{
+			"Days": 30,
+		},
+	}
+	res := service.PutBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestPutBucketLifecycle_ReturnFalseWhenError(t *testing.T) {
+	mockResponse := `{
+		"status": false
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/create-bucket-lifecycle-configuration-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	rule := map[string]interface{}{
+		"ID":     "rule_id",
+		"Prefix": "prefix",
+		"Status": "Enabled",
+		"Expiration": map[string]interface{}{
+			"Days": 30,
+		},
+	}
+	res := service.PutBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
+	assert.NotNil(t, res)
+	assert.Equal(t, false, res.Status)
+}
+
+func TestPutBucketLifecycle_ReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
+	mockResponse := `{
+		"status": false,,,,@#$@#$234
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/create-bucket-lifecycle-configuration-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	rule := map[string]interface{}{
+		"ID":     "rule_id",
+		"Prefix": "prefix",
+		"Status": "Enabled",
+		"Expiration": map[string]interface{}{
+			"Days": 30,
+		},
+	}
+	res := service.PutBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
+	assert.NotNil(t, res)
+	assert.Equal(t, false, res.Status)
+}
+
+func TestDeleteBucketLifecycle_ReturnOkWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"status": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/delete-bucket-lifecycle-configuration": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	rule := map[string]interface{}{
+		"ID":     "rule_id",
+		"Prefix": "prefix",
+		"Status": "Enabled",
+		"Expiration": map[string]interface{}{
+			"Days": 30,
+		},
+	}
+	res := service.DeleteBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
+	assert.NotNil(t, res)
+	assert.Equal(t, true, res.Status)
+}
+
+func TestDeleteBucketLifecycle_ReturnFalseWhenError(t *testing.T) {
+	mockResponse := `{
+		"status": false
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/delete-bucket-lifecycle-configuration-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	rule := map[string]interface{}{
+		"ID":     "rule_id",
+		"Prefix": "prefix",
+		"Status": "Enabled",
+		"Expiration": map[string]interface{}{
+			"Days": 30,
+		},
+	}
+	res := service.DeleteBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
+	assert.NotNil(t, res)
+	assert.Equal(t, false, res.Status)
+}
+
+func TestDeleteBucketLifecycle_ReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
+	mockResponse := `{
+		"status": false,,,,@#$@#$234
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/delete-bucket-lifecycle-configuration-wrong-endpoint": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	bucketName := "bucket_name"
+	rule := map[string]interface{}{
+		"ID":     "rule_id",
+		"Prefix": "prefix",
+		"Status": "Enabled",
+		"Expiration": map[string]interface{}{
+			"Days": 30,
+		},
+	}
+	res := service.DeleteBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
+	assert.NotNil(t, res)
+	assert.Equal(t, false, res.Status)
+}
+
+func TestCheckServiceEnable_ReturnServicesWhenSuccess(t *testing.T) {
+	mockResponse := `{
+		"data": [
+			{
+				"s3_service_name": "HN-02",
+				"s3_service_id": "s3_service_id",
+				"s3_platform": "ceph",
+				"default_user": "fake-default-user",
+				"migrate_quota": 3,
+				"sync_quota": 3,
+				"rgw_total_nodes": 4,
+				"rgw_user_active_nodes": 2
+			}
+		],
+		"total": 1
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/check-service-enabled?check_unlimited=undefined": mockResponse,
+	})
+
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	services := service.CheckServiceEnable(vpcId)
+	assert.NotNil(t, services)
+	assert.Equal(t, 1, services.Total)
+	assert.Equal(t, "HN-02", services.Data[0].S3ServiceName)
+	assert.Equal(t, "s3_service_id", services.Data[0].S3ServiceID)
+	assert.Equal(t, "ceph", services.Data[0].S3Platform)
+}
+
+func TestCheckServiceEnable_ReturnFalseWhenError(t *testing.T) {
+	mockResponse := `{
+		"total": 0
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/check-service-enabled?check_unlimited=wrong-param": mockResponse,
+	})
+
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	services := service.CheckServiceEnable(vpcId)
+	assert.NotNil(t, services)
+	assert.Equal(t, 0, services.Total)
+}
+
+func TestCheckServiceEnable_ReturnFalseWhenErrorUnmarshal(t *testing.T) {
+	mockResponse := `{
+		"total": #$%#$%#$%#$%#$%!@#!23,
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/check-service-enabled?check_unlimited=wrong-param": mockResponse,
+	})
+
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	services := service.CheckServiceEnable(vpcId)
+	assert.NotNil(t, services)
+	assert.Equal(t, 0, services.Total)
 }
