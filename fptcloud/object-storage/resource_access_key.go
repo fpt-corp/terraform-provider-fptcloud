@@ -3,7 +3,6 @@ package fptcloud_object_storage
 import (
 	"context"
 	"fmt"
-	"log"
 	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -66,7 +65,7 @@ func resourceAccessKeyCreate(ctx context.Context, d *schema.ResourceData, m inte
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 
 	resp := service.CreateAccessKey(vpcId, s3ServiceDetail.S3ServiceId)
@@ -144,18 +143,15 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		log.Printf("[ERROR] Region %s is not enabled for VPC %s", regionName, vpcId)
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 
 	if accessKeyId == "" {
-		log.Printf("[ERROR] access_key_id is empty")
 		return diag.Errorf("access_key_id is required for deletion")
 	}
 
 	data := service.DeleteAccessKey(vpcId, s3ServiceDetail.S3ServiceId, accessKeyId)
 	if !data.Status {
-		log.Printf("[ERROR] Failed to delete access key %s: %v", accessKeyId, data.Message)
 		return diag.Errorf("failed to delete access key %s: %s", accessKeyId, data.Message)
 	}
 	if err := d.Set("status", true); err != nil {

@@ -113,41 +113,9 @@ func DataSourceBucketLifecycle() *schema.Resource {
 		},
 	}
 }
-
-func dataSourceBucketLifecycleRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*common.Client)
-	service := NewObjectStorageService(client)
-
-	bucketName := d.Get("bucket_name").(string)
-	vpcId := d.Get("vpc_id").(string)
-	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
-	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
-	}
-	page := 1
-	v, ok := d.GetOk("page")
-	if ok {
-		page = v.(int)
-	}
-	pageSize := 25
-	v, ok = d.GetOk("page_size")
-	if ok {
-		pageSize = v.(int)
-	}
-
-	lifeCycleResponse := service.GetBucketLifecycle(vpcId, s3ServiceDetail.S3ServiceId, bucketName, page, pageSize)
-	if !lifeCycleResponse.Status {
-		return diag.FromErr(fmt.Errorf("failed to fetch life cycle rules for bucket %s", bucketName))
-	}
-	d.SetId(bucketName)
+func parseData(lifeCycleResponse BucketLifecycleResponse) []interface{} {
 	var formattedData []interface{}
-	if lifeCycleResponse.Total == 0 {
-		if err := d.Set("life_cycle_rules", make([]interface{}, 0)); err != nil {
-			d.SetId("")
-			return diag.FromErr(err)
-		}
-	}
+
 	for _, lifecycleRule := range lifeCycleResponse.Rules {
 		data := map[string]interface{}{
 			"id":     lifecycleRule.ID,
@@ -191,7 +159,42 @@ func dataSourceBucketLifecycleRead(ctx context.Context, d *schema.ResourceData, 
 		}
 		formattedData = append(formattedData, data)
 	}
+	return formattedData
+}
+func dataSourceBucketLifecycleRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	client := m.(*common.Client)
+	service := NewObjectStorageService(client)
 
+	bucketName := d.Get("bucket_name").(string)
+	vpcId := d.Get("vpc_id").(string)
+	regionName := d.Get("region_name").(string)
+	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
+	}
+	page := 1
+	v, ok := d.GetOk("page")
+	if ok {
+		page = v.(int)
+	}
+	pageSize := 25
+	v, ok = d.GetOk("page_size")
+	if ok {
+		pageSize = v.(int)
+	}
+
+	lifeCycleResponse := service.GetBucketLifecycle(vpcId, s3ServiceDetail.S3ServiceId, bucketName, page, pageSize)
+	if !lifeCycleResponse.Status {
+		return diag.FromErr(fmt.Errorf("failed to fetch life cycle rules for bucket %s", bucketName))
+	}
+	if lifeCycleResponse.Total == 0 {
+		if err := d.Set("life_cycle_rules", make([]interface{}, 0)); err != nil {
+			d.SetId("")
+			return diag.FromErr(err)
+		}
+	}
+	d.SetId(bucketName)
+	formattedData := parseData(lifeCycleResponse)
 	if err := d.Set("life_cycle_rules", formattedData); err != nil {
 		d.SetId("")
 		return diag.FromErr(err)

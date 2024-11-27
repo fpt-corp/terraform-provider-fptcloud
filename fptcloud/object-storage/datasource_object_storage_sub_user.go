@@ -70,7 +70,7 @@ func dataSourceSubUserRead(ctx context.Context, d *schema.ResourceData, m interf
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	page := 1
 	pageSize := 100

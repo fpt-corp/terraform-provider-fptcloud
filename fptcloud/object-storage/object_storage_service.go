@@ -6,6 +6,10 @@ import (
 	common "terraform-provider-fptcloud/commons"
 )
 
+const (
+	regionError = "region %s is not enabled"
+)
+
 // ObjectStorageService defines the interface for object storage operations
 type ObjectStorageService interface {
 	CheckServiceEnable(vpcId string) S3ServiceEnableResponse

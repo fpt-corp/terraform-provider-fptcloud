@@ -25,7 +25,6 @@ func main() {
 		"set to true to run the provider with support for debuggers",
 	)
 	flag.Parse()
-	log.Printf("[DEBUG] Configuring provider...")
 
 	providers := []func() tfprotov5.ProviderServer{
 		providerserver.NewProtocol5(fptcloud.NewXplatProvider("dev")()),

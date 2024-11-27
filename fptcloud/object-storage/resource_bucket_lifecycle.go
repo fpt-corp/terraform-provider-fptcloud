@@ -24,7 +24,23 @@ func ResourceBucketLifeCycle() *schema.Resource {
 				ForceNew:    true,
 				Description: "The VPC ID",
 			},
-			"bucket_name": {
+			"state": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "State after bucket lifecycle rule is created",
+			},
+			"rules": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			}, "bucket_name": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
@@ -51,27 +67,17 @@ func ResourceBucketLifeCycle() *schema.Resource {
 				Description:   "Path to the JSON file containing the bucket lifecycle rule, support only one rule",
 				ConflictsWith: []string{"life_cycle_rule"},
 			},
-			"state": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "State after bucket lifecycle rule is created",
-			},
-			"rules": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-					},
-				},
-			},
 		},
 	}
 }
-
+func parseLifeCycleData(lifeCycleData string) (S3BucketLifecycleConfig, error) {
+	var jsonMap S3BucketLifecycleConfig
+	err := json.Unmarshal([]byte(lifeCycleData), &jsonMap)
+	if err != nil {
+		return S3BucketLifecycleConfig{}, err
+	}
+	return jsonMap, nil
+}
 func resourceBucketLifeCycleCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	service := NewObjectStorageService(client)
@@ -91,18 +97,17 @@ func resourceBucketLifeCycleCreate(ctx context.Context, d *schema.ResourceData, 
 	}
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
-	var jsonMap S3BucketLifecycleConfig
-	err := json.Unmarshal([]byte(lifecycleRuleContent), &jsonMap)
+	jsonMap, err := parseLifeCycleData(lifecycleRuleContent)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	payload := map[string]interface{}{
 		"ID":                             jsonMap.ID,
-		"Filter":                         map[string]interface{}{"Prefix": jsonMap.Filter.Prefix},
 		"NoncurrentVersionExpiration":    map[string]interface{}{"NoncurrentDays": jsonMap.NoncurrentVersionExpiration.NoncurrentDays},
 		"AbortIncompleteMultipartUpload": map[string]interface{}{"DaysAfterInitiation": jsonMap.AbortIncompleteMultipartUpload.DaysAfterInitiation},
+		"Filter":                         map[string]interface{}{"Prefix": jsonMap.Filter.Prefix},
 	}
 	if jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
 		return diag.FromErr(fmt.Errorf("Expiration.Days and Expiration.ExpiredObjectDeleteMarker cannot be set at the same time"))
@@ -137,7 +142,7 @@ func resourceBucketLifeCycleRead(_ context.Context, d *schema.ResourceData, m in
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	page := 1
 	pageSize := 999999
@@ -175,7 +180,7 @@ func resourceBucketLifeCycleDelete(ctx context.Context, d *schema.ResourceData, 
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	var lifecycleRuleContent string
 	if v, ok := d.GetOk("life_cycle_rule"); ok {
@@ -187,18 +192,18 @@ func resourceBucketLifeCycleDelete(ctx context.Context, d *schema.ResourceData, 
 	} else {
 		return diag.FromErr(fmt.Errorf("either 'life_cycle_rule' or 'life_cycle_rule_file' must be specified"))
 	}
-	var jsonMap S3BucketLifecycleConfig
-	err := json.Unmarshal([]byte(lifecycleRuleContent), &jsonMap)
+	jsonMap, err := parseLifeCycleData(lifecycleRuleContent)
 	if err != nil {
 		return diag.FromErr(err)
 	}
+
 	payload := map[string]interface{}{
-		"ID":                             jsonMap.ID,
-		"Filter":                         map[string]interface{}{"Prefix": jsonMap.Filter.Prefix},
-		"NoncurrentVersionExpiration":    map[string]interface{}{"NoncurrentDays": jsonMap.NoncurrentVersionExpiration.NoncurrentDays},
 		"AbortIncompleteMultipartUpload": map[string]interface{}{"DaysAfterInitiation": jsonMap.AbortIncompleteMultipartUpload.DaysAfterInitiation},
 		"OrgID":                          jsonMap.ID,
 		"Status":                         "Enabled",
+		"ID":                             jsonMap.ID,
+		"Filter":                         map[string]interface{}{"Prefix": jsonMap.Filter.Prefix},
+		"NoncurrentVersionExpiration":    map[string]interface{}{"NoncurrentDays": jsonMap.NoncurrentVersionExpiration.NoncurrentDays},
 	}
 	if jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
 		return diag.FromErr(fmt.Errorf("Expiration.Days and Expiration.ExpiredObjectDeleteMarker cannot be set at the same time"))

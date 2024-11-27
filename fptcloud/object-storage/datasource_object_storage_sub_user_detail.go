@@ -58,20 +58,22 @@ func DataSourceSubUserDetail() *schema.Resource {
 func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)
-
 	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
-	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
-	}
-	subUserId := d.Get("user_id").(string)
+	regionName := d.Get("region_name").(string)
 
+	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
+	}
+
+	subUserId := d.Get("user_id").(string)
 	subUser := objectStorageService.DetailSubUser(vpcId, s3ServiceDetail.S3ServiceId, subUserId)
+	d.SetId(subUser.UserID)
 	if subUser.UserID == "" {
+		d.SetId("")
 		return diag.Errorf("sub-user with ID %s not found", subUserId)
 	}
 
-	d.SetId(subUser.UserID)
 	if err := d.Set("user_id", subUser.UserID); err != nil {
 		return diag.FromErr(err)
 	}

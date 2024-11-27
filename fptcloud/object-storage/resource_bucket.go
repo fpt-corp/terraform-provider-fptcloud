@@ -94,7 +94,7 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	}
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 
 	bucket := objectStorageService.CreateBucket(req, vpcId, s3ServiceDetail.S3ServiceId)
@@ -109,7 +109,7 @@ func resourceBucketRead(_ context.Context, d *schema.ResourceData, m interface{}
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 
 	bucket := objectStorageService.ListBuckets(vpcId, s3ServiceDetail.S3ServiceId, 1, 99999)
@@ -133,7 +133,7 @@ func resourceBucketDelete(ctx context.Context, d *schema.ResourceData, m interfa
 	bucketName := d.Get("name").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 
 	satus := objectStorageService.DeleteBucket(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
