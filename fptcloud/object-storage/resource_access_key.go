@@ -148,8 +148,6 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
 	}
 
-	log.Printf("[DEBUG] Found S3 service ID: %s", s3ServiceDetail.S3ServiceId)
-
 	if accessKeyId == "" {
 		log.Printf("[ERROR] access_key_id is empty")
 		return diag.Errorf("access_key_id is required for deletion")
@@ -158,7 +156,7 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 	data := service.DeleteAccessKey(vpcId, s3ServiceDetail.S3ServiceId, accessKeyId)
 	if !data.Status {
 		log.Printf("[ERROR] Failed to delete access key %s: %v", accessKeyId, data.Message)
-		return diag.Errorf(data.Message)
+		return diag.Errorf("failed to delete access key %s: %s", accessKeyId, data.Message)
 	}
 	if err := d.Set("status", true); err != nil {
 		d.SetId("")
