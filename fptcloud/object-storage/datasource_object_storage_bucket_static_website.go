@@ -48,7 +48,7 @@ func dataSourceBucketStaticWebsite(ctx context.Context, d *schema.ResourceData, 
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 
 	staticWebsiteResponse := service.GetBucketWebsite(vpcId, s3ServiceDetail.S3ServiceId, bucketName)

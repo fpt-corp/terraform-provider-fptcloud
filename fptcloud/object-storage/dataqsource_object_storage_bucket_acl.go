@@ -13,24 +13,19 @@ func DataSourceBucketAcl() *schema.Resource {
 	return &schema.Resource{
 		ReadContext: dataSourceBucketAclRead,
 		Schema: map[string]*schema.Schema{
-			"vpc_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The VPC ID",
-			},
 			"bucket_name": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
 				Description: "Name of the bucket to config the ACL",
 			},
-			"region_name": {
+			"vpc_id": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
+				Description: "The VPC ID",
 			},
+
 			"canned_acl": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -40,6 +35,12 @@ func DataSourceBucketAcl() *schema.Resource {
 				Type:        schema.TypeBool,
 				Computed:    true,
 				Description: "The status after configuring the bucket ACL",
+			},
+			"region_name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 			"bucket_acl": {
 				Type:     schema.TypeList,
@@ -104,12 +105,12 @@ func DataSourceBucketAcl() *schema.Resource {
 func dataSourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	service := NewObjectStorageService(client)
-	vpcId := d.Get("vpc_id").(string)
 	bucketName := d.Get("bucket_name").(string)
+	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	r := service.GetBucketAcl(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
 	if !r.Status {

@@ -50,7 +50,7 @@ func dataSourceAccessKeyRead(ctx context.Context, d *schema.ResourceData, m inte
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	keys, err := service.ListAccessKeys(vpcId, s3ServiceDetail.S3ServiceId)
 	if err != nil {

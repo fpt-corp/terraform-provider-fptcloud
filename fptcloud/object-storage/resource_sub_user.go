@@ -52,7 +52,7 @@ func resourceSubUserCreate(ctx context.Context, d *schema.ResourceData, m interf
 
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 
 	err := objectStorageService.CreateSubUser(req, vpcId, s3ServiceDetail.S3ServiceId)
@@ -76,7 +76,7 @@ func resourceSubUserDelete(ctx context.Context, d *schema.ResourceData, m interf
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 	err := objectStorageService.DeleteSubUser(d.Id(), vpcId, s3ServiceDetail.S3ServiceId)
 	if err != nil {

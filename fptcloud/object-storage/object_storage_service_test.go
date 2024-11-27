@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestCreateResourceAccessKey_ReturnsResourceAccessKeyIDWhenSuccess(t *testing.T) {
+func TestCreateResourceAccessKeyReturnsResourceAccessKeyIDWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"message": "Create resource access key successfully",
@@ -34,7 +34,7 @@ func TestCreateResourceAccessKey_ReturnsResourceAccessKeyIDWhenSuccess(t *testin
 	assert.Equal(t, "Create resource access key successfully", resourceAccessKeyID.Message)
 }
 
-func TestCreateResourceAccessKey_ReturnsErrorWhenFailed(t *testing.T) {
+func TestCreateResourceAccessKeyReturnsErrorWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"status": false,
 		"message": "Failed to create resource access key",
@@ -56,7 +56,7 @@ func TestCreateResourceAccessKey_ReturnsErrorWhenFailed(t *testing.T) {
 	assert.Equal(t, "Failed to create resource access key", resourceAccessKeyID.Message)
 }
 
-func TestDeleteResouurceAccessKey_ReturnOkWhenSuccess(t *testing.T) {
+func TestDeleteResouurceAccessKeyReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"message": "Delete resource access key successfully"
@@ -75,7 +75,7 @@ func TestDeleteResouurceAccessKey_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, "Access key deleted successfully", res.Message)
 }
 
-func TestListAccessKeys_ReturnAccessKeysWhenSuccess(t *testing.T) {
+func TestListAccessKeysReturnAccessKeysWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"credentials": [
 			{
@@ -103,7 +103,7 @@ func TestListAccessKeys_ReturnAccessKeysWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, accessKeys.Credentials[0].Credentials[0].Active)
 }
 
-func TestCreateBucket_ReturnsBucketIDWhenSuccess(t *testing.T) {
+func TestCreateBucketReturnsBucketIDWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"message": "Create bucket successfully"
@@ -124,7 +124,7 @@ func TestCreateBucket_ReturnsBucketIDWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, r.Status)
 }
 
-func TestCreateBucket_ReturnsErrorWhenFailed(t *testing.T) {
+func TestCreateBucketReturnsErrorWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"status": false,
 		"message": "Failed to create bucket",
@@ -145,7 +145,7 @@ func TestCreateBucket_ReturnsErrorWhenFailed(t *testing.T) {
 	assert.Equal(t, false, r.Status)
 }
 
-func TestListBuckets_ReturnsBucketsWhenSuccess(t *testing.T) {
+func TestListBucketsReturnsBucketsWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"buckets": [
 			{
@@ -176,7 +176,7 @@ func TestListBuckets_ReturnsBucketsWhenSuccess(t *testing.T) {
 	assert.Equal(t, "https://xxxx-xxx.xyz.com", buckets.Buckets[0].Endpoint)
 }
 
-func TestListBuckets_ReturnsErrorWhenFailed(t *testing.T) {
+func TestListBucketsReturnsErrorWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"buckets": [],
 		"total": 0
@@ -193,7 +193,7 @@ func TestListBuckets_ReturnsErrorWhenFailed(t *testing.T) {
 	assert.Equal(t, 0, buckets.Total)
 }
 
-func TestDeleteBucket_ReturnsOkWhenSuccess(t *testing.T) {
+func TestDeleteBucketReturnsOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -210,7 +210,7 @@ func TestDeleteBucket_ReturnsOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestCreateSubUser_ReturnsTrueWhenSuccess(t *testing.T) {
+func TestCreateSubUserReturnsTrueWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"message": "Sub-user created successfully"
@@ -232,7 +232,7 @@ func TestCreateSubUser_ReturnsTrueWhenSuccess(t *testing.T) {
 	assert.Equal(t, "Sub-user created successfully", r.Message)
 }
 
-func TestCreateSubUser_ReturnsFalseWhenFailed(t *testing.T) {
+func TestCreateSubUserReturnsFalseWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"status": false
 	}`
@@ -252,7 +252,7 @@ func TestCreateSubUser_ReturnsFalseWhenFailed(t *testing.T) {
 	assert.Equal(t, false, r.Status)
 }
 
-func TestDeleteSubUser_ReturnOkWhenSuccess(t *testing.T) {
+func TestDeleteSubUserReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
 		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/sub-users/sub_user_id/delete": mockResponse,
@@ -266,7 +266,7 @@ func TestDeleteSubUser_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestListSubUsers_ReturnsSubUsersWhenSuccess(t *testing.T) {
+func TestListSubUsersReturnsSubUsersWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"sub_users": [
 			{
@@ -295,7 +295,7 @@ func TestListSubUsers_ReturnsSubUsersWhenSuccess(t *testing.T) {
 	assert.Equal(t, "SubUserReadWrite", subUsers.SubUsers[0].Role)
 }
 
-func TestListSubUsers_ReturnsErrorWhenFailed(t *testing.T) {
+func TestListSubUsersReturnsErrorWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"sub_users": [],
 		"total": 0,
@@ -313,7 +313,7 @@ func TestListSubUsers_ReturnsErrorWhenFailed(t *testing.T) {
 	assert.Equal(t, 0, subUsers.Total)
 }
 
-func TestGetDetailSubUser_ReturnOkWhenSuccess(t *testing.T) {
+func TestGetDetailSubUserReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `
 		{
 			"user_id": "sgn-replicate123123",
@@ -337,7 +337,7 @@ func TestGetDetailSubUser_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, "SubUserReadWrite", subUser.Role)
 }
 
-func TestCreateSubUserAccessKey_ReturnsAccessKeyWhenSuccess(t *testing.T) {
+func TestCreateSubUserAccessKeyReturnsAccessKeyWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"credential": {
@@ -360,7 +360,7 @@ func TestCreateSubUserAccessKey_ReturnsAccessKeyWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, accessKey.Status)
 }
 
-func TestCreateSubUserAccessKey_ReturnsErrorWhenFailed(t *testing.T) {
+func TestCreateSubUserAccessKeyReturnsErrorWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"status": false,
 	}`
@@ -379,7 +379,7 @@ func TestCreateSubUserAccessKey_ReturnsErrorWhenFailed(t *testing.T) {
 	assert.Equal(t, false, accessKey.Status)
 }
 
-func TestDeleteSubUserAccessKey_ReturnOkWhenSuccess(t *testing.T) {
+func TestDeleteSubUserAccessKeyReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -397,7 +397,7 @@ func TestDeleteSubUserAccessKey_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestPutBucketPolicy_ReturnOkWhenSuccess(t *testing.T) {
+func TestPutBucketPolicyReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -416,7 +416,7 @@ func TestPutBucketPolicy_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestGetBucketPolicy_ReturnsPolicyWhenSuccess(t *testing.T) {
+func TestGetBucketPolicyReturnsPolicyWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowAllS3Actions\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":\"arn:aws:s3:::bucket_name/*\"}]}",
 		"status": true
@@ -435,7 +435,7 @@ func TestGetBucketPolicy_ReturnsPolicyWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, policy.Status)
 }
 
-func TestGetBucketPolicy_ReturnsFalseWhenFailed(t *testing.T) {
+func TestGetBucketPolicyReturnsFalseWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowAllS3Actions\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":\"arn:aws:s3:::bucket_name/*\"}]}",
 		"status": false,
@@ -453,7 +453,7 @@ func TestGetBucketPolicy_ReturnsFalseWhenFailed(t *testing.T) {
 	assert.Equal(t, false, policy.Status)
 }
 
-func TestCreateBucketCors_ReturnOkWhenSuccess(t *testing.T) {
+func TestCreateBucketCorsReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -471,7 +471,7 @@ func TestCreateBucketCors_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestUpdateBucketCors_ReturnOkWhenSuccess(t *testing.T) {
+func TestUpdateBucketCorsReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -490,7 +490,7 @@ func TestUpdateBucketCors_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestGetBucketCors_ReturnCorsWhenSuccess(t *testing.T) {
+func TestGetBucketCorsReturnCorsWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"cors_rules": [
 			{
@@ -515,7 +515,7 @@ func TestGetBucketCors_ReturnCorsWhenSuccess(t *testing.T) {
 	assert.Equal(t, "*", cors.CorsRules[0].AllowedHeaders[0])
 }
 
-func TestGetBucketCors_ReturnFalseWhenFailed(t *testing.T) {
+func TestGetBucketCorsReturnFalseWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"cors_rules": [],
 		"status": false,
@@ -532,7 +532,7 @@ func TestGetBucketCors_ReturnFalseWhenFailed(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestPutBucketVersioning_ReturnNilWhenSuccess(t *testing.T) {
+func TestPutBucketVersioningReturnNilWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -549,7 +549,7 @@ func TestPutBucketVersioning_ReturnNilWhenSuccess(t *testing.T) {
 	assert.Nil(t, res)
 }
 
-func TestGetBucketVersioning_ReturnBucketVersioning(t *testing.T) {
+func TestGetBucketVersioningReturnBucketVersioning(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"config": "Enabled"
@@ -565,7 +565,7 @@ func TestGetBucketVersioning_ReturnBucketVersioning(t *testing.T) {
 	assert.Equal(t, true, versioning.Status)
 }
 
-func TestPutBucketAcl_ReturnAclWhenSuccess(t *testing.T) {
+func TestPutBucketAclReturnAclWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"taskId": "task_id"
@@ -586,7 +586,7 @@ func TestPutBucketAcl_ReturnAclWhenSuccess(t *testing.T) {
 	assert.Equal(t, "task_id", res.TaskID)
 }
 
-func TestGetBucketAcl_ReturnAclWhenSuccess(t *testing.T) {
+func TestGetBucketAclReturnAclWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"Owner": {
@@ -622,7 +622,7 @@ func TestGetBucketAcl_ReturnAclWhenSuccess(t *testing.T) {
 	assert.Equal(t, "FULL_CONTROL", acl.Grants[0].Permission)
 }
 
-func TestGetBucketAcl_ReturnFalseWhenFailed(t *testing.T) {
+func TestGetBucketAclReturnFalseWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"status": false
 	}`
@@ -637,7 +637,7 @@ func TestGetBucketAcl_ReturnFalseWhenFailed(t *testing.T) {
 	assert.Equal(t, false, acl.Status)
 }
 
-func TestGetBucketAcl_ReturnFalseWhenFailedUnmarshalJson(t *testing.T) {
+func TestGetBucketAclReturnFalseWhenFailedUnmarshalJson(t *testing.T) {
 	mockResponse := `{
 		"status": false,,,
 	}`
@@ -652,7 +652,7 @@ func TestGetBucketAcl_ReturnFalseWhenFailedUnmarshalJson(t *testing.T) {
 	assert.Equal(t, false, acl.Status)
 }
 
-func TestPutBucketWebsite_ReturnOkWhenSuccess(t *testing.T) {
+func TestPutBucketWebsiteReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 	}`
@@ -672,7 +672,7 @@ func TestPutBucketWebsite_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestPutBucketWebsite_ReturnOFalseWhenFailed(t *testing.T) {
+func TestPutBucketWebsiteReturnOFalseWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"status": false,
 	}`
@@ -683,7 +683,7 @@ func TestPutBucketWebsite_ReturnOFalseWhenFailed(t *testing.T) {
 	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
 	bucketName := "bucket_name"
 	website := fptcloud_object_storage.BucketWebsiteRequest{
-		Key:    "index.html",
+		Key:    "example.html",
 		Suffix: "index2.html",
 		Bucket: "bucket_name",
 	}
@@ -692,7 +692,7 @@ func TestPutBucketWebsite_ReturnOFalseWhenFailed(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestDeleteBucketStaticWebsite_ReturnTrueWhenSuccess(t *testing.T) {
+func TestDeleteBucketStaticWebsiteReturnTrueWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -707,7 +707,7 @@ func TestDeleteBucketStaticWebsite_ReturnTrueWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestDeleteBucketStaticWebsite_ReturnFalseWhenError(t *testing.T) {
+func TestDeleteBucketStaticWebsiteReturnFalseWhenError(t *testing.T) {
 	mockResponse := `{
 		"status": false
 	}`
@@ -722,7 +722,7 @@ func TestDeleteBucketStaticWebsite_ReturnFalseWhenError(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestGetBucketWebsite_ReturnWebsiteWhenSuccess(t *testing.T) {
+func TestGetBucketWebsiteReturnWebsiteWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"config": {
@@ -741,7 +741,7 @@ func TestGetBucketWebsite_ReturnWebsiteWhenSuccess(t *testing.T) {
 				"RetryAttempts": 0
 			},
 			"IndexDocument": {
-				"Suffix": "index.html"
+				"Suffix": "some_index.html"
 			},
 			"ErrorDocument": {
 				"Key": "error.html"
@@ -757,11 +757,11 @@ func TestGetBucketWebsite_ReturnWebsiteWhenSuccess(t *testing.T) {
 	website := service.GetBucketWebsite("vpc_id", "s3_service_id", bucketName)
 	assert.NotNil(t, website)
 	assert.Equal(t, true, website.Status)
-	assert.Equal(t, "index.html", website.Config.IndexDocument.Suffix)
+	assert.Equal(t, "some_index.html", website.Config.IndexDocument.Suffix)
 	assert.Equal(t, "error.html", website.Config.ErrorDocument.Key)
 }
 
-func TestGetBucketWebsite_ReturnFalseWhenError(t *testing.T) {
+func TestGetBucketWebsiteReturnFalseWhenError(t *testing.T) {
 	mockResponse := `{
 		"status": false
 	}`
@@ -776,7 +776,7 @@ func TestGetBucketWebsite_ReturnFalseWhenError(t *testing.T) {
 	assert.Equal(t, false, website.Status)
 }
 
-func TestGetBucketLifecycle_ReturnRuleWhenSuccess(t *testing.T) {
+func TestGetBucketLifecycleReturnRuleWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,
 		"rules": [
@@ -807,7 +807,7 @@ func TestGetBucketLifecycle_ReturnRuleWhenSuccess(t *testing.T) {
 	assert.Equal(t, 1, lifecycle.Total)
 }
 
-func TestGetBucketLifecycle_ReturnFalseWhenFailed(t *testing.T) {
+func TestGetBucketLifecycleReturnFalseWhenFailed(t *testing.T) {
 	mockResponse := `{
 		"status": false,
 		"rules": [],
@@ -825,22 +825,22 @@ func TestGetBucketLifecycle_ReturnFalseWhenFailed(t *testing.T) {
 	assert.Equal(t, 0, lifecycle.Total)
 }
 
-func TestPutBucketLifecycle_ReturnOkWhenSuccess(t *testing.T) {
+func TestPutBucketLifecycleReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/create-bucket-lifecycle-configuration": mockResponse,
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name22/create-bucket-lifecycle-configuration": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
-	bucketName := "bucket_name"
+	bucketName := "bucket_name22"
 	rule := map[string]interface{}{
 		"ID":     "rule_id",
-		"Prefix": "prefix",
-		"Status": "Enabled",
+		"Prefix": "prefix2222222",
+		"Status": "Disabled",
 		"Expiration": map[string]interface{}{
-			"Days": 30,
+			"Days": 8,
 		},
 	}
 	res := service.PutBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
@@ -848,30 +848,30 @@ func TestPutBucketLifecycle_ReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, true, res.Status)
 }
 
-func TestPutBucketLifecycle_ReturnFalseWhenError(t *testing.T) {
+func TestPutBucketLifecycleReturnFalseWhenError(t *testing.T) {
 	mockResponse := `{
 		"status": false
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
-		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name/create-bucket-lifecycle-configuration-wrong-endpoint": mockResponse,
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/bucket/bucket_name1111/create-bucket-lifecycle-configuration-wrong-endpoint": mockResponse,
 	})
 	defer server.Close()
 	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
-	bucketName := "bucket_name"
+	bucketName := "bucket_name1111"
 	rule := map[string]interface{}{
-		"ID":     "rule_id",
-		"Prefix": "prefix",
-		"Status": "Enabled",
+		"ID": "rule_id",
 		"Expiration": map[string]interface{}{
-			"Days": 30,
+			"Days": 90,
 		},
+		"Prefix": "filer",
+		"Status": "Enabled",
 	}
 	res := service.PutBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
 	assert.NotNil(t, res)
 	assert.Equal(t, false, res.Status)
 }
 
-func TestPutBucketLifecycle_ReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
+func TestPutBucketLifecycleReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
 	mockResponse := `{
 		"status": false,,,,@#$@#$234
 	}`
@@ -882,19 +882,19 @@ func TestPutBucketLifecycle_ReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
 	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
 	bucketName := "bucket_name"
 	rule := map[string]interface{}{
-		"ID":     "rule_id",
-		"Prefix": "prefix",
 		"Status": "Enabled",
+		"ID":     "rule_id",
 		"Expiration": map[string]interface{}{
 			"Days": 30,
 		},
+		"Prefix": "prefix",
 	}
 	res := service.PutBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
 	assert.NotNil(t, res)
 	assert.Equal(t, false, res.Status)
 }
 
-func TestDeleteBucketLifecycle_ReturnOkWhenSuccess(t *testing.T) {
+func TestDeleteBucketLifecycleReturnOkWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true
 	}`
@@ -905,19 +905,19 @@ func TestDeleteBucketLifecycle_ReturnOkWhenSuccess(t *testing.T) {
 	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
 	bucketName := "bucket_name"
 	rule := map[string]interface{}{
-		"ID":     "rule_id",
+		"ID": "rule_id",
+		"Expiration": map[string]interface{}{
+			"Days": 12,
+		},
 		"Prefix": "prefix",
 		"Status": "Enabled",
-		"Expiration": map[string]interface{}{
-			"Days": 30,
-		},
 	}
 	res := service.DeleteBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
 	assert.NotNil(t, res)
 	assert.Equal(t, true, res.Status)
 }
 
-func TestDeleteBucketLifecycle_ReturnFalseWhenError(t *testing.T) {
+func TestDeleteBucketLifecycleReturnFalseWhenError(t *testing.T) {
 	mockResponse := `{
 		"status": false
 	}`
@@ -928,11 +928,13 @@ func TestDeleteBucketLifecycle_ReturnFalseWhenError(t *testing.T) {
 	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
 	bucketName := "bucket_name"
 	rule := map[string]interface{}{
-		"ID":     "rule_id",
-		"Prefix": "prefix",
-		"Status": "Enabled",
+		"ID": "rule_id",
+		"Prefix": map[string]interface{}{
+			"Filter": "filter",
+		},
+		"Status": "Disabled",
 		"Expiration": map[string]interface{}{
-			"Days": 30,
+			"Days": 12,
 		},
 	}
 	res := service.DeleteBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
@@ -940,7 +942,7 @@ func TestDeleteBucketLifecycle_ReturnFalseWhenError(t *testing.T) {
 	assert.Equal(t, false, res.Status)
 }
 
-func TestDeleteBucketLifecycle_ReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
+func TestDeleteBucketLifecycleReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
 	mockResponse := `{
 		"status": false,,,,@#$@#$234
 	}`
@@ -951,19 +953,19 @@ func TestDeleteBucketLifecycle_ReturnFalseWhenErrorUnmarshalJson(t *testing.T) {
 	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
 	bucketName := "bucket_name"
 	rule := map[string]interface{}{
-		"ID":     "rule_id",
 		"Prefix": "prefix",
-		"Status": "Enabled",
+		"ID":     "rule_id9999",
 		"Expiration": map[string]interface{}{
 			"Days": 30,
 		},
+		"Status": "Disabled",
 	}
 	res := service.DeleteBucketLifecycle("vpc_id", "s3_service_id", bucketName, rule)
 	assert.NotNil(t, res)
 	assert.Equal(t, false, res.Status)
 }
 
-func TestCheckServiceEnable_ReturnServicesWhenSuccess(t *testing.T) {
+func TestCheckServiceEnableReturnServicesWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"data": [
 			{
@@ -994,7 +996,7 @@ func TestCheckServiceEnable_ReturnServicesWhenSuccess(t *testing.T) {
 	assert.Equal(t, "ceph", services.Data[0].S3Platform)
 }
 
-func TestCheckServiceEnable_ReturnFalseWhenError(t *testing.T) {
+func TestCheckServiceEnableReturnFalseWhenError(t *testing.T) {
 	mockResponse := `{
 		"total": 0
 	}`
@@ -1010,7 +1012,7 @@ func TestCheckServiceEnable_ReturnFalseWhenError(t *testing.T) {
 	assert.Equal(t, 0, services.Total)
 }
 
-func TestCheckServiceEnable_ReturnFalseWhenErrorUnmarshal(t *testing.T) {
+func TestCheckServiceEnableReturnFalseWhenErrorUnmarshal(t *testing.T) {
 	mockResponse := `{
 		"total": #$%#$%#$%#$%#$%!@#!23,
 	}`

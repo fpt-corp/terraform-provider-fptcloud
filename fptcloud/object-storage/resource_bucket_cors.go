@@ -18,24 +18,6 @@ func ResourceBucketCors() *schema.Resource {
 		DeleteContext: resourceBucketCorsDelete,
 		ReadContext:   resourceBucketCorsRead,
 		Schema: map[string]*schema.Schema{
-			"bucket_name": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Name of the bucket",
-			},
-			"vpc_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The VPC ID",
-			},
-			"region_name": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
-			},
 			"cors_config": {
 				Type:          schema.TypeString,
 				Optional:      true,
@@ -68,6 +50,24 @@ func ResourceBucketCors() *schema.Resource {
 					},
 				},
 			},
+			"bucket_name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "Name of the bucket",
+			},
+			"vpc_id": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The VPC ID",
+			},
+			"region_name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
+			},
 		},
 	}
 }
@@ -80,7 +80,7 @@ func resourceBucketCorsCreate(ctx context.Context, d *schema.ResourceData, m int
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 
 	var corsConfigData string
@@ -99,10 +99,10 @@ func resourceBucketCorsCreate(ctx context.Context, d *schema.ResourceData, m int
 		return diag.FromErr(err)
 	}
 	payload := map[string]interface{}{
-		"ID":             jsonMap.ID,
 		"AllowedMethods": jsonMap.AllowedMethods,
-		"AllowedOrigins": jsonMap.AllowedOrigins,
 		"MaxAgeSeconds":  jsonMap.MaxAgeSeconds,
+		"ID":             jsonMap.ID,
+		"AllowedOrigins": jsonMap.AllowedOrigins,
 	}
 	if len(jsonMap.AllowedHeaders) > 0 {
 		payload["AllowedHeaders"] = jsonMap.AllowedHeaders
@@ -131,7 +131,7 @@ func resourceBucketCorsRead(_ context.Context, d *schema.ResourceData, m interfa
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	page := 1
 	pageSize := 999999
@@ -169,7 +169,7 @@ func resourceBucketCorsDelete(ctx context.Context, d *schema.ResourceData, m int
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	var corsConfigData string
 	if v, ok := d.GetOk("cors_config"); ok {
@@ -189,9 +189,9 @@ func resourceBucketCorsDelete(ctx context.Context, d *schema.ResourceData, m int
 	var payload []map[string]interface{}
 	for _, corsRule := range jsonMap {
 		payload := map[string]interface{}{
-			"ID":             corsRule.ID,
-			"AllowedMethods": corsRule.AllowedMethods,
 			"AllowedOrigins": corsRule.AllowedOrigins,
+			"AllowedMethods": corsRule.AllowedMethods,
+			"ID":             corsRule.ID,
 			"MaxAgeSeconds":  corsRule.MaxAgeSeconds,
 		}
 		if len(corsRule.AllowedHeaders) > 0 {

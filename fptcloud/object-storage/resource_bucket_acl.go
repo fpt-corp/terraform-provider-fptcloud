@@ -70,7 +70,7 @@ func resourceBucketAclCreate(ctx context.Context, d *schema.ResourceData, m inte
 	}
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	var bucketAclRequest BucketAclRequest
 	bucketAclRequest.CannedAcl = cannedAcl
@@ -97,7 +97,7 @@ func resourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interf
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	r := service.GetBucketAcl(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
 	if !r.Status {

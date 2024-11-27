@@ -86,7 +86,7 @@ func dataSourceBucketRead(ctx context.Context, d *schema.ResourceData, m interfa
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	buckets := service.ListBuckets(vpcId, s3ServiceDetail.S3ServiceId, page, pageSize)
 	if buckets.Total == 0 {

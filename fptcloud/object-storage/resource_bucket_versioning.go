@@ -57,7 +57,7 @@ func resourceBucketVersioningCreate(ctx context.Context, d *schema.ResourceData,
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 	err := service.PutBucketVersioning(vpcId, s3ServiceDetail.S3ServiceId, bucketName, BucketVersioningRequest{
 		Status: versioningStatus,

@@ -18,12 +18,6 @@ func ResourceBucketPolicy() *schema.Resource {
 		DeleteContext: resourceBucketPolicyDelete,
 		ReadContext:   dataSourceBucketPolicyRead,
 		Schema: map[string]*schema.Schema{
-			"vpc_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The VPC ID",
-			},
 			"region_name": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -35,6 +29,17 @@ func ResourceBucketPolicy() *schema.Resource {
 				Required:    true,
 				ForceNew:    true,
 				Description: "Name of the bucket",
+			},
+			"vpc_id": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The VPC ID",
+			},
+			"status": {
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Status after bucket policy is created",
 			},
 			"policy": {
 				Type:          schema.TypeString,
@@ -50,11 +55,6 @@ func ResourceBucketPolicy() *schema.Resource {
 				ForceNew:      true,
 				Description:   "Path to the JSON file containing the bucket policy",
 				ConflictsWith: []string{"policy"},
-			},
-			"status": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "Status after bucket policy is created",
 			},
 		},
 	}
@@ -82,7 +82,7 @@ func resourceBucketPolicyCreate(ctx context.Context, d *schema.ResourceData, m i
 
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", regionName))
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	var jsonMap map[string]interface{}
 	err := json.Unmarshal([]byte(policyContent), &jsonMap)
@@ -119,7 +119,7 @@ func resourceBucketPolicyDelete(ctx context.Context, d *schema.ResourceData, m i
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 
 	resp := service.PutBucketPolicy(vpcId, s3ServiceDetail.S3ServiceId, bucketName, BucketPolicyRequest{

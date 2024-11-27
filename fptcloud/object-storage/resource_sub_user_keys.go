@@ -15,6 +15,17 @@ func ResourceSubUserKeys() *schema.Resource {
 		ReadContext:   resourceReadUserDetail,
 		DeleteContext: resourceSubUserAccessKeyDelete,
 		Schema: map[string]*schema.Schema{
+			"user_id": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The sub user id, can retrieve from data source `fptcloud_object_storage_sub_user`",
+			},
+			"access_key": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The access key of the sub user",
+			},
 			"vpc_id": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -26,17 +37,6 @@ func ResourceSubUserKeys() *schema.Resource {
 				Required:    true,
 				ForceNew:    true,
 				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
-			},
-			"user_id": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The sub user id, can retrieve from data source `fptcloud_object_storage_sub_user`",
-			},
-			"access_key": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The access key of the sub user",
 			},
 			"secret_key": {
 				Type:        schema.TypeString,
@@ -54,7 +54,7 @@ func resourceSubUserAccessKeyCreate(ctx context.Context, d *schema.ResourceData,
 	subUserId := d.Get("user_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 	resp := objectStorageService.CreateSubUserAccessKey(vpcId, s3ServiceDetail.S3ServiceId, subUserId)
 
@@ -81,7 +81,7 @@ func resourceReadUserDetail(ctx context.Context, d *schema.ResourceData, m inter
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 	subUserId := d.Get("user_id").(string)
 
@@ -101,7 +101,7 @@ func resourceSubUserAccessKeyDelete(ctx context.Context, d *schema.ResourceData,
 	vpcId := d.Get("vpc_id").(string)
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf("region %s is not enabled", d.Get("region_name").(string)))
+		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 	subUserId := d.Get("user_id").(string)
 	accessKeyToDelete := d.Get("access_key").(string)
