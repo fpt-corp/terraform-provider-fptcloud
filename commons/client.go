@@ -166,7 +166,6 @@ func (c *Client) SendDeleteRequest(requestURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return c.SendRequest(req)
 }
 

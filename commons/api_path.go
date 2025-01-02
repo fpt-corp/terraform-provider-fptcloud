@@ -2,6 +2,8 @@ package commons
 
 import "fmt"
 
+const ObjectStorageApiPrefix = "/v1/vmware/vpc"
+
 var ApiPath = struct {
 	SSH                        string
 	Storage                    func(vpcId string) string
@@ -58,6 +60,49 @@ var ApiPath = struct {
 	ManagedFKEDelete func(vpcId string, platform string, clusterName string) string
 	ManagedFKECreate func(vpcId string, platform string) string
 	GetFKEOSVersion  func(vpcId string, platform string) string
+
+	// Object Storage
+	// Common
+	CheckS3ServiceEnable func(vpcId string) string
+
+	// Bucket
+	ListBuckets  func(vpcId, s3ServiceId string, page, pageSize int) string
+	CreateBucket func(vpcId, s3ServiceId string) string
+	DeleteBucket func(vpcId, s3ServiceId string) string
+	// Bucket Policy
+	GetBucketPolicy func(vpcId, s3ServiceId, bucketName string) string
+	PutBucketPolicy func(vpcId, s3ServiceId, bucketName string) string
+	// Bucket Static Website
+	GetBucketWebsite          func(vpcId, s3ServiceId, bucketName string) string
+	PutBucketWebsite          func(vpcId, s3ServiceId, bucketName string) string
+	DeleteBucketStaticWebsite func(vpcId, s3ServiceId, bucketName string) string
+	// Bucket Versioning
+	GetBucketVersioning func(vpcId, s3ServiceId, bucketName string) string
+	PutBucketVersioning func(vpcId, s3ServiceId, bucketName string) string
+	// Bucket Lifecycle
+	GetBucketLifecycle    func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string
+	PutBucketLifecycle    func(vpcId, s3ServiceId, bucketName string) string
+	DeleteBucketLifecycle func(vpcId, s3ServiceId, bucketName string) string
+	// Bucket CORS
+	GetBucketCORS    func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string
+	PutBucketCORS    func(vpcId, s3ServiceId, bucketName string) string
+	CreateBucketCors func(vpcId, s3ServiceId, bucketName string) string
+	// Bucket ACL
+	GetBucketAcl func(vpcId, s3ServiceId, bucketName string) string
+	PutBucketAcl func(vpcId, s3ServiceId, bucketName string) string
+
+	// Sub-user
+	ListSubUsers           func(vpcId, s3ServiceId string, page, pageSize int) string
+	CreateSubUser          func(vpcId, s3ServiceId string) string
+	UpdateSubUser          func(vpcId, s3ServiceId, subUserId string) string
+	DeleteSubUser          func(vpcId, s3ServiceId, subUserId string) string
+	DetailSubUser          func(vpcId, s3ServiceId, subUserId string) string
+	CreateSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
+	DeleteSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
+	// Access Key
+	ListAccessKeys  func(vpcId, s3ServiceId string) string
+	CreateAccessKey func(vpcId, s3ServiceId string) string
+	DeleteAccessKey func(vpcId, s3ServiceId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -218,5 +263,109 @@ var ApiPath = struct {
 	},
 	GetFKEOSVersion: func(vpcId string, platform string) string {
 		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get_k8s_versions", vpcId, platform)
+	},
+
+	// Object Storage
+	// Common
+	CheckS3ServiceEnable: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/check-service-enabled?check_unlimited=undefined", vpcId)
+	},
+
+	// Bucket
+	ListBuckets: func(vpcId, s3ServiceId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/buckets?page=%d&page_size=%d&s3_service_id=%s", vpcId, page, pageSize, s3ServiceId)
+	},
+	CreateBucket: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/buckets/create", vpcId, s3ServiceId)
+	},
+
+	DeleteBucket: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/buckets/delete", vpcId, s3ServiceId)
+	},
+
+	// Bucket Versioning
+	GetBucketVersioning: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/get-versioning", vpcId, s3ServiceId, bucketName)
+	},
+	PutBucketVersioning: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/put-versioning", vpcId, s3ServiceId, bucketName)
+	},
+	// Bucket Policy
+	GetBucketPolicy: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/get-policy", vpcId, s3ServiceId, bucketName)
+	},
+	PutBucketPolicy: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/put-policy", vpcId, s3ServiceId, bucketName)
+	},
+	// Bucket Static Website
+	GetBucketWebsite: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/get-config", vpcId, s3ServiceId, bucketName)
+	},
+	PutBucketWebsite: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/put-config", vpcId, s3ServiceId, bucketName)
+	},
+	DeleteBucketStaticWebsite: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/delete-config", vpcId, s3ServiceId, bucketName)
+	},
+	// Bucket Lifecycle
+	GetBucketLifecycle: func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/lifecycles?page=%d&page_size=%d", vpcId, s3ServiceId, bucketName, page, pageSize)
+	},
+	PutBucketLifecycle: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/create-bucket-lifecycle-configuration", vpcId, s3ServiceId, bucketName)
+	},
+	DeleteBucketLifecycle: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/delete-bucket-lifecycle-configuration", vpcId, s3ServiceId, bucketName)
+	},
+	// Bucket CORS
+	GetBucketCORS: func(vpcId, s3ServiceId, bucketName string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/cors?page=%d&page_size=%d", vpcId, s3ServiceId, bucketName, page, pageSize)
+	},
+	PutBucketCORS: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/put-bucket-cors", vpcId, s3ServiceId, bucketName)
+	},
+	CreateBucketCors: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/create-bucket-cors", vpcId, s3ServiceId, bucketName)
+	},
+	// Bucket ACL
+	GetBucketAcl: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/acl", vpcId, s3ServiceId, bucketName)
+	},
+	PutBucketAcl: func(vpcId, s3ServiceId, bucketName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/bucket/%s/acl", vpcId, s3ServiceId, bucketName)
+	},
+	// Sub-user
+	ListSubUsers: func(vpcId, serviceId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/list?page=%d&page_size=%d", vpcId, serviceId, page, pageSize)
+	},
+	CreateSubUser: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/create", vpcId, s3ServiceId)
+	},
+	UpdateSubUser: func(vpcId, s3ServiceId, subUserId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/sub-users/%s/update", vpcId, subUserId)
+	},
+	DeleteSubUser: func(vpcId, s3ServiceId, subUserId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/delete", vpcId, s3ServiceId, subUserId)
+	},
+	DetailSubUser: func(vpcId, s3ServiceId, subUserId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/detail", vpcId, s3ServiceId, subUserId)
+	},
+	// Sub-user Access Key
+	CreateSubUserAccessKey: func(vpcId, s3ServiceId, subUserId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/credentials/create", vpcId, s3ServiceId, subUserId)
+	},
+	DeleteSubUserAccessKey: func(vpcId, s3ServiceId, subUserId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/credentials/delete", vpcId, s3ServiceId, subUserId)
+	},
+
+	// Access Key
+	ListAccessKeys: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/user/credentials?s3_service_id=%s", vpcId, s3ServiceId)
+	},
+	CreateAccessKey: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/user/credentials", vpcId, s3ServiceId)
+	},
+	DeleteAccessKey: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/user/credentials/delete", vpcId, s3ServiceId)
 	},
 }

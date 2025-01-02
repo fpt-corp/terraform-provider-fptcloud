@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
+	"terraform-provider-fptcloud/fptcloud"
+
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov5"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov5/tf5server"
 	"github.com/hashicorp/terraform-plugin-mux/tf5muxserver"
-	"log"
-	"terraform-provider-fptcloud/fptcloud"
 )
 
 //go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate -provider-name terraform-provider-fptcloud
