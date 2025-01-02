@@ -1,3 +1,26 @@
+## [0.3.0] - 2025-01-02
+### Resource
+- fptcloud_object_storage_bucket_acl
+- fptcloud_object_storage_bucket_cors
+- fptcloud_object_storage_bucket_lifecycle
+- fptcloud_object_storage_bucket_policy
+- fptcloud_object_storage_bucket_static_website
+- fptcloud_object_storage_bucket_versioning
+- fptcloud_object_storage_sub_user
+- fptcloud_object_storage_user_key
+- fptcloud_object_storage_access_key
+### Datasource
+- fptcloud_object_storage_access_key
+- fptcloud_object_storage_bucket_acl
+- fptcloud_object_storage_bucket_cors
+- fptcloud_object_storage_bucket_lifecycle
+- fptcloud_object_storage_bucket_policy
+- fptcloud_object_storage_bucket_static_website
+- fptcloud_object_storage_bucket_versioning
+- fptcloud_object_storage_bucket
+- fptcloud_s3_service_enable
+- fptcloud_object_storage_sub_user
+
 ## [0.2.1] - 2024-10-17
 ### Resource
 - fix set value read storage
