@@ -123,10 +123,6 @@ func resourceSubnetRead(_ context.Context, d *schema.ResourceData, m interface{}
 		return diag.Errorf("[ERR] Failed to set 'gateway': %s", err)
 	}
 
-	if err := d.Set("edge_gateway", result.EdgeGateway); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'edge_gateway': %s", err)
-	}
-
 	if err := d.Set("created_at", result.CreatedAt); err != nil {
 		return diag.Errorf("[ERR] Failed to set 'created_at': %s", err)
 	}
