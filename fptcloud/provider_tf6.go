@@ -125,7 +125,7 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "token")
 	tflog.Debug(ctx, "Creating FPTCloud client")
 
-	client, err := common.NewClientWithURL(token, apiEndpoint, region, tenantName)
+	client, err := common.NewClientWithURL(token, apiEndpoint, region, tenantName, 5)
 
 	if err != nil {
 		response.Diagnostics.AddError("Error creating client", err.Error())

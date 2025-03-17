@@ -60,7 +60,7 @@ func (e HTTPError) Error() string {
 }
 
 // NewClientWithURL initializes a Client with a specific API URL
-func NewClientWithURL(apiKey, apiUrl, region string, tenantName string) (*Client, error) {
+func NewClientWithURL(apiKey, apiUrl, region string, tenantName string, timeout int) (*Client, error) {
 	parsedURL, err := url.Parse(apiUrl)
 	if err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func NewClientWithURL(apiKey, apiUrl, region string, tenantName string) (*Client
 		TenantName: tenantName,
 		httpClient: &http.Client{
 			Transport: httpTransport,
-			Timeout:   5 * time.Minute,
+			Timeout:   time.Duration(timeout) * time.Minute,
 		},
 	}
 	return client, nil
@@ -202,7 +202,7 @@ func (c *Client) DecodeSimpleResponse(resp []byte) (*SimpleResponse, error) {
 
 // NewClientForTestingWithServer initializes a Client connecting to a passed-in local test server
 func NewClientForTestingWithServer(server *httptest.Server) (*Client, error) {
-	client, err := NewClientWithURL("TEST-API-KEY", server.URL, "TEST", "TEST")
+	client, err := NewClientWithURL("TEST-API-KEY", server.URL, "TEST", "TEST", 5)
 	if err != nil {
 		return nil, err
 	}

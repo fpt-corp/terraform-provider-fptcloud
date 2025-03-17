@@ -61,6 +61,12 @@ func Provider() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_API_URL", ProdAPI),
 				Description: "The URL to use",
 			},
+			"timeout": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TIMEOUT", 5),
+				Description: "Timeout in minutes (optional)",
+			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage_policy":                       fptcloud_storage_policy.DataSourceStoragePolicy(),
@@ -116,6 +122,7 @@ func Provider() *schema.Provider {
 func providerConfigureContext(_ context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	var regionValue, tokenValue, tenantNameValue, apiURL string
+	var timeoutValue int
 	var client *common.Client
 	var err error
 
@@ -138,7 +145,14 @@ func providerConfigureContext(_ context.Context, d *schema.ResourceData) (interf
 	} else {
 		apiURL = ProdAPI
 	}
-	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue, tenantNameValue)
+
+	if timeout, ok := d.GetOk("timeout"); ok {
+		timeoutValue = timeout.(int)
+	} else {
+		timeoutValue = 5 // Default 5 minutes
+	}
+
+	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue, tenantNameValue, timeoutValue)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
