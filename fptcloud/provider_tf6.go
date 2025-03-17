@@ -26,6 +26,7 @@ type xplatProviderModel struct {
 	Token       types.String `tfsdk:"token"`
 	TenantName  types.String `tfsdk:"tenant_name"`
 	ApiEndpoint types.String `tfsdk:"api_endpoint"`
+	Timeout     types.Int64  `tfsdk:"timeout"`
 }
 
 type xplatProvider struct {
@@ -71,6 +72,11 @@ func (x *xplatProvider) Schema(ctx context.Context, request provider.SchemaReque
 				Description: "The URL to use",
 				Optional:    true,
 			},
+
+			"timeout": schema.Int64Attribute{
+				Description: "Timeout in minutes (optional)",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -88,6 +94,7 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 	region := os.Getenv("FPTCLOUD_REGION")
 	tenantName := os.Getenv("FPTCLOUD_TENANT_NAME")
 	apiEndpoint := os.Getenv("FPTCLOUD_API_URL")
+	var timeout = 5
 
 	if !config.Token.IsNull() {
 		token = config.Token.ValueString()
@@ -103,6 +110,10 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 
 	if !config.ApiEndpoint.IsNull() {
 		apiEndpoint = config.ApiEndpoint.ValueString()
+	}
+
+	if !config.Timeout.IsNull() {
+		timeout = int(config.Timeout.ValueInt64())
 	}
 
 	if apiEndpoint == "" {
@@ -125,7 +136,7 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "token")
 	tflog.Debug(ctx, "Creating FPTCloud client")
 
-	client, err := common.NewClientWithURL(token, apiEndpoint, region, tenantName, 5)
+	client, err := common.NewClientWithURL(token, apiEndpoint, region, tenantName, timeout)
 
 	if err != nil {
 		response.Diagnostics.AddError("Error creating client", err.Error())
