@@ -1,3 +1,7 @@
+## [0.3.2] - 2025-03-17
+### Provider
+- Support timeout
+
 ## [0.3.0] - 2025-01-02
 ### Resource
 - fptcloud_object_storage_bucket_acl
