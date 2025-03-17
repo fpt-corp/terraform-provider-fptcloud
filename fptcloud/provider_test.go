@@ -30,6 +30,7 @@ func TestConfig(t *testing.T) {
 		"token":       "example_token",
 		"tenant_name": "example_tenant_name",
 		"region":      "example_region",
+		"timeout":     10,
 	}
 
 	diags := rawProvider.Configure(context.Background(), terraform.NewResourceConfigRaw(raw))
