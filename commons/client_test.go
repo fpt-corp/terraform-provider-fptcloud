@@ -6,14 +6,14 @@ import (
 )
 
 func TestNewClientWithURL_ValidURL(t *testing.T) {
-	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant")
+	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant", 5)
 	assert.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.Equal(t, "https://api.example.com", client.BaseURL.String())
 }
 
 func TestNewClientWithURL_InvalidURL(t *testing.T) {
-	client, err := NewClientWithURL("apiKey", ":", "region", "tenant")
+	client, err := NewClientWithURL("apiKey", ":", "region", "tenant", 5)
 	assert.Error(t, err)
 	assert.Nil(t, client)
 }
@@ -31,7 +31,7 @@ func TestSendGetRequest_ValidResponse(t *testing.T) {
 }
 
 func TestSendGetRequest_InvalidURL(t *testing.T) {
-	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant")
+	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant", 5)
 	assert.NoError(t, err)
 
 	resp, err := client.SendGetRequest("://invalid-url")
@@ -52,7 +52,7 @@ func TestSendPostRequest_ValidResponse(t *testing.T) {
 }
 
 func TestSendPostRequest_InvalidJSON(t *testing.T) {
-	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant")
+	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant", 5)
 	assert.NoError(t, err)
 
 	resp, err := client.SendPostRequest("/test", make(chan int))
@@ -85,7 +85,7 @@ func TestSendDeleteRequestWithBody_ValidResponse(t *testing.T) {
 }
 
 func TestSetUserAgent_SetsCorrectly(t *testing.T) {
-	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant")
+	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant", 5)
 	assert.NoError(t, err)
 
 	component := &Component{ID: "123", Name: "TestComponent", Version: "1.0"}
@@ -94,7 +94,7 @@ func TestSetUserAgent_SetsCorrectly(t *testing.T) {
 }
 
 func TestDecodeSimpleResponse_ValidResponse(t *testing.T) {
-	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant")
+	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant", 5)
 	assert.NoError(t, err)
 
 	resp := []byte(`{"Data": "success", "Status": "ok"}`)

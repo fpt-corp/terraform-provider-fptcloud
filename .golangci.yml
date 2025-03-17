@@ -9,7 +9,6 @@ linters:
   enable:
     - durationcheck
     - errcheck
-    - exportloopref
     - gofmt
     - gosimple
     - makezero
