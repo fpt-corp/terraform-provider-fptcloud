@@ -89,7 +89,7 @@ func resourceSecurityGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 			}
 			return resp, resp.Status, nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
 		MinTimeout:     3 * time.Second,
 		NotFoundChecks: 120,
@@ -205,7 +205,7 @@ func resourceSecurityGroupUpdate(ctx context.Context, d *schema.ResourceData, m 
 				}
 				return resp, resp.Status, nil
 			},
-			Timeout:        5 * time.Minute,
+			Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 			Delay:          3 * time.Second,
 			MinTimeout:     3 * time.Second,
 			NotFoundChecks: 120,
@@ -252,7 +252,7 @@ func resourceSecurityGroupDelete(_ context.Context, d *schema.ResourceData, m in
 
 			return resp, resp.Status, nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
 		MinTimeout:     3 * time.Second,
 		NotFoundChecks: 120,

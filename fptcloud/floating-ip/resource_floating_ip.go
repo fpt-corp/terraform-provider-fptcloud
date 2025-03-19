@@ -78,7 +78,7 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 			}
 			return resp, resp.Status, nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
 		MinTimeout:     3 * time.Second,
 		NotFoundChecks: 120,
