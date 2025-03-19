@@ -76,7 +76,7 @@ func resourceSubnetCreate(ctx context.Context, d *schema.ResourceData, m interfa
 			d.SetId(resp.ID)
 			return resp, "COMPLETE", nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          10 * time.Second,
 		MinTimeout:     30 * time.Second,
 		NotFoundChecks: 20,

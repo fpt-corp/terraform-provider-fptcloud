@@ -20,6 +20,7 @@ type Client struct {
 	TenantName       string
 	Region           string
 	LastJSONResponse string
+	Timeout          int
 
 	httpClient *http.Client
 }
@@ -75,6 +76,7 @@ func NewClientWithURL(apiKey, apiUrl, region string, tenantName string, timeout 
 		APIKey:     apiKey,
 		Region:     region,
 		TenantName: tenantName,
+		Timeout:    timeout,
 		httpClient: &http.Client{
 			Transport: httpTransport,
 			Timeout:   time.Duration(timeout) * time.Minute,

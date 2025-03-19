@@ -126,7 +126,7 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 			}
 			return resp, resp.Status, nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
 		MinTimeout:     3 * time.Second,
 		NotFoundChecks: 120,
@@ -231,7 +231,7 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 
 			return resp, resp.Status, nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
 		MinTimeout:     3 * time.Second,
 		NotFoundChecks: 120,
@@ -295,7 +295,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 				}
 				return resp, resp.Status, nil
 			},
-			Timeout:        5 * time.Minute,
+			Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 			Delay:          3 * time.Second,
 			MinTimeout:     3 * time.Second,
 			NotFoundChecks: 120,

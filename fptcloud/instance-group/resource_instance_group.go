@@ -136,7 +136,7 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 			d.SetId(rsInstanceGroup.ID)
 			return (*resp)[0], "COMPLETE", nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          10 * time.Second,
 		MinTimeout:     30 * time.Second,
 		NotFoundChecks: 20,

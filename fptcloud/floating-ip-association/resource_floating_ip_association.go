@@ -119,7 +119,7 @@ func resourceFloatingIpAssociationCreate(ctx context.Context, d *schema.Resource
 			}
 			return resp, resp.Status, nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
 		MinTimeout:     3 * time.Second,
 		NotFoundChecks: 120,
@@ -200,7 +200,7 @@ func resourceFloatingIpAssociationDelete(ctx context.Context, d *schema.Resource
 			}
 			return resp, resp.Status, nil
 		},
-		Timeout:        5 * time.Minute,
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
 		MinTimeout:     3 * time.Second,
 		NotFoundChecks: 120,
