@@ -13,18 +13,58 @@ Provides a instance resource. This can be used to create, modify, and delete ins
 ## Example Usage
 
 ```terraform
-resource "fptcloud_instance" "example" {
-  name              = "example"
+# Create instance with SSH key
+resource "fptcloud_instance" "example_01" {
+  name              = "example-01"
   vpc_id            = "your_vpc_id"
-  ssh_key           = "your_public_key"
-  image_name          = "CentOS-7"
-  flavor_name         = "1C1G"
-  public_ip         = "your_ip_public"
+  ssh_key           = "your_ssh_key"
+  image_name        = "UBUNTU-20.04-04072024"
+  flavor_name       = "2C2G"
   subnet_id         = "your_subnet_id"
-  storage_size_gb   = 50
-  storage_policy_id = "your_storage_policy_id"
-  security_group_ids = []
+  storage_size_gb   = 60
+  storage_policy_id = "your_policy_id"
   status            = "POWERED_ON"
+}
+
+# Create instance with password
+resource "fptcloud_instance" "example_02" {
+  name              = "example-02"
+  vpc_id            = "your_vpc_id"
+  password          = "your_password"
+  image_name        = "UBUNTU-20.04-04072024"
+  flavor_name       = "2C2G"
+  subnet_id         = "your_subnet_id"
+  storage_size_gb   = 60
+  storage_policy_id = "your_policy_id"
+  status            = "POWERED_ON"
+}
+
+# Create instance with security group
+resource "fptcloud_instance" "example_02" {
+  name              = "example-02"
+  vpc_id            = "your_vpc_id"
+  password          = "your_password"
+  image_name        = "UBUNTU-20.04-04072024"
+  flavor_name       = "2C2G"
+  subnet_id         = "your_subnet_id"
+  storage_size_gb   = 60
+  storage_policy_id = "your_policy_id"
+  status            = "POWERED_ON"
+  security_group_ids = ["your_security_group_id"]
+}
+
+# Create instance with instance group
+resource "fptcloud_instance" "example_02" {
+  name              = "example-02"
+  vpc_id            = "your_vpc_id"
+  password          = "your_password"
+  image_name        = "UBUNTU-20.04-04072024"
+  flavor_name       = "2C2G"
+  subnet_id         = "your_subnet_id"
+  storage_size_gb   = 60
+  storage_policy_id = "your_policy_id"
+  status            = "POWERED_ON"
+  instance_group_id = "your_instance_group_id"
 }
 ```
 
@@ -47,7 +87,7 @@ resource "fptcloud_instance" "example" {
 - `instance_group_id` (String) The instance group id of the instance
 - `password` (String) The password of the instance
 - `private_ip` (String) The private ip of the instance.
-- `public_ip` (String) The public ip (floating ip) of the instance.  Fill `new` to allocate new from the pool.
+- `public_ip` (String) The public ip (floating ip) of the instance.
 - `security_group_ids` (List of String) The security group associated with the instance
 - `ssh_key` (String) The ssh key of the instance
 

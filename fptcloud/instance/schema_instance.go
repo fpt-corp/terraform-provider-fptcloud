@@ -139,7 +139,7 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"public_ip": {
 		Type:        schema.TypeString,
 		Optional:    true,
-		Description: "The public ip (floating ip) of the instance.  Fill `new` to allocate new from the pool.",
+		Description: "The public ip (floating ip) of the instance.",
 	},
 	"flavor_name": {
 		Type:        schema.TypeString,
