@@ -1,3 +1,11 @@
+## [0.3.5] - 2025-04-09
+### Docs
+- Update docs and example
+
+## [0.3.4] - 2025-03-17
+### Provider
+- Fix bug timeout for API
+
 ## [0.3.3] - 2025-03-17
 ### Provider
 - Support timeout for fke
