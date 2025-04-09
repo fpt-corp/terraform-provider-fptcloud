@@ -79,8 +79,9 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 		Description: "The root storage size of the instance",
 	},
 	"storage_policy": {
-		Type:        schema.TypeInt,
+		Type:        schema.TypeString,
 		Computed:    true,
+		Optional:    true,
 		Description: "The root storage policy of the instance",
 	},
 	"security_group_ids": {
