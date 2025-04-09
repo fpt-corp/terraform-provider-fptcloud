@@ -1,3 +1,7 @@
+## [0.3.6] - 2025-04-09
+### Datasource
+- Fix bug get instance
+
 ## [0.3.5] - 2025-04-09
 ### Docs
 - Update docs and example
