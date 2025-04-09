@@ -51,6 +51,6 @@ output "output-example" {
 - `memory_mb` (Number) The memory (mb) number of the instance
 - `private_ip` (String) The private ip of the instance
 - `status` (String) The status of the instance
-- `storage_policy` (Number) The root storage policy of the instance
+- `storage_policy` (String) The root storage policy of the instance
 - `storage_size_gb` (Number) The root storage size of the instance
 - `subnet_id` (String) The subnet id of the instance
