@@ -54,7 +54,7 @@ func (x *xplatProvider) Schema(ctx context.Context, request provider.SchemaReque
 		Description: "",
 		Attributes: map[string]schema.Attribute{
 			"region": schema.StringAttribute{
-				Description: "The region to use (VN/HAN | VN/SGN)",
+				Description: "The region to use (VN/HAN | VN/SGN | JP/JCSI2)",
 				Optional:    true,
 			},
 
