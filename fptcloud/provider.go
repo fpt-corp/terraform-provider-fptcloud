@@ -53,7 +53,7 @@ func Provider() *schema.Provider {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_REGION", ""),
-				Description: "The region to use (VN/HAN | VN/SGN)",
+				Description: "The region to use (VN/HAN | VN/SGN | JP/JCSI2)",
 			},
 			"api_endpoint": {
 				Type:        schema.TypeString,
