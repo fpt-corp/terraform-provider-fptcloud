@@ -69,7 +69,7 @@ func (r *resourceDedicatedKubernetesEngine) Create(ctx context.Context, request 
 		return
 	}
 
-	errorResponse := checkForError(a)
+	errorResponse := CheckForError(a)
 	if errorResponse != nil {
 		response.Diagnostics.Append(errorResponse)
 		return
@@ -448,7 +448,7 @@ func (r *resourceDedicatedKubernetesEngine) internalRead(ctx context.Context, cl
 	return &d, nil
 }
 
-func checkForError(a []byte) *diag2.ErrorDiagnostic {
+func CheckForError(a []byte) *diag2.ErrorDiagnostic {
 	var re map[string]interface{}
 	err := json.Unmarshal(a, &re)
 	if err != nil {
@@ -640,7 +640,7 @@ func (r *resourceDedicatedKubernetesEngine) upgradeVersion(ctx context.Context, 
 			return &d
 		}
 
-		if diagErr2 := checkForError(a); diagErr2 != nil {
+		if diagErr2 := CheckForError(a); diagErr2 != nil {
 			return diagErr2
 		}
 
@@ -695,7 +695,7 @@ func (r *resourceDedicatedKubernetesEngine) manage(state *dedicatedKubernetesEng
 		return &d
 	}
 
-	if diagErr2 := checkForError(a); diagErr2 != nil {
+	if diagErr2 := CheckForError(a); diagErr2 != nil {
 		return diagErr2
 	}
 

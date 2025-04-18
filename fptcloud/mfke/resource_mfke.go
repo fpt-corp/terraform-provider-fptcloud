@@ -18,6 +18,7 @@ import (
 	"strings"
 	"terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	"unicode"
 )
@@ -282,7 +283,8 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 	requiredStrings := []string{
 		"vpc_id", "cluster_name", "k8s_version", "purpose",
 		"pod_network", "pod_prefix", "service_network", "service_prefix",
-		"range_ip_lb_start", "range_ip_lb_end", "load_balancer_type", "network_id",
+		"range_ip_lb_start", "range_ip_lb_end", "load_balancer_type", "network_id", "network_overlay",
+		"edge_gateway_id",
 	}
 
 	requiredInts := []string{"k8s_max_pod", "network_node_prefix"}
@@ -383,6 +385,9 @@ func (r *resourceManagedKubernetesEngine) fillJson(ctx context.Context, to *mana
 		pool.IsCreate = true
 		pool.IsScale = false
 		pool.IsOthers = false
+
+		pool.GpuSharingClient = ""
+		pool.Tags = ""
 	}
 
 	// get k8s versions
@@ -397,6 +402,19 @@ func (r *resourceManagedKubernetesEngine) fillJson(ctx context.Context, to *mana
 	}
 
 	to.OsVersion = osVersion
+	to.InternalSubnetLb = nil
+
+	// get edge gateway name
+	edgeGatewayId := to.EdgeGatewayId
+	edge, err := r.getEdgeGateway(ctx, edgeGatewayId, vpcId)
+	if err != nil {
+		return err
+	}
+	to.EdgeGatewayName = edge.Name
+
+	to.ClusterEndpointAccess = struct {
+		Type string `json:"type"`
+	}{Type: "public"}
 
 	return nil
 }
@@ -436,6 +454,8 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 	to.RangeIPLbStart = from.RangeIPLbStart.ValueString()
 	to.RangeIPLbEnd = from.RangeIPLbEnd.ValueString()
 	to.LoadBalancerType = from.LoadBalancerType.ValueString()
+	to.NetworkOverlay = from.NetworkOverlay.ValueString()
+	to.EdgeGatewayId = from.EdgeGatewayId.ValueString()
 }
 
 func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) *managedKubernetesEnginePoolJson {
@@ -752,6 +772,29 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	diag := diag2.NewErrorDiagnostic("Error finding OS version", "K8s version "+version+" not found")
 	return nil, &diag
 }
+func (r *resourceManagedKubernetesEngine) getEdgeGateway(ctx context.Context, edgeId string, vpcId string) (*fptcloud_edge_gateway.EdgeGatewayData, *diag2.ErrorDiagnostic) {
+	res, err := r.client.SendGetRequest(commons.ApiPath.EdgeGatewayList(vpcId))
+
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
+		return nil, &d
+	}
+
+	var resp fptcloud_edge_gateway.EdgeGatewayResponse
+	if err = json.Unmarshal(res, &resp); err != nil {
+		diag := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
+		return nil, &diag
+	}
+
+	for _, item := range resp.Data {
+		if item.EdgeGatewayId == edgeId {
+			return &item, nil
+		}
+	}
+
+	diag := diag2.NewErrorDiagnostic("No such Edge Gateway in this VPC", fmt.Sprintf("No edge gateway with ID %s was found in VPC %s", edgeId, vpcId))
+	return nil, &diag
+}
 
 func getClusterName(name string) string {
 	var indices []int
@@ -805,9 +848,12 @@ type managedKubernetesEngine struct {
 	RangeIPLbStart    types.String                   `tfsdk:"range_ip_lb_start"`
 	RangeIPLbEnd      types.String                   `tfsdk:"range_ip_lb_end"`
 	LoadBalancerType  types.String                   `tfsdk:"load_balancer_type"`
+	NetworkOverlay    types.String                   `tfsdk:"network_overlay"`
 	//SSHKey            interface{} `tfsdk:"sshKey"` // just set it nil
 	//TypeCreate types.String `tfsdk:"type_create"`
 	//RegionId types.String `tfsdk:"region_id"`
+
+	EdgeGatewayId types.String `tfsdk:"edge_gateway_id"`
 }
 type managedKubernetesEnginePool struct {
 	WorkerPoolID   types.String `tfsdk:"name"`
@@ -851,7 +897,12 @@ type managedKubernetesEngineJson struct {
 	NetworkType       string                             `json:"network_type"`
 	SSHKey            interface{}                        `json:"sshKey"`
 	TypeCreate        string                             `json:"type_create"`
+	NetworkOverlay    string                             `json:"network_overlay"`
+	InternalSubnetLb  interface{}                        `json:"internal_subnet_lb"`
 	//RegionId          string                             `json:"region_id"`
+	EdgeGatewayId         string      `json:"edge_gateway_id"`
+	EdgeGatewayName       string      `json:"edge_gateway_name"`
+	ClusterEndpointAccess interface{} `json:"clusterEndpointAccess"`
 }
 type managedKubernetesEnginePoolJson struct {
 	WorkerPoolID     *string `json:"worker_pool_id"`
@@ -875,6 +926,8 @@ type managedKubernetesEnginePoolJson struct {
 	IsEnableAutoRepair     bool        `json:"isEnableAutoRepair"`
 	DriverInstallationType string      `json:"driverInstallationType"`
 	GpuDriverVersion       string      `json:"gpuDriverVersion"`
+	Tags                   string      `json:"tags"`
+	GpuSharingClient       string      `json:"gpuSharingClient"`
 }
 type managedKubernetesEngineCreateResponse struct {
 	Error bool `json:"error"`
@@ -909,6 +962,9 @@ type managedKubernetesEngineDataStatus struct {
 		State    string `json:"state"`
 		Type     string `json:"type"`
 	} `json:"lastOperation"`
+	Conditions []struct {
+		Status string `json:"status"`
+	} `json:"conditions"`
 }
 type managedKubernetesEngineDataMetadata struct {
 	Name   string            `json:"name"`
@@ -946,10 +1002,14 @@ type managedKubernetesEngineDataSpec struct {
 		} `json:"infrastructureConfig"`
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
 	} `json:"provider"`
+
+	Hibernate *struct {
+		Enabled bool `json:"enabled"`
+	} `json:"hibernation"`
 }
 
 type managedKubernetesEngineDataWorker struct {
-	Annotations []map[string]string `json:"annotations"`
+	Annotations map[string]string `json:"annotations"`
 	Kubernetes  struct {
 		Kubelet struct {
 			ContainerLogMaxFiles int    `json:"containerLogMaxFiles"`
@@ -1014,12 +1074,8 @@ type managedKubernetesEngineDataWorker struct {
 
 func (w *managedKubernetesEngineDataWorker) AutoRepair() bool {
 	autoRepair := false
-
-	for _, item := range w.Annotations {
-
-		if label, ok := item["worker.fptcloud.com/node-auto-repair"]; ok {
-			autoRepair = label == "true"
-		}
+	if label, ok := w.Annotations["worker.fptcloud.com/node-auto-repair"]; ok {
+		autoRepair = label == "true"
 	}
 
 	return autoRepair
