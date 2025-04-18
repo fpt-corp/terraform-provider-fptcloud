@@ -148,7 +148,7 @@ func (r *resourceDedicatedKubernetesEngineState) Update(ctx context.Context, req
 		return
 	}
 
-	if diagErr2 := checkForError(a); diagErr2 != nil {
+	if diagErr2 := CheckForError(a); diagErr2 != nil {
 		response.Diagnostics.Append(diagErr2)
 		return
 	}

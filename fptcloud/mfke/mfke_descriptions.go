@@ -21,6 +21,8 @@ var descriptions = map[string]string{
 	"worker_type":           "Worker flavor ID",
 	"network_name":          "Subnet name",
 	"network_id":            "Subnet ID",
+	"network_overlay":       "Whether to encapsulate pod traffic between different subnets or same subnet",
+	"edge_gateway_id":       "Edge gateway ID, in the format of urn:vcloud:gateway:<uuid>",
 	"worker_disk_size":      "Worker disk size",
 	"scale_min":             "Minimum number of nodes for autoscaling",
 	"scale_max":             "Maximum number of nodes for autoscaling",

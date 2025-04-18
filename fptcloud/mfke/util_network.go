@@ -36,5 +36,5 @@ func getNetworkId(ctx context.Context, client fptcloud_subnet.SubnetService, vpc
 		return "", err
 	}
 
-	return networks.ID, nil
+	return networks.NetworkID, nil
 }

@@ -3,6 +3,7 @@ package fptcloud_mfke
 import (
 	"fmt"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
+	"slices"
 	"strings"
 )
 
@@ -60,6 +61,15 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 
 			return &d
 		}
+	}
+
+	networkOverlayAllowed := []string{"Always", "CrossSubnet"}
+	if !slices.Contains(networkOverlayAllowed, state.NetworkOverlay.ValueString()) {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid Network Overlay configuration",
+			fmt.Sprintf("Network overlay allowed values are: %s", strings.Join(networkOverlayAllowed, ", ")),
+		)
+		return &d
 	}
 
 	return nil
