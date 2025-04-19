@@ -172,6 +172,7 @@ func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resourc
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngine,
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngineState,
 		fptcloud_mfke.NewResourceManagedKubernetesEngine,
+		fptcloud_mfke.NewResourceDedicatedKubernetesEngineState,
 		fptcloud_database.NewResourceDatabase,
 		fptcloud_database.NewResourceDatabaseStatus,
 	}
