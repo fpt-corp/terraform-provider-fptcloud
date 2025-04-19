@@ -772,7 +772,7 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	diag := diag2.NewErrorDiagnostic("Error finding OS version", "K8s version "+version+" not found")
 	return nil, &diag
 }
-func (r *resourceManagedKubernetesEngine) getEdgeGateway(ctx context.Context, edgeId string, vpcId string) (*fptcloud_edge_gateway.EdgeGatewayData, *diag2.ErrorDiagnostic) {
+func (r *resourceManagedKubernetesEngine) getEdgeGateway(_ context.Context, edgeId string, vpcId string) (*fptcloud_edge_gateway.EdgeGatewayData, *diag2.ErrorDiagnostic) {
 	res, err := r.client.SendGetRequest(commons.ApiPath.EdgeGatewayList(vpcId))
 
 	if err != nil {
