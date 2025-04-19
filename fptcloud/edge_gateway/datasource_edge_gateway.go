@@ -66,7 +66,7 @@ func (d *datasourceEdgeGateway) Read(ctx context.Context, request datasource.Rea
 		return
 	}
 
-	var foundEdgeGateway edgeGatewayData
+	var foundEdgeGateway EdgeGatewayData
 	for _, edgeGateway := range *edgeGatewayList {
 		if edgeGateway.Name == state.Name.ValueString() {
 			foundEdgeGateway = edgeGateway
@@ -112,7 +112,7 @@ func (d *datasourceEdgeGateway) Configure(ctx context.Context, request datasourc
 	d.client = client
 }
 
-func (d *datasourceEdgeGateway) internalRead(_ context.Context, state *edge_gateway) (*[]edgeGatewayData, error) {
+func (d *datasourceEdgeGateway) internalRead(_ context.Context, state *edge_gateway) (*[]EdgeGatewayData, error) {
 	vpcId := state.VpcId.ValueString()
 
 	res, err := d.client.SendGetRequest(common.ApiPath.EdgeGatewayList(vpcId))
@@ -121,7 +121,7 @@ func (d *datasourceEdgeGateway) internalRead(_ context.Context, state *edge_gate
 		return nil, err
 	}
 
-	var r edgeGatewayResponse
+	var r EdgeGatewayResponse
 	if err = json.Unmarshal(res, &r); err != nil {
 		return nil, err
 	}
@@ -136,13 +136,13 @@ type edge_gateway struct {
 	VpcId         types.String `tfsdk:"vpc_id"`
 }
 
-type edgeGatewayData struct {
+type EdgeGatewayData struct {
 	Id            string `json:"id"`
 	Name          string `json:"name"`
 	EdgeGatewayId string `json:"edge_gateway_id"`
 	VpcId         string `json:"vpc_id"`
 }
 
-type edgeGatewayResponse struct {
-	Data []edgeGatewayData `json:"data"`
+type EdgeGatewayResponse struct {
+	Data []EdgeGatewayData `json:"data"`
 }
