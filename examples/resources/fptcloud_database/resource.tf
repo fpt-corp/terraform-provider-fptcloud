@@ -1,0 +1,30 @@
+resource "fptcloud_database" "example" {
+  vpc_id = "your-vpc-id"
+  network_id = "your-network-id"
+  vm_network = "chinhnt-demo-iq938dud"
+  type_config = "short-config"
+  type_db = "your-database-type"
+  version = "your-database-version"
+  vdc_name = "your-vdc-name"
+  is_cluster = "yes"
+  master_count = 1
+  worker_count = 2
+  node_cpu = 2
+  node_core = 0
+  node_ram = 4
+  data_disk_size = 10
+  cluster_name = "your-cluster-name"
+  database_name = "your-database-name"
+  admin_password = "your-admin-password"
+  storage_profile = "the-storage-profile-for-your-database"
+  edge_id = "your-edge-id"
+  edition = "the-edition-of-database"
+  is_ops = "no | yes" # is your vpc openstack infrastucture or not
+  flavor = "the-database-flavor-name"
+  flavor_id = "the-database-flavor-id"
+  number_of_node = 0
+  number_of_shard = 2
+  domain_name = ""
+  is_public = "no | yes" # is your database public or not
+  vhost_name = "VHostDefault"
+}
