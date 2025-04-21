@@ -3,6 +3,7 @@ package fptcloud_database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -13,10 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strconv"
+	"strings"
 	common "terraform-provider-fptcloud/commons"
 	"time"
-	"errors"
-	"strings"
 )
 
 var (
@@ -38,7 +38,7 @@ const (
 )
 
 type resourceDatabase struct {
-	client *common.Client
+	client         *common.Client
 	dataBaseClient *databaseApiClient
 }
 
@@ -128,16 +128,14 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 
 	for time.Since(timeStart) < timeout && errInternalRead != nil {
 		count += 1
-		errInternalRead = r.internalRead(ctx, createResponse.Data.ClusterId, &currentState);
-		tflog.Info(ctx, string(count) + " Curreent state: "+fmt.Sprintf("%+v", currentState))
-		if  errInternalRead != nil {
+		errInternalRead = r.internalRead(ctx, createResponse.Data.ClusterId, &currentState)
+		if errInternalRead != nil {
 			tflog.Info(ctx, "err2: "+errInternalRead.Error())
 			time.Sleep(10 * time.Second)
 			continue
 		}
 	}
 	if errInternalRead != nil {
-		tflog.Info(ctx, "Error reading database currentState2")
 		tflog.Info(ctx, errInternalRead.Error())
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading database currentState", errInternalRead.Error()))
 	}
@@ -171,15 +169,14 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 	originalFlavorId := state.FlavorId
 	tflog.Info(ctx, "Original FlavorId: "+originalFlavorId.ValueString())
 
-
 	var timeStart = time.Now()
 	var timeout = 60 * time.Second
 	var err2 = errors.New("init error (read)")
 
 	for time.Since(timeStart) < timeout && err2 != nil {
 		err2 = r.internalRead(ctx, state.Id.ValueString(), &state)
-		tflog.Info(ctx, "state_id" + state.Id.ValueString())
-		if  err2 != nil {
+		tflog.Info(ctx, "state_id"+state.Id.ValueString())
+		if err2 != nil {
 			tflog.Info(ctx, "err2: "+err2.Error())
 			time.Sleep(10 * time.Second)
 			continue
@@ -432,13 +429,13 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 		if err != nil {
 			tflog.Info(ctx, err.Error())
 			return err
-		}		
+		}
 		// Convert response to Go struct
 		var d databaseReadResponse
 		err = json.Unmarshal(a, &d)
-		if (d.Code == "400") {
-			// Syncing VM infomation when creating database successfully but not yet ready
-			if (d.Message == "'node-role.database.node'") {
+		if d.Code == "400" {
+			// Syncing VM information when creating database successfully but not yet ready
+			if d.Message == "'node-role.database.node'" {
 				continue
 			}
 			// Sometimes the connection pool gets clogged
@@ -568,7 +565,7 @@ type databaseJson struct {
 	StorageProfile string `json:"storage_profile"`
 	EdgeId         string `json:"edge_id"`
 	Edition        string `json:"edition"`
-	FlavorId	   string `json:"flavor_id"`
+	FlavorId       string `json:"flavor_id"`
 	IsOps          string `json:"is_ops"`
 	Flavor         string `json:"flavor"`
 	NumberOfNode   int    `json:"number_of_node"`
@@ -585,7 +582,7 @@ type databaseData struct {
 	StorageProfile  string `json:"storage_profile"`
 	EdgeId          string `json:"edge_id"`
 	Flavor          string `json:"flavor"`
-	FlavorId		string `json:"flavor_id"`
+	FlavorId        string `json:"flavor_id"`
 	ClusterId       string `json:"cluster_id"`
 	ClusterName     string `json:"cluster_name"`
 	Version         string `json:"version"`
@@ -612,7 +609,7 @@ type databaseData struct {
 	AdminPassword   string `json:"admin_password"`
 	SourceClusterId string `json:"source_cluster_id"`
 	EngineEdition   string `json:"engine_edition"`
-	NumberOfShard	int    `json:"number_of_shard"`
+	NumberOfShard   int    `json:"number_of_shard"`
 	IsNewVersion    bool   `json:"is_new_version"`
 	CreatedAt       string `json:"created_at"`
 	IsAlert         bool   `json:"is_alert"`
