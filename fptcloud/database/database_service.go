@@ -35,7 +35,6 @@ func (m *databaseApiClient) sendPost(requestURL string, params interface{}) ([]b
 	return m.sendRequestWithHeader(req)
 }
 
-
 func (m *databaseApiClient) sendRequestWithHeader(request *http.Request) ([]byte, error) {
 	request.Header.Set("fpt-region", m.Client.Region)
 	return m.Client.SendRequest(request)
