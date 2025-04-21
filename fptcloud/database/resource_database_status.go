@@ -3,6 +3,7 @@ package fptcloud_database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -11,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strconv"
 	common "terraform-provider-fptcloud/commons"
-
 	"time"
 )
 
@@ -22,7 +22,8 @@ var (
 )
 
 type resourceDatabaseStatus struct {
-	client *common.Client
+	client         *common.Client
+	databaseClient *databaseApiClient
 }
 
 func NewResourceDatabaseStatus() resource.Resource {
@@ -49,7 +50,16 @@ func (r *resourceDatabaseStatus) Create(ctx context.Context, request resource.Cr
 	r.remap(&currentState, &database)
 
 	// Getting current status of database on the server
-	status, err := r.getDatabaseCurrentStatus(ctx, database.Id)
+	var timeStart = time.Now()
+	var timeout = 120 * time.Second
+	var err error = errors.New("init error (create)")
+	var status = ""
+
+	for time.Since(timeStart) < timeout && err != nil {
+		tflog.Info(ctx, "Retrying.... ")
+		status, err = r.getDatabaseCurrentStatus(ctx, database.Id)
+	}
+
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Can't find matching database", err.Error()))
 		return
@@ -199,7 +209,8 @@ func (r *resourceDatabaseStatus) getDatabaseCurrentStatus(ctx context.Context, d
 
 	// Get database detail from API by database Id
 	path := common.ApiPath.DatabaseGet(databaseId)
-	a, err := r.client.SendGetRequest(path)
+
+	a, err := r.databaseClient.sendGet(path)
 	if err != nil {
 		return status, err
 	}
@@ -219,7 +230,8 @@ func (r *resourceDatabaseStatus) getDatabaseCurrentStatus(ctx context.Context, d
 	timeStart := time.Now()
 	for cluster.Status != "running" && cluster.Status != "stopped" && cluster.Status != "failed" && time.Since(timeStart) < timeout {
 		path = common.ApiPath.DatabaseGet(databaseId)
-		a, err = r.client.SendGetRequest(path)
+
+		a, err = r.databaseClient.sendGet(path)
 		if err != nil {
 			return status, err
 		}
@@ -252,7 +264,7 @@ func (r *resourceDatabaseStatus) stopDatabase(ctx context.Context, databaseId st
 	}
 
 	path := common.ApiPath.DatabaseStop()
-	_, err := r.client.SendPostRequest(path, body)
+	_, err := r.databaseClient.sendPost(path, body)
 	if err != nil {
 		tflog.Error(ctx, "Error stopping database: "+err.Error())
 		return err
@@ -282,7 +294,7 @@ func (r *resourceDatabaseStatus) startDatabase(ctx context.Context, databaseId s
 	}
 
 	path := common.ApiPath.DatabaseStart()
-	_, err := r.client.SendPostRequest(path, body)
+	_, err := r.databaseClient.sendPost(path, body)
 	if err != nil {
 		return err
 	}
@@ -314,7 +326,14 @@ func (r *resourceDatabaseStatus) internalRead(ctx context.Context, databaseId st
 
 	for nodeTotal == 0 && time.Since(timeStart) < timeout {
 		// Get database detail from API by database Id
-		a, err := r.client.SendGetRequest(fmt.Sprintf("xplat/database/management/cluster/detail/%s", databaseId))
+		timeout = 120 * time.Second
+		var err = errors.New("init error")
+		var a []byte
+
+		for time.Since(timeStart) < timeout && err != nil {
+			tflog.Info(ctx, "Retrying.... ")
+			a, err = r.client.SendGetRequest(fmt.Sprintf("xplat/database/management/cluster/detail/%s", databaseId))
+		}
 		if err != nil {
 			return err
 		}

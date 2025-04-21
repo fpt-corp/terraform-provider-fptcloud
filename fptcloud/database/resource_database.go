@@ -3,6 +3,7 @@ package fptcloud_database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strconv"
+	"strings"
 	common "terraform-provider-fptcloud/commons"
 	"time"
 )
@@ -36,7 +38,8 @@ const (
 )
 
 type resourceDatabase struct {
-	client *common.Client
+	client         *common.Client
+	dataBaseClient *databaseApiClient
 }
 
 type databaseResourceModel struct {
@@ -63,9 +66,11 @@ type databaseResourceModel struct {
 	StorageProfile types.String `tfsdk:"storage_profile" json:"storage_profile"`
 	EdgeId         types.String `tfsdk:"edge_id" json:"edge_id"`
 	Edition        types.String `tfsdk:"edition" json:"edition"`
+	FlavorId       types.String `tfsdk:"flavor_id" json:"flavor_id"`
 	IsOps          types.String `tfsdk:"is_ops" json:"is_ops"`
 	Flavor         types.String `tfsdk:"flavor" json:"flavor"`
 	NumberOfNode   types.Int64  `tfsdk:"number_of_node" json:"number_of_node"`
+	NumberOfShard  types.Int64  `tfsdk:"number_of_shard" json:"number_of_shard"`
 	DomainName     types.String `tfsdk:"domain_name" json:"domain_name"`
 }
 
@@ -97,21 +102,12 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		return
 	}
 
-	// Send API request to create the database
-	client := r.client
 	path := common.ApiPath.DatabaseCreate()
-
-	a, err := client.SendPostRequest(path, f)
-
-	tflog.Info(ctx, "Creating database cluster")
-	tflog.Info(ctx, "Request body: "+fmt.Sprintf("%+v", f))
-	tflog.Info(ctx, "Response: "+string(a))
-
+	a, err := r.dataBaseClient.sendPost(path, f)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
 		return
 	}
-
 	errorResponse := r.checkForError(a)
 	if errorResponse != nil {
 		response.Diagnostics.Append(errorResponse)
@@ -125,14 +121,32 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	}
 
 	// Update new state of resource to terraform state
-	if err = r.internalRead(ctx, createResponse.Data.ClusterId, &currentState); err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading database currentState", err.Error()))
-		return
+	var timeStart = time.Now()
+	var timeout = 120 * time.Second
+	var errInternalRead = errors.New("init error")
+	var count = 0
+
+	for time.Since(timeStart) < timeout && errInternalRead != nil {
+		count += 1
+		errInternalRead = r.internalRead(ctx, createResponse.Data.ClusterId, &currentState)
+		if errInternalRead != nil {
+			tflog.Info(ctx, "err2: "+errInternalRead.Error())
+			time.Sleep(10 * time.Second)
+			continue
+		}
 	}
+	if errInternalRead != nil {
+		tflog.Info(ctx, errInternalRead.Error())
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading database currentState", errInternalRead.Error()))
+	}
+
+	// Since this operation doesn't return a value, save the result to state upon creation for later comparison.
 	currentState.Flavor = types.StringValue(f.Flavor)
 	currentState.IsOps = types.StringValue(f.IsOps)
 	currentState.IsPublic = types.StringValue(f.IsPublic)
 	currentState.VhostName = types.StringValue(f.VhostName)
+	currentState.NumberOfShard = types.Int64Value(int64(f.NumberOfShard))
+	currentState.NumberOfNode = types.Int64Value(int64(f.NumberOfNode))
 	diags = response.State.Set(ctx, &currentState)
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
@@ -141,18 +155,44 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 }
 
 func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
+	tflog.Info(ctx, "Calling Read method")
 	var state databaseResourceModel
 	diags := request.State.Get(ctx, &state)
 
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
+		tflog.Info(ctx, "Error getting state in read method")
 		return
 	}
 
-	err := r.internalRead(ctx, state.Id.ValueString(), &state)
-	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
-		return
+	// Keep the value of number_of_node from the state
+	originalFlavorId := state.FlavorId
+	tflog.Info(ctx, "Original FlavorId: "+originalFlavorId.ValueString())
+
+	var timeStart = time.Now()
+	var timeout = 60 * time.Second
+	var err2 = errors.New("init error (read)")
+
+	for time.Since(timeStart) < timeout && err2 != nil {
+		err2 = r.internalRead(ctx, state.Id.ValueString(), &state)
+		tflog.Info(ctx, "state_id"+state.Id.ValueString())
+		if err2 != nil {
+			tflog.Info(ctx, "err2: "+err2.Error())
+			time.Sleep(10 * time.Second)
+			continue
+		}
+	}
+	if err2 != nil && err2.Error() != "init error (read)" {
+		tflog.Info(ctx, "Error reading database currentState2")
+		tflog.Info(ctx, err2.Error())
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading database currentState", err2.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err2.Error()))
+	}
+
+	// If the NumberOfNode field is reset or has no value after calling internalRead, restore it from the old state.
+	if state.FlavorId.IsNull() || state.FlavorId.IsUnknown() {
+		state.FlavorId = originalFlavorId
+		tflog.Info(ctx, "Restored original FlavorId from previous state")
 	}
 
 	diags = response.State.Set(ctx, &state)
@@ -301,6 +341,11 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				PlanModifiers: forceNewPlanModifiersString,
 				Description:   "The edition of the database cluster.",
 			},
+			"flavor_id": schema.StringAttribute{
+				Required:      true,
+				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "The flavor_id of the database cluster.",
+			},
 			"is_ops": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
@@ -316,6 +361,11 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				PlanModifiers: forceNewPlanModifiersInt,
 				Description:   "The number of nodes in the database cluster.",
 			},
+			"number_of_shard": schema.Int64Attribute{
+				Required:      true,
+				PlanModifiers: forceNewPlanModifiersInt,
+				Description:   "The number of shards in the database cluster.",
+			},
 			"domain_name": schema.StringAttribute{
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
@@ -326,7 +376,6 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 }
 
 func (r *resourceDatabase) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
-	tflog.Info(ctx, "Importing cluster Id "+request.ID)
 	var state databaseResourceModel
 
 	state.Id = types.StringValue(request.ID)
@@ -360,6 +409,7 @@ func (r *resourceDatabase) Configure(ctx context.Context, request resource.Confi
 	}
 
 	r.client = client
+	r.dataBaseClient = newDatabaseApiClient(r.client)
 }
 
 // Get resource data from API, then update to terrafrom state
@@ -374,15 +424,26 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 	var cluster databaseData
 
 	for nodeTotal == 0 && time.Since(timeStart) < timeout && status != "failed" {
-		// Get database detail from API by database Id
-		a, err := r.client.SendGetRequest(common.ApiPath.DatabaseGet(databaseId))
+		tflog.Info(ctx, "Getting database detail from API")
+		a, err := r.dataBaseClient.sendGet(common.ApiPath.DatabaseGet(databaseId))
 		if err != nil {
+			tflog.Info(ctx, err.Error())
 			return err
 		}
-
 		// Convert response to Go struct
 		var d databaseReadResponse
 		err = json.Unmarshal(a, &d)
+		if d.Code == "400" {
+			// Syncing VM information when creating database successfully but not yet ready
+			if d.Message == "'node-role.database.node'" {
+				continue
+			}
+			// Sometimes the connection pool gets clogged
+			if strings.HasPrefix(d.Message, "HTTPConnectionPool:") {
+				continue
+			}
+		}
+
 		cluster = d.Data.Cluster
 		node = d.Data.Node
 		status = cluster.Status
@@ -403,6 +464,7 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 	} else if nodeTotal == 0 {
 		return fmt.Errorf("Request time out! Can not provision nodes for database")
 	} else {
+		tflog.Info(ctx, "Provisioned nodes for database successfully!")
 		// Update resource status to state
 		state.VpcId = types.StringValue(cluster.VpcId)
 		state.NetworkId = types.StringValue(cluster.NetworkId)
@@ -420,15 +482,12 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 		state.DataDiskSize = types.Int64Value(int64(cluster.DataDiskSize))
 		state.ClusterName = types.StringValue(cluster.ClusterName)
 		state.DatabaseName = types.StringValue(cluster.DatabaseName)
-		//state.VhostName = types.StringValue(cluster.VhostName)
-		//state.IsPublic = types.StringValue(cluster.IsPublic)
 		state.AdminPassword = types.StringValue(cluster.AdminPassword)
 		state.StorageProfile = types.StringValue(cluster.StorageProfile)
 		state.EdgeId = types.StringValue(cluster.EdgeId)
 		state.Edition = types.StringValue(cluster.EngineEdition)
-		//state.IsOps = types.StringValue(cluster.IsOps)
-		//state.Flavor = types.StringValue(cluster.Flavor)
 		state.NumberOfNode = types.Int64Value(int64(cluster.MasterCount) + int64(cluster.WorkerCount))
+		state.NumberOfNode = types.Int64Value(int64(cluster.NumberOfShard))
 		state.DomainName = types.StringValue("")
 		state.VdcName = types.StringValue(node.Items[0].VdcName)
 	}
@@ -448,10 +507,8 @@ func (r *resourceDatabase) remap(from *databaseResourceModel, to *databaseJson) 
 	to.MasterCount = int(from.MasterCount.ValueInt64())
 	to.WorkerCount = int(from.WorkerCount.ValueInt64())
 	to.NodeCore = int(from.NodeCore.ValueInt64())
-
 	to.NodeCpu = int(from.NodeCpu.ValueInt64())
 	to.NodeRam = int(from.NodeRam.ValueInt64())
-
 	to.DataDiskSize = int(from.DataDiskSize.ValueInt64())
 	to.ClusterName = from.ClusterName.ValueString()
 	to.DatabaseName = from.DatabaseName.ValueString()
@@ -461,11 +518,11 @@ func (r *resourceDatabase) remap(from *databaseResourceModel, to *databaseJson) 
 	to.StorageProfile = from.StorageProfile.ValueString()
 	to.EdgeId = from.EdgeId.ValueString()
 	to.Edition = from.Edition.ValueString()
-
 	to.IsOps = from.IsOps.ValueString()
 	to.Flavor = from.Flavor.ValueString()
-
+	to.FlavorId = from.FlavorId.ValueString()
 	to.NumberOfNode = int(from.NumberOfNode.ValueInt64())
+	to.NumberOfShard = int(from.NumberOfShard.ValueInt64())
 	to.DomainName = from.DomainName.ValueString()
 }
 
@@ -477,16 +534,13 @@ func (r *resourceDatabase) checkForError(a []byte) *diag2.ErrorDiagnostic {
 		res := diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error())
 		return &res
 	}
-
 	if _, ok := re["error"]; ok {
 		res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
 		return &res
 	}
-
 	return nil
 }
 
-// dang Json de cho vao request gui len API
 type databaseJson struct {
 	Id             string `json:"id,omitempty"`
 	VpcId          string `json:"vpc_id"`
@@ -511,13 +565,14 @@ type databaseJson struct {
 	StorageProfile string `json:"storage_profile"`
 	EdgeId         string `json:"edge_id"`
 	Edition        string `json:"edition"`
+	FlavorId       string `json:"flavor_id"`
 	IsOps          string `json:"is_ops"`
 	Flavor         string `json:"flavor"`
 	NumberOfNode   int    `json:"number_of_node"`
+	NumberOfShard  int    `json:"number_of_shard"`
 	DomainName     string `json:"domain_name"`
 }
 
-// Cluster data of a database when request a database's detail
 type databaseData struct {
 	VpcId           string `json:"vpc_id"`
 	OrgName         string `json:"org_name"`
@@ -527,6 +582,7 @@ type databaseData struct {
 	StorageProfile  string `json:"storage_profile"`
 	EdgeId          string `json:"edge_id"`
 	Flavor          string `json:"flavor"`
+	FlavorId        string `json:"flavor_id"`
 	ClusterId       string `json:"cluster_id"`
 	ClusterName     string `json:"cluster_name"`
 	Version         string `json:"version"`
@@ -553,6 +609,7 @@ type databaseData struct {
 	AdminPassword   string `json:"admin_password"`
 	SourceClusterId string `json:"source_cluster_id"`
 	EngineEdition   string `json:"engine_edition"`
+	NumberOfShard   int    `json:"number_of_shard"`
 	IsNewVersion    bool   `json:"is_new_version"`
 	CreatedAt       string `json:"created_at"`
 	IsAlert         bool   `json:"is_alert"`
@@ -575,7 +632,7 @@ type databaseReadResponse struct {
 	Data    struct {
 		Cluster databaseData `json:"cluster"`
 		Node    databaseNode `json:"nodes"`
-	}
+	} `json:"data,omitempty"`
 }
 
 type databaseCreateResponse struct {
@@ -606,6 +663,7 @@ type databaseCreateResponseData struct {
 	StorageProfile string `json:"storage_profile"`
 	IsOps          string `json:"is_ops"`
 	Flavor         string `json:"flavor"`
+	FlavorId       string `json:"flavor_id"`
 	NodeCount      int    `json:"node_count"`
 	Status         string `json:"status"`
 	Zone           string `json:"zone"`
