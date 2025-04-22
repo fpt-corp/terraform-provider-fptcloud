@@ -1,3 +1,12 @@
+## [0.3.7] - 2025-04-22
+### Datasource
+- Edge gateway
+### Resource
+- Mfke
+- Mfke powerstate
+- Database
+- Database status
+
 ## [0.3.6] - 2025-04-09
 ### Datasource
 - Fix bug get instance
