@@ -21,6 +21,7 @@ Manage managed FKE clusters.
 - `k8s_max_pod` (Number) Max pods per node
 - `k8s_version` (String) Kubernetes version
 - `load_balancer_type` (String) Load balancer type
+- `network_id` (String) Subnet ID
 - `network_node_prefix` (Number) Network node prefix
 - `pod_network` (String) Pod network (subnet ID)
 - `pod_prefix` (String) Pod network (prefix)
