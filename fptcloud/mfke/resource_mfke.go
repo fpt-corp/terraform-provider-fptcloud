@@ -404,17 +404,29 @@ func (r *resourceManagedKubernetesEngine) fillJson(ctx context.Context, to *mana
 	to.OsVersion = osVersion
 	to.InternalSubnetLb = nil
 
-	// get edge gateway name
-	edgeGatewayId := to.EdgeGatewayId
-	edge, err := r.getEdgeGateway(ctx, edgeGatewayId, vpcId)
-	if err != nil {
-		return err
+	platform, e := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if e != nil {
+		d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, e.Error())
+		return &d
 	}
-	to.EdgeGatewayName = edge.Name
+
+	if strings.ToLower(platform) == "osp" {
+		to.EdgeGatewayId = ""
+		to.EdgeGatewayName = ""
+	} else {
+		// get edge gateway name
+		edgeGatewayId := to.EdgeGatewayId
+		edge, err := r.getEdgeGateway(ctx, edgeGatewayId, vpcId)
+		if err != nil {
+			return err
+		}
+		to.EdgeGatewayName = edge.Name
+	}
 
 	to.ClusterEndpointAccess = struct {
-		Type string `json:"type"`
-	}{Type: "public"}
+		Type      string   `json:"type"`
+		AllowCidr []string `json:"allowCidr"`
+	}{Type: "public", AllowCidr: []string{}}
 
 	return nil
 }
@@ -691,7 +703,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 
 		autoRepair := w.AutoRepair()
 
-		networkId, e := getNetworkIdByPlatform(ctx, r.subnetClient, vpcId, platform, w, &data)
+		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, w, &data)
 		if e != nil {
 			return nil, e
 		}
@@ -709,6 +721,10 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			IsEnableAutoRepair: types.BoolValue(autoRepair),
 			//DriverInstallationType: types.String{},
 			//GpuDriverVersion:       types.StringValue(gpuDriverVersion),
+		}
+
+		if strings.ToLower(platform) == "osp" {
+			item.NetworkName = types.StringValue(networkName)
 		}
 
 		pool = append(pool, &item)
@@ -900,8 +916,8 @@ type managedKubernetesEngineJson struct {
 	NetworkOverlay    string                             `json:"network_overlay"`
 	InternalSubnetLb  interface{}                        `json:"internal_subnet_lb"`
 	//RegionId          string                             `json:"region_id"`
-	EdgeGatewayId         string      `json:"edge_gateway_id"`
-	EdgeGatewayName       string      `json:"edge_gateway_name"`
+	EdgeGatewayId         string      `json:"edge_gateway_id,omitempty"`
+	EdgeGatewayName       string      `json:"edge_gateway_name,omitempty"`
 	ClusterEndpointAccess interface{} `json:"clusterEndpointAccess"`
 }
 type managedKubernetesEnginePoolJson struct {

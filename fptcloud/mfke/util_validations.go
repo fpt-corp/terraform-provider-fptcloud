@@ -46,11 +46,26 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 		for _, pool := range state.Pools {
 			if pool.NetworkID.ValueString() != network {
 				d := diag2.NewErrorDiagnostic(
-					"Worker network ID mismatch",
+					fmt.Sprintf("Worker network ID mismatch (%s and %s)", network, pool.NetworkID.ValueString()),
 					fmt.Sprintf("VPC platform is OSP. Network ID of worker group \"%s\" must match global one", pool.WorkerPoolID.ValueString()),
 				)
 				return &d
 			}
+		}
+
+		if state.EdgeGatewayId.ValueString() != "" {
+			d := diag2.NewErrorDiagnostic("Edge gateway specification is not supported", "VPC platform is OSP. Edge gateway ID must be left empty")
+			return &d
+		}
+
+		if state.RangeIPLbStart.ValueString() != "" {
+			d := diag2.NewErrorDiagnostic("LB IP range is not supported", "VPC platform is OSP. LB IP range must be left empty")
+			return &d
+		}
+
+		if state.RangeIPLbEnd.ValueString() != "" {
+			d := diag2.NewErrorDiagnostic("LB IP range is not supported", "VPC platform is OSP. LB IP range must be left empty")
+			return &d
 		}
 	} else {
 		if state.NetworkID.ValueString() != "" {
