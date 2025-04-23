@@ -42,7 +42,6 @@ var (
 )
 
 const (
-	errorCallingApi        = "Error calling API"
 	platformVpcErrorPrefix = "Error getting platform for VPC "
 )
 
@@ -120,7 +119,7 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 	a, err := r.mfkeClient.sendPost(path, platform, f)
 
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error()))
 		return
 	}
 
@@ -163,7 +162,7 @@ func (r *resourceManagedKubernetesEngine) Read(ctx context.Context, request reso
 
 	_, err := r.internalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi("internalRead"), err.Error()))
 		return
 	}
 
@@ -219,11 +218,10 @@ func (r *resourceManagedKubernetesEngine) Delete(ctx context.Context, request re
 		return
 	}
 
-	_, err := r.client.SendDeleteRequest(
-		commons.ApiPath.ManagedFKEDelete(state.VpcId.ValueString(), "vmw", state.ClusterName.ValueString()),
-	)
+	path := commons.ApiPath.ManagedFKEDelete(state.VpcId.ValueString(), "vmw", state.ClusterName.ValueString())
+	_, err := r.client.SendDeleteRequest(path)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error()))
 		return
 	}
 }
@@ -248,7 +246,7 @@ func (r *resourceManagedKubernetesEngine) ImportState(ctx context.Context, reque
 
 	_, err := r.internalRead(ctx, clusterId, &state)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi("internalRead"), err.Error()))
 		return
 	}
 
@@ -764,7 +762,7 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 
 	res, err := r.mfkeClient.sendGet(path, platform)
 	if err != nil {
-		diag := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
+		diag := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return nil, &diag
 	}
 
@@ -775,7 +773,7 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 
 	var list managedKubernetesEngineOsVersionResponse
 	if err = json.Unmarshal(res, &list); err != nil {
-		diag := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
+		diag := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return nil, &diag
 	}
 
@@ -789,16 +787,17 @@ func (r *resourceManagedKubernetesEngine) getOsVersion(ctx context.Context, vers
 	return nil, &diag
 }
 func (r *resourceManagedKubernetesEngine) getEdgeGateway(_ context.Context, edgeId string, vpcId string) (*fptcloud_edge_gateway.EdgeGatewayData, *diag2.ErrorDiagnostic) {
-	res, err := r.client.SendGetRequest(commons.ApiPath.EdgeGatewayList(vpcId))
+	path := commons.ApiPath.EdgeGatewayList(vpcId)
+	res, err := r.client.SendGetRequest(path)
 
 	if err != nil {
-		d := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return nil, &d
 	}
 
 	var resp fptcloud_edge_gateway.EdgeGatewayResponse
 	if err = json.Unmarshal(res, &resp); err != nil {
-		diag := diag2.NewErrorDiagnostic(errorCallingApi, err.Error())
+		diag := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return nil, &diag
 	}
 
@@ -844,6 +843,10 @@ func parseNumber(s string) int {
 
 	f, _ := strconv.Atoi(out)
 	return f
+}
+
+func errorCallingApi(s string) string {
+	return fmt.Sprintf("Error calling path: %s", s)
 }
 
 type managedKubernetesEngine struct {
