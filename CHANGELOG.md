@@ -1,3 +1,7 @@
+## [0.3.8] - 2025-04-23
+### Datasource
+- Update edge gateway
+
 ## [0.3.7] - 2025-04-22
 ### Datasource
 - Edge gateway
