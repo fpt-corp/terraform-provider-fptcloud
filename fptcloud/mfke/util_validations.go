@@ -57,6 +57,16 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 			d := diag2.NewErrorDiagnostic("Edge gateway specification is not supported", "VPC platform is OSP. Edge gateway ID must be left empty")
 			return &d
 		}
+
+		if state.RangeIPLbStart.ValueString() != "" {
+			d := diag2.NewErrorDiagnostic("LB IP range is not supported", "VPC platform is OSP. LB IP range must be left empty")
+			return &d
+		}
+
+		if state.RangeIPLbEnd.ValueString() != "" {
+			d := diag2.NewErrorDiagnostic("LB IP range is not supported", "VPC platform is OSP. LB IP range must be left empty")
+			return &d
+		}
 	} else {
 		if state.NetworkID.ValueString() != "" {
 			d := diag2.NewErrorDiagnostic(
