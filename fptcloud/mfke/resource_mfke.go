@@ -703,7 +703,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 
 		autoRepair := w.AutoRepair()
 
-		networkId, e := getNetworkIdByPlatform(ctx, r.subnetClient, vpcId, platform, w, &data)
+		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, w, &data)
 		if e != nil {
 			return nil, e
 		}
@@ -721,6 +721,10 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			IsEnableAutoRepair: types.BoolValue(autoRepair),
 			//DriverInstallationType: types.String{},
 			//GpuDriverVersion:       types.StringValue(gpuDriverVersion),
+		}
+
+		if strings.ToLower(platform) == "osp" {
+			item.NetworkName = types.StringValue(networkName)
 		}
 
 		pool = append(pool, &item)
