@@ -218,8 +218,19 @@ func (r *resourceManagedKubernetesEngine) Delete(ctx context.Context, request re
 		return
 	}
 
-	path := commons.ApiPath.ManagedFKEDelete(state.VpcId.ValueString(), "vmw", state.ClusterName.ValueString())
-	_, err := r.client.SendDeleteRequest(path)
+	vpcId := state.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error()))
+		return
+	}
+
+	cluster := state.ClusterName.ValueString()
+	path := commons.ApiPath.ManagedFKEDelete(state.VpcId.ValueString(), strings.ToLower(platform), cluster)
+
+	tflog.Info(ctx, "Attempting to delete cluster "+cluster+", DELETE "+path)
+
+	_, err = r.client.SendDeleteRequest(path)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error()))
 		return
