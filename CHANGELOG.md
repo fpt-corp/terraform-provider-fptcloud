@@ -1,6 +1,10 @@
 ## [0.3.9] - 2025-04-23
 ### Improved error handling
 
+## [0.3.10] - 2025-06-09
+### Resource
+- Update database & database status
+
 ## [0.3.8] - 2025-04-23
 ### Datasource
 - Update edge gateway
