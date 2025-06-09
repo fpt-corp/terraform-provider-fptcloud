@@ -103,9 +103,10 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	}
 
 	path := common.ApiPath.DatabaseCreate()
+	tflog.Debug(ctx, "Calling path "+path)
 	a, err := r.dataBaseClient.sendPost(path, f)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, fmt.Sprintf("failed calling path %s: %v", path, err)))
 		return
 	}
 	errorResponse := r.checkForError(a)
@@ -119,6 +120,9 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error()))
 		return
 	}
+
+	currentState.Id = types.StringValue(createResponse.Data.ClusterId)
+	response.State.Set(ctx, &currentState)
 
 	// Update new state of resource to terraform state
 	var timeStart = time.Now()
@@ -147,6 +151,7 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	currentState.VhostName = types.StringValue(f.VhostName)
 	currentState.NumberOfShard = types.Int64Value(int64(f.NumberOfShard))
 	currentState.NumberOfNode = types.Int64Value(int64(f.NumberOfNode))
+	currentState.Id = types.StringValue(createResponse.Data.ClusterId)
 	diags = response.State.Set(ctx, &currentState)
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
@@ -216,9 +221,10 @@ func (r *resourceDatabase) Delete(ctx context.Context, request resource.DeleteRe
 	}
 
 	path := common.ApiPath.DatabaseDelete(state.Id.ValueString())
+	tflog.Debug(ctx, "Calling path "+path)
 	_, err := r.client.SendDeleteRequest(path)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, fmt.Sprintf("failed calling path %s: %v", path, err)))
 		return
 	}
 }
@@ -425,10 +431,11 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 
 	for nodeTotal == 0 && time.Since(timeStart) < timeout && status != "failed" {
 		tflog.Info(ctx, "Getting database detail from API")
-		a, err := r.dataBaseClient.sendGet(common.ApiPath.DatabaseGet(databaseId))
+		path := common.ApiPath.DatabaseGet(databaseId)
+		tflog.Debug(ctx, "Calling path "+path)
+		a, err := r.dataBaseClient.sendGet(path)
 		if err != nil {
-			tflog.Info(ctx, err.Error())
-			return err
+			return fmt.Errorf("failed calling path %s: %v", path, err)
 		}
 		// Convert response to Go struct
 		var d databaseReadResponse
@@ -460,7 +467,7 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 	}
 
 	if status == "failed" {
-		return fmt.Errorf("Failed to provision nodes for database! Server error")
+		return fmt.Errorf("failed to provision nodes for database! Server error")
 	} else if nodeTotal == 0 {
 		return fmt.Errorf("Request time out! Can not provision nodes for database")
 	} else {
