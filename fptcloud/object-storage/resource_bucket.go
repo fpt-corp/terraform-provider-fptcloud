@@ -30,7 +30,7 @@ func ResourceBucket() *schema.Resource {
 			"versioning": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Default:     "",
+				Default:     "Suspended",
 				ForceNew:    true,
 				Description: "The versioning state of the bucket. Accepted values are Enabled or Suspended, default was not set.",
 			},
@@ -98,48 +98,47 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	}
 
 	bucket := objectStorageService.CreateBucket(req, vpcId, s3ServiceDetail.S3ServiceId)
+	fmt.Printf("Bucket response: %+v\n", bucket) // Debug
 	if !bucket.Status {
-		return diag.Errorf("%s", bucket.Message)
-	}
-	return resourceBucketRead(ctx, d, m)
-}
-func resourceBucketRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*common.Client)
-	objectStorageService := NewObjectStorageService(client)
-	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
-	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
+		return diag.Errorf("failed to create bucket: %s", bucket.Message)
 	}
 
-	bucket := objectStorageService.ListBuckets(vpcId, s3ServiceDetail.S3ServiceId, 1, 99999)
-	if bucket.Total == 0 {
-		return diag.Errorf("no buckets found")
+	d.SetId(req.Name)
+
+	// Set status
+	if err := d.Set("status", bucket.Status); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set status for bucket %s: %w", req.Name, err))
 	}
-	for _, b := range bucket.Buckets {
-		if b.Name == d.Get("name").(string) {
-			if err := d.Set("name", b.Name); err != nil {
-				return diag.FromErr(err)
-			}
-			return nil
-		}
-	}
-	return diag.Errorf("bucket with name %s not found", d.Get("name").(string))
+
+	fmt.Println("Bucket created successfully:", req.Name)
+	return nil
 }
+
 func resourceBucketDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
-	bucketName := d.Get("name").(string)
+	bucketName := d.Id()
+
+	if bucketName == "" {
+		return diag.Errorf("cannot delete bucket: no valid ID found, bucket may not have been created")
+	}
+
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 
-	satus := objectStorageService.DeleteBucket(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
-	if !satus.Status {
-		return diag.Errorf("failed to delete bucket %s", bucketName)
+	status := objectStorageService.DeleteBucket(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
+	if !status.Status {
+		return diag.Errorf("failed to delete bucket %s: %s", bucketName, status.Message)
 	}
 
+	// Set status
+	if err := d.Set("status", status.Status); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set status for bucket %s: %w", bucketName, err))
+	}
+
+	fmt.Println("Bucket deleted successfully:", bucketName)
 	return nil
 }
