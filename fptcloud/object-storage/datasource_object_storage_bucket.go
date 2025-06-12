@@ -27,11 +27,13 @@ func DataSourceBucket() *schema.Resource {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Description: "Page number",
+				Default:     1,
 			},
 			"page_size": {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Description: "Number of items per page",
+				Default:     25,
 			},
 			"list_bucket_result": {
 				Type:     schema.TypeList,
@@ -76,12 +78,14 @@ func dataSourceBucketRead(ctx context.Context, d *schema.ResourceData, m interfa
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	page := 1
-	if d.Get("page").(int) > 0 {
-		page = d.Get("page").(int)
+	val, ok := d.GetOk("page")
+	if ok {
+		page = val.(int)
 	}
 	pageSize := 25
-	if d.Get("page_size").(int) > 0 {
-		pageSize = d.Get("page_size").(int)
+	valSize, ok := d.GetOk("page_size")
+	if ok {
+		pageSize = valSize.(int)
 	}
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
