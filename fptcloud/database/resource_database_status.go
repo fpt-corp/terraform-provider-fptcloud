@@ -190,6 +190,7 @@ func (r *resourceDatabaseStatus) Configure(ctx context.Context, request resource
 	}
 
 	r.client = client
+	r.databaseClient = newDatabaseApiClient(r.client)
 }
 
 // Get current status of database (running, stopped, failed)
