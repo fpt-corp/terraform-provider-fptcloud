@@ -1,3 +1,9 @@
+## [0.3.12] - 2025-06-12
+
+### Resource
+
+- Fix database status creation
+
 ## [0.3.11] - 2025-06-09
 
 ### Docs
