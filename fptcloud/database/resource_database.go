@@ -176,7 +176,7 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 	tflog.Info(ctx, "Original FlavorId: "+originalFlavorId.ValueString())
 
 	var timeStart = time.Now()
-	var timeout = 60 * time.Second
+	var timeout = 10 * time.Minute
 	var err2 = errors.New("init error (read)")
 
 	for time.Since(timeStart) < timeout && err2 != nil {
