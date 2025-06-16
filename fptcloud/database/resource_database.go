@@ -151,6 +151,7 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	currentState.VhostName = types.StringValue(f.VhostName)
 	currentState.NumberOfShard = types.Int64Value(int64(f.NumberOfShard))
 	currentState.NumberOfNode = types.Int64Value(int64(f.NumberOfNode))
+	tflog.Debug(ctx, fmt.Sprintf("CREATING: number of node is %d (%d master, %d worker)", f.NumberOfNode, f.MasterCount, f.WorkerCount))
 	currentState.Id = types.StringValue(createResponse.Data.ClusterId)
 	diags = response.State.Set(ctx, &currentState)
 	response.Diagnostics.Append(diags...)
@@ -200,6 +201,7 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 		tflog.Info(ctx, "Restored original FlavorId from previous state")
 	}
 
+	tflog.Debug(ctx, fmt.Sprintf("READING: number of node is %d (%d master, %d worker)", state.NumberOfNode, state.MasterCount, state.WorkerCount))
 	diags = response.State.Set(ctx, &state)
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
@@ -222,7 +224,7 @@ func (r *resourceDatabase) Delete(ctx context.Context, request resource.DeleteRe
 
 	path := common.ApiPath.DatabaseDelete(state.Id.ValueString())
 	tflog.Debug(ctx, "Calling path "+path)
-	_, err := r.client.SendDeleteRequest(path)
+	_, err := r.dataBaseClient.sendDelete(path)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, fmt.Sprintf("failed calling path %s: %v", path, err)))
 		return
@@ -494,7 +496,6 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 		state.EdgeId = types.StringValue(cluster.EdgeId)
 		state.Edition = types.StringValue(cluster.EngineEdition)
 		state.NumberOfNode = types.Int64Value(int64(cluster.MasterCount) + int64(cluster.WorkerCount))
-		state.NumberOfNode = types.Int64Value(int64(cluster.NumberOfShard))
 		state.DomainName = types.StringValue("")
 		state.VdcName = types.StringValue(node.Items[0].VdcName)
 	}
