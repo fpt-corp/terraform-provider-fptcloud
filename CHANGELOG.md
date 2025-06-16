@@ -1,3 +1,9 @@
+## [0.3.13] - 2025-06-16
+
+### Resource
+
+- Fix database creation bug tainting data
+
 ## [0.3.12] - 2025-06-12
 
 ### Resource
@@ -12,7 +18,8 @@
 
 ## [0.3.9] - 2025-04-23
 
-### Improved error handling
+### Resource
+- Improved error handling for database
 
 ## [0.3.10] - 2025-06-09
 

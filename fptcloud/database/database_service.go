@@ -24,6 +24,15 @@ func (m *databaseApiClient) sendGet(requestURL string) ([]byte, error) {
 	return m.sendRequestWithHeader(req)
 }
 
+func (m *databaseApiClient) sendDelete(requestURL string) ([]byte, error) {
+	u := m.Client.PrepareClientURL(requestURL)
+	req, err := http.NewRequest("DELETE", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return m.sendRequestWithHeader(req)
+}
+
 func (m *databaseApiClient) sendPost(requestURL string, params interface{}) ([]byte, error) {
 	u := m.Client.PrepareClientURL(requestURL)
 	// Create a new buffer and encode everything to json to send it in the request
