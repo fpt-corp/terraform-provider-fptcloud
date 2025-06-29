@@ -104,6 +104,13 @@ var ApiPath = struct {
 	ListAccessKeys  func(vpcId, s3ServiceId string) string
 	CreateAccessKey func(vpcId, s3ServiceId string) string
 	DeleteAccessKey func(vpcId, s3ServiceId string) string
+
+	// Tagging
+	CreateTag func(tenantId string) string
+	GetTag    func(tenantId, tagId string) string
+	UpdateTag func(tenantId, tagId string) string
+	DeleteTag func(tenantId, tagId string) string
+	ListTags  func(tenantId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -379,5 +386,22 @@ var ApiPath = struct {
 	},
 	DeleteAccessKey: func(vpcId, s3ServiceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/user/credentials/delete", vpcId, s3ServiceId)
+	},
+
+	// Tagging
+	CreateTag: func(tenantId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/create", tenantId)
+	},
+	GetTag: func(tenantId, tagId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/%s", tenantId, tagId)
+	},
+	UpdateTag: func(tenantId, tagId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/%s/update", tenantId, tagId)
+	},
+	DeleteTag: func(tenantId, tagId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/%s/delete", tenantId, tagId)
+	},
+	ListTags: func(tenantId string) string {
+		return fmt.Sprintf("/api/v2/org/%s/tags", tenantId)
 	},
 }
