@@ -11,6 +11,7 @@ import (
 	fptcloud_instance "terraform-provider-fptcloud/fptcloud/instance"
 	fptcloud_instance_group "terraform-provider-fptcloud/fptcloud/instance-group"
 	fptcloud_instance_group_policy "terraform-provider-fptcloud/fptcloud/instance-group-policy"
+	fptcloud_tagging "terraform-provider-fptcloud/fptcloud/tagging"
 
 	fptcloud_object_storage "terraform-provider-fptcloud/fptcloud/object-storage"
 	fptcloud_security_group "terraform-provider-fptcloud/fptcloud/security-group"
@@ -92,6 +93,7 @@ func Provider() *schema.Provider {
 			"fptcloud_object_storage_sub_user_detail":       fptcloud_object_storage.DataSourceSubUserDetail(),
 			"fptcloud_s3_service_enable":                    fptcloud_object_storage.DataSourceS3ServiceEnableResponse(),
 			"fptcloud_object_storage_bucket_acl":            fptcloud_object_storage.DataSourceBucketAcl(),
+			"fptcloud_tagging":                              fptcloud_tagging.DataSourceTagging(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
@@ -113,6 +115,7 @@ func Provider() *schema.Provider {
 			"fptcloud_object_storage_bucket_acl":            fptcloud_object_storage.ResourceBucketAcl(),
 			"fptcloud_object_storage_sub_user_key":          fptcloud_object_storage.ResourceSubUserKeys(),
 			"fptcloud_object_storage_bucket_lifecycle":      fptcloud_object_storage.ResourceBucketLifeCycle(),
+			"fptcloud_tagging":                              fptcloud_tagging.ResourceTagging(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
