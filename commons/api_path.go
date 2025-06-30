@@ -21,6 +21,7 @@ var ApiPath = struct {
 	RenameInstance             func(vpcId string, instanceId string) string
 	ChangeStatusInstance       func(vpcId string, instanceId string) string
 	ResizeInstance             func(vpcId string, instanceId string) string
+	ManageTagsInstance         func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
 	VMGroupPolicies            func(vpcId string) string
@@ -154,6 +155,9 @@ var ApiPath = struct {
 	},
 	ResizeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
+	},
+	ManageTagsInstance: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/manage-tags", vpcId, instanceId)
 	},
 	GetFlavorByName: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavor/find-by-name", vpcId)

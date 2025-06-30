@@ -24,6 +24,7 @@ type InstanceModel struct {
 	StoragePolicyId  string   `json:"storage_policy_id"`
 	SecurityGroupIds []string `json:"security_group_ids,omitempty"`
 	InstanceGroupId  *string  `json:"instance_group_id,omitempty"`
+	TagNames         []string `json:"tag_names,omitempty"`
 	CreatedAt        string   `json:"created_at"`
 }
 
@@ -41,6 +42,7 @@ type CreateInstanceDTO struct {
 	InstanceGroupId  *string  `json:"instance_group_id,omitempty"`
 	SshKey           *string  `json:"ssh_key,omitempty"`
 	Password         *string  `json:"password,omitempty"`
+	TagNames         []string `json:"tag_names,omitempty"`
 }
 
 type FlavorDTO struct {

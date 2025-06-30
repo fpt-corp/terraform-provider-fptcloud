@@ -92,6 +92,16 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 		createdModel.Password = &passwordValue
 	}
 
+	var tagNames []string
+	if v, ok := d.GetOk("tag_names"); ok {
+		tagNamesSet := v.(*schema.Set)
+		tagNames = make([]string, tagNamesSet.Len())
+		for i, vpc := range tagNamesSet.List() {
+			tagNames[i] = vpc.(string)
+		}
+		createdModel.TagNames = tagNames
+	}
+
 	if okVpcId {
 		createdModel.VpcId = vpcId.(string)
 	}
@@ -193,6 +203,9 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("created_at", foundInstance.CreatedAt); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("tag_names", foundInstance.TagNames); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }
@@ -253,6 +266,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	hasChangedName := d.HasChange("name")
 	hasChangeFlavor := d.HasChange("flavor_name")
 	hasChangeStatus := d.HasChange("status")
+	hasChangeTagNames := d.HasChange("tag_names")
 
 	if hasChangedName {
 		newName := d.Get("name").(string)
@@ -267,6 +281,21 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		_, err := instanceService.ChangeStatus(vpcId, d.Id(), status)
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while change status instance %s", err)
+		}
+	}
+
+	if hasChangeTagNames {
+		var tagNames []string
+		if v, ok := d.GetOk("tag_names"); ok {
+			tagNamesSet := v.(*schema.Set)
+			tagNames = make([]string, tagNamesSet.Len())
+			for i, vpc := range tagNamesSet.List() {
+				tagNames[i] = vpc.(string)
+			}
+		}
+		_, err := instanceService.ManageTags(vpcId, d.Id(), tagNames)
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while change tags instance %s", err)
 		}
 	}
 
