@@ -15,6 +15,7 @@ type InstanceService interface {
 	ChangeStatus(vpcId string, instanceId string, status string) (*common.SimpleResponse, error)
 	Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error)
 	GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error)
+	ManageTags(vpcId string, instanceId string, tagNames []string) (*common.SimpleResponse, error)
 }
 
 // InstanceServiceImpl is the implementation of InstanceService
@@ -144,4 +145,19 @@ func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string) (
 	}
 
 	return &flavor, nil
+}
+
+// ManageTags update tags an instance
+func (s *InstanceServiceImpl) ManageTags(vpcId string, instanceId string, tagNames []string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.ManageTagsInstance(vpcId, instanceId)
+	_, err := s.client.SendPostRequest(apiPath, map[string][]string{"tag_names": tagNames})
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
 }
