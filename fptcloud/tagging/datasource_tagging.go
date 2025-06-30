@@ -78,11 +78,16 @@ func dataSourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interf
 		return diag.FromErr(err)
 	}
 
+	// Validate response
+	if tagList == nil || tagList.Data == nil {
+		return diag.Errorf("Received nil response from tag list")
+	}
+
 	// Set unique ID for datasource
 	d.SetId(fmt.Sprintf("tags-%d", time.Now().Unix()))
 
 	// Set tags in schema
-	if err := d.Set("tags", flattenTags(tagList.Data.Tags)); err != nil {
+	if err := d.Set("tags", flattenTags(tagList.Data)); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -91,21 +96,16 @@ func dataSourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interf
 
 // TagListResponse represents the API response structure
 type TagListResponse struct {
-	Status  bool     `json:"status"`
-	Message string   `json:"message"`
-	Data    TagsData `json:"data"`
-}
-
-type TagsData struct {
-	Total int   `json:"total"`
-	Tags  []Tag `json:"tags"`
+	Status  bool   `json:"status"`
+	Message string `json:"message"`
+	Data    []Tag  `json:"data"`
 }
 
 // Tag represents a single tag in the response
 type Tag struct {
 	ID        string   `json:"id"`
-	Key       string   `json:"key"`
-	Value     string   `json:"value"`
+	Key       *string  `json:"key"`
+	Value     *string  `json:"value"`
 	Color     []string `json:"color"`
 	ScopeType string   `json:"scope_type"`
 	VPCNames  []string `json:"vpc_names"`
@@ -115,10 +115,15 @@ type Tag struct {
 func flattenTags(tags []Tag) []interface{} {
 	var result []interface{}
 	for _, tag := range tags {
+		value := ""
+		if tag.Value != nil {
+			value = *tag.Value
+		}
+
 		t := map[string]interface{}{
 			"id":         tag.ID,
 			"key":        tag.Key,
-			"value":      tag.Value,
+			"value":      value,
 			"color":      tag.Color,
 			"scope_type": tag.ScopeType,
 			"vpc_names":  tag.VPCNames,

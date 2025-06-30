@@ -402,6 +402,6 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v2/org/%s/tag/%s/delete", tenantId, tagId)
 	},
 	ListTags: func(tenantId string) string {
-		return fmt.Sprintf("/api/v2/org/%s/tags", tenantId)
+		return fmt.Sprintf("/v2/org/%s/tags", tenantId)
 	},
 }
