@@ -197,6 +197,14 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		ForceNew:     true,
 		ExactlyOneOf: []string{"ssh_key", "password"},
 	},
+	"tag_names": {
+		Type:        schema.TypeSet,
+		Optional:    true,
+		Description: "List of tag names to attach to the instance",
+		Elem: &schema.Schema{
+			Type: schema.TypeString,
+		},
+	},
 	"created_at": {
 		Type:        schema.TypeString,
 		Computed:    true,
