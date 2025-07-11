@@ -61,6 +61,16 @@ func subnetSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The gateway of the subnet",
 		},
+		"primary_dns_ip": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Description: "The primary DNS IP address for the subnet",
+		},
+		"secondary_dns_ip": {
+			Type:        schema.TypeString,
+			Optional:    true,
+			Description: "The secondary DNS IP address for the subnet",
+		},
 		"edge_gateway": {
 			Type:        schema.TypeMap,
 			Computed:    true,
@@ -71,6 +81,12 @@ func subnetSchema() map[string]*schema.Schema {
 			Type:        schema.TypeString,
 			Computed:    true,
 			Description: "The created at of the subnet",
+		},
+		"tag_names": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Elem:        &schema.Schema{Type: schema.TypeString},
+			Description: "List of tag names for the subnet",
 		},
 	}
 }

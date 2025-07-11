@@ -1,3 +1,10 @@
+## [0.3.14] - 2024-07-08
+
+### Resource
+
+- Add `primary_dns_ip`, `secondary_dns_ip`, `tag_names` fields to `fptcloud_subnet` resource
+- Update documentation for subnet resource
+
 ## [0.3.13] - 2025-06-16
 
 ### Resource

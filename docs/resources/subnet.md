@@ -37,6 +37,9 @@ resource "fptcloud_subnet" "example" {
 ### Optional
 
 - `static_ip_pool` (String) The static ip pool of the instance. Only if you want to create subnet with static IP pool, enter an valid IP range within provided CIDR.
+- `primary_dns_ip` (String) The primary DNS IP address for the subnet
+- `secondary_dns_ip` (String) The secondary DNS IP address for the subnet
+- `tag_names` (List of String) List of tag names for the subnet
 
 ### Read-Only
 
