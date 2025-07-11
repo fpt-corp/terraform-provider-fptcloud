@@ -40,6 +40,9 @@ var ApiPath = struct {
 	FindSubnetByName           func(vpcId string) string
 	FindSubnet                 func(vpcId string, subnetId string) string
 	ListSubnets                func(vpcId string) string
+	UpdateDnsSubnet            func(vpcId string, subnetId string) string
+	UpdateTagsSubnet           func(vpcId string, subnetId string) string
+	UpdateNameSubnet           func(vpcId string, subnetId string) string
 
 	Subnet          func(vpcId string) string
 	EdgeGatewayList func(vpcId string) string
@@ -204,6 +207,16 @@ var ApiPath = struct {
 	},
 	ListSubnets: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/networks", vpcId)
+	},
+
+	UpdateDnsSubnet: func(vpcId string, subnetId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/network/%s/edit-dns", vpcId, subnetId)
+	},
+	UpdateTagsSubnet: func(vpcId string, subnetId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/network/%s/manage-tags", vpcId, subnetId)
+	},
+	UpdateNameSubnet: func(vpcId string, subnetId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/network/%s/rename-subnet", vpcId, subnetId)
 	},
 
 	Subnet: func(vpcId string) string { return fmt.Sprintf("/v1/vmware/vpc/%s/network/subnets", vpcId) },
