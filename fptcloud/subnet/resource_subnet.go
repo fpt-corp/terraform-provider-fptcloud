@@ -196,7 +196,7 @@ func waitForSubnetState(
 			if err != nil {
 				return 0, "", common.DecodeError(err)
 			}
-			return resp, "COMPLETE", nil // TODO: thay "COMPLETE" bằng resp.Status nếu có
+			return resp, "COMPLETE", nil
 		},
 		Timeout:        time.Duration(timeoutMinutes) * time.Minute,
 		Delay:          5 * time.Second,
@@ -259,7 +259,7 @@ func resourceSubnetUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 		if err != nil {
 			return diag.Errorf("[ERR] Failed to update subnet DNS: %s", err)
 		}
-		if err := waitForSubnetState(ctx, apiClient, service, vpcId.(string), subnetId, []string{"UPDATING"}, []string{"COMPLETE"}, apiClient.Timeout, "DNS update"); err != nil {
+		if err := waitForSubnetState(ctx, service, vpcId.(string), subnetId, []string{"UPDATING"}, []string{"COMPLETE"}, apiClient.Timeout, "DNS update"); err != nil {
 			return diag.FromErr(err)
 		}
 	}
