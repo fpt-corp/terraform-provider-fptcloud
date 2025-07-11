@@ -176,7 +176,6 @@ func resourceSubnetDelete(_ context.Context, d *schema.ResourceData, m interface
 // waitForSubnetState waits for the subnet to reach a target state
 func waitForSubnetState(
 	ctx context.Context,
-	apiClient *common.Client,
 	service SubnetService,
 	vpcId string,
 	subnetId string,
@@ -197,7 +196,6 @@ func waitForSubnetState(
 			if err != nil {
 				return 0, "", common.DecodeError(err)
 			}
-			// Nếu API trả về trạng thái thực tế, hãy dùng resp.Status
 			return resp, "COMPLETE", nil // TODO: thay "COMPLETE" bằng resp.Status nếu có
 		},
 		Timeout:        time.Duration(timeoutMinutes) * time.Minute,
