@@ -2,10 +2,11 @@ package fptcloud_subnet
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"net"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 var resourceSubnet = map[string]*schema.Schema{
@@ -20,7 +21,7 @@ var resourceSubnet = map[string]*schema.Schema{
 		Required:     true,
 		ValidateFunc: validation.NoZeroValues,
 		Description:  "The name of the subnet",
-		ForceNew:     true,
+		// ForceNew:     true,
 	},
 	"type": {
 		Type:        schema.TypeString,
@@ -52,6 +53,18 @@ var resourceSubnet = map[string]*schema.Schema{
 		Description:  "The static ip pool of the instance. Only if you want to create subnet with static IP pool, enter an valid IP range within provided CIDR.",
 		ForceNew:     true,
 	},
+	"primary_dns_ip": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		ValidateFunc: validateIPv4Address,
+		Description:  "The primary DNS IP address for the subnet",
+	},
+	"secondary_dns_ip": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		ValidateFunc: validateIPv4Address,
+		Description:  "The secondary DNS IP address for the subnet",
+	},
 	"network_name": {
 		Type:     schema.TypeString,
 		Computed: true,
@@ -63,6 +76,12 @@ var resourceSubnet = map[string]*schema.Schema{
 	"created_at": {
 		Type:     schema.TypeString,
 		Computed: true,
+	},
+	"tag_names": {
+		Type:        schema.TypeList,
+		Optional:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "List of tag names for the subnet",
 	},
 }
 

@@ -8,13 +8,16 @@ import (
 )
 
 type CreateSubnetDTO struct {
-	VpcId        string `json:"vpc_id"`
-	Name         string `json:"name"`
-	CIDR         string `json:"cidr"`
-	Type         string `json:"type"`
-	GatewayIp    string `json:"gateway_ip"`
-	IpRangeStart string `json:"ip_range_start"`
-	IpRangeEnd   string `json:"ip_range_end"`
+	VpcId          string   `json:"vpc_id"`
+	Name           string   `json:"name"`
+	CIDR           string   `json:"cidr"`
+	Type           string   `json:"type"`
+	GatewayIp      string   `json:"gateway_ip"`
+	IpRangeStart   string   `json:"ip_range_start"`
+	IpRangeEnd     string   `json:"ip_range_end"`
+	PrimaryDnsIp   string   `json:"primary_dns_ip"`
+	SecondaryDnsIp string   `json:"secondary_dns_ip"`
+	TagNames       []string `json:"tag_names"`
 }
 
 type FindSubnetDTO struct {
@@ -29,15 +32,22 @@ type SubnetResponseDto struct {
 	Data    Subnet `json:"data"`
 }
 
+type UpdateResponseDto struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Data    Subnet `json:"data"`
+}
 type Subnet struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	NetworkID   string      `json:"network_id"`
-	NetworkName string      `json:"network_name"`
-	Gateway     string      `json:"gateway"`
-	VpcId       string      `json:"vpc_id"`
-	EdgeGateway EdgeGateway `json:"edge_gateway"`
-	CreatedAt   string      `json:"created_at"`
+	ID             string      `json:"id"`
+	Name           string      `json:"name"`
+	NetworkID      string      `json:"network_id"`
+	NetworkName    string      `json:"network_name"`
+	Gateway        string      `json:"gateway"`
+	VpcId          string      `json:"vpc_id"`
+	EdgeGateway    EdgeGateway `json:"edge_gateway"`
+	PrimaryDnsIp   string      `json:"primary_dns_ip"`
+	SecondaryDnsIp string      `json:"secondary_dns_ip"`
+	CreatedAt      string      `json:"created_at"`
 }
 
 type EdgeGateway struct {
@@ -57,6 +67,39 @@ type ListSubnet struct {
 	Total int16    `json:"total"`
 }
 
+type UpdateDnsSubnetDTO struct {
+	VpcId          string `json:"vpc_id"`
+	SubnetId       string `json:"subnet_id"`
+	PrimaryDnsIp   string `json:"primary_dns_ip,omitempty"`
+	SecondaryDnsIp string `json:"secondary_dns_ip,omitempty"`
+	CIDR           string `json:"cidr"`
+}
+
+type UpdateNameSubnetDTO struct {
+	VpcId    string `json:"vpc_id"`
+	SubnetId string `json:"subnet_id"`
+	Name     string `json:"name"`
+}
+
+type UpdateSubnetDTO struct {
+	VpcId          string   `json:"vpc_id"`
+	SubnetId       string   `json:"subnet_id"`
+	Name           string   `json:"name,omitempty"`
+	CIDR           string   `json:"cidr,omitempty"`
+	GatewayIp      string   `json:"gateway_ip,omitempty"`
+	IpRangeStart   string   `json:"ip_range_start,omitempty"`
+	IpRangeEnd     string   `json:"ip_range_end,omitempty"`
+	PrimaryDnsIp   string   `json:"primary_dns_ip,omitempty"`
+	SecondaryDnsIp string   `json:"secondary_dns_ip,omitempty"`
+	TagNames       []string `json:"tag_names,omitempty"`
+}
+
+type UpdateTagsSubnetDTO struct {
+	VpcId    string   `json:"vpc_id"`
+	SubnetId string   `json:"subnet_id"`
+	TagNames []string `json:"tag_names"`
+}
+
 // SubnetService defines the interface for subnet service
 type SubnetService interface {
 	FindSubnet(findDto FindSubnetDTO) (*Subnet, error)
@@ -64,6 +107,9 @@ type SubnetService interface {
 	ListSubnet(vpcId string) (*[]Subnet, error)
 	CreateSubnet(createDto CreateSubnetDTO) (*Subnet, error)
 	DeleteSubnet(vpcId string, subnetId string) (bool, error)
+	UpdateDns(updateDto UpdateDnsSubnetDTO) (*Subnet, error)
+	UpdateReName(updateDto UpdateNameSubnetDTO) (*Subnet, error)
+	UpdateTags(updateDto UpdateTagsSubnetDTO) (*Subnet, error)
 }
 
 // SubnetServiceImpl is the implementation of SubnetServiceImpl
@@ -177,4 +223,57 @@ func (s *SubnetServiceImpl) DeleteSubnet(vpcId string, subnetId string) (bool, e
 	}
 
 	return response.Status, nil
+}
+
+// UpdateDns updates DNS for a subnet
+func (s *SubnetServiceImpl) UpdateDns(updateDto UpdateDnsSubnetDTO) (*Subnet, error) {
+	var apiPath = common.ApiPath.UpdateDnsSubnet(updateDto.VpcId, updateDto.SubnetId)
+	resp, err := s.client.SendPutRequest(apiPath, updateDto)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	response := SubnetResponseDto{}
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	if !response.Status {
+		return nil, errors.New(response.Message)
+	}
+
+	return &response.Data, nil
+}
+
+func (s *SubnetServiceImpl) UpdateReName(updateDto UpdateNameSubnetDTO) (*Subnet, error) {
+	var apiPath = common.ApiPath.UpdateNameSubnet(updateDto.VpcId, updateDto.SubnetId)
+	resp, err := s.client.SendPutRequest(apiPath, updateDto)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	response := SubnetResponseDto{}
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	if !response.Status {
+		return nil, errors.New(response.Message)
+	}
+	return &response.Data, nil
+}
+
+// UpdateTags updates tags for a subnet
+func (s *SubnetServiceImpl) UpdateTags(updateDto UpdateTagsSubnetDTO) (*Subnet, error) {
+	apiPath := common.ApiPath.UpdateTagsSubnet(updateDto.VpcId, updateDto.SubnetId)
+
+	resp, err := s.client.SendPostRequest(apiPath, updateDto)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	response := UpdateResponseDto{}
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	return &response.Data, nil
 }
