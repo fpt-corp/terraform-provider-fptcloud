@@ -232,6 +232,17 @@ func resourceSubnetUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 		return diag.Errorf("[ERR] Subnet id is required")
 	}
 
+	if d.HasChange("name") {
+		updateRenameDto := UpdateNameSubnetDTO{
+			VpcId:    vpcId.(string),
+			SubnetId: subnetId,
+			Name:     d.Get("name").(string),
+		}
+		if _, err := service.UpdateReName(updateRenameDto); err != nil {
+			return diag.Errorf("[ERR] Failed to update rename: %s", err)
+		}
+	}
+
 	if d.HasChange("tag_names") {
 		tags := expandStringList(d.Get("tag_names").([]interface{}))
 		updateTagsDto := UpdateTagsSubnetDTO{
@@ -255,6 +266,9 @@ func resourceSubnetUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 		if d.HasChange("secondary_dns_ip") {
 			updateDnsDto.SecondaryDnsIp = d.Get("secondary_dns_ip").(string)
 		}
+
+		updateDnsDto.CIDR = d.Get("cidr").(string)
+
 		_, err := service.UpdateDns(updateDnsDto)
 		if err != nil {
 			return diag.Errorf("[ERR] Failed to update subnet DNS: %s", err)

@@ -2,10 +2,11 @@ package fptcloud_subnet
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"net"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 var resourceSubnet = map[string]*schema.Schema{
@@ -20,7 +21,7 @@ var resourceSubnet = map[string]*schema.Schema{
 		Required:     true,
 		ValidateFunc: validation.NoZeroValues,
 		Description:  "The name of the subnet",
-		ForceNew:     true,
+		// ForceNew:     true,
 	},
 	"type": {
 		Type:        schema.TypeString,
