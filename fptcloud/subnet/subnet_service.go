@@ -72,6 +72,7 @@ type UpdateDnsSubnetDTO struct {
 	SubnetId       string `json:"subnet_id"`
 	PrimaryDnsIp   string `json:"primary_dns_ip,omitempty"`
 	SecondaryDnsIp string `json:"secondary_dns_ip,omitempty"`
+	CIDR           string `json:"cidr"`
 }
 
 type UpdateNameSubnetDTO struct {
