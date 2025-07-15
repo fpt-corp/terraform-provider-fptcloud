@@ -5,6 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
+	"terraform-provider-fptcloud/commons"
+	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	"unicode"
+
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -14,13 +23,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"strconv"
-	"strings"
-	"terraform-provider-fptcloud/commons"
-	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
-	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
-	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
-	"unicode"
 )
 
 var (
@@ -87,6 +89,78 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
 		return
+	}
+
+	// Validate k8s_version
+	if diag := validateK8sVersion(state.K8SVersion.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return
+	}
+
+	// Validate purpose
+	if diag := validatePurpose(state.Purpose.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return
+	}
+
+	// Validate network_type
+	if diag := validateNetworkType(state.NetworkOverlay.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return
+	}
+
+	// Validate network_overlay
+	if diag := validateNetworkOverlay(state.NetworkOverlay.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return
+	}
+
+	// Handle allowCidr default and validation
+	if state.ClusterEndpointAccess == nil || state.ClusterEndpointAccess.AllowCidr == nil || len(state.ClusterEndpointAccess.AllowCidr) == 0 {
+		state.ClusterEndpointAccess = &ClusterEndpointAccess{
+			Type:      types.StringValue("public"),
+			AllowCidr: []types.String{types.StringValue("0.0.0.0/0")},
+		}
+	}
+	if diag := validateClusterEndpointAccess(state.ClusterEndpointAccess.Type.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return
+	}
+	if diag := validateAllowCidr(state.ClusterEndpointAccess.AllowCidr); diag != nil {
+		response.Diagnostics.Append(diag)
+		return
+	}
+
+	// Fill default cluster_autoscaler if not set
+	if state.ClusterAutoscaler == nil {
+		state.ClusterAutoscaler = &ClusterAutoscaler{
+			IsEnableAutoScaling:           types.BoolValue(true),
+			ScaleDownDelayAfterAdd:        types.Int64Value(3600), // seconds
+			ScaleDownDelayAfterDelete:     types.Int64Value(0),    // seconds
+			ScaleDownDelayAfterFailure:    types.Int64Value(180),  // seconds
+			ScaleDownUnneededTime:         types.Int64Value(1800), // seconds
+			ScaleDownUtilizationThreshold: types.Float64Value(0.5),
+			ScanInterval:                  types.Int64Value(10), // seconds
+			Expander:                      types.StringValue("least-waste"),
+		}
+	}
+
+	// Validate expander in cluster_autoscaler
+	if state.ClusterAutoscaler != nil {
+		expander := state.ClusterAutoscaler.Expander.ValueString()
+		if diag := validateExpander(expander); diag != nil {
+			response.Diagnostics.Append(diag)
+			return
+		}
+	}
+
+	// Validate clusterEndpointAccess.type
+	if !state.ClusterEndpointAccess.Type.IsNull() && state.ClusterEndpointAccess.Type.ValueString() != "" {
+		accessType := state.ClusterEndpointAccess.Type.ValueString()
+		if diag := validateClusterEndpointAccess(accessType); diag != nil {
+			response.Diagnostics.Append(diag)
+			return
+		}
 	}
 
 	if err := validatePool(state.Pools); err != nil {
@@ -184,6 +258,42 @@ func (r *resourceManagedKubernetesEngine) Update(ctx context.Context, request re
 
 	var plan managedKubernetesEngine
 	request.Plan.Get(ctx, &plan)
+
+	// Validate k8s_version
+	if diag := validateK8sVersion(plan.K8SVersion.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return
+	}
+
+	// Deny changing purpose
+	if plan.Purpose.ValueString() != state.Purpose.ValueString() {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Purpose cannot be changed", "The 'purpose' field is immutable and cannot be updated."))
+		return
+	}
+
+	// Deny changing network_type
+	if plan.NetworkOverlay.ValueString() != state.NetworkOverlay.ValueString() {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Network type cannot be changed", "The 'network_type' field is immutable and cannot be updated."))
+		return
+	}
+
+	// Validate expander in cluster_autoscaler
+	if plan.ClusterAutoscaler != nil {
+		expander := plan.ClusterAutoscaler.Expander.ValueString()
+		if diag := validateExpander(expander); diag != nil {
+			response.Diagnostics.Append(diag)
+			return
+		}
+	}
+
+	// Validate clusterEndpointAccess.type
+	if !plan.ClusterEndpointAccess.Type.IsNull() && plan.ClusterEndpointAccess.Type.ValueString() != "" {
+		accessType := plan.ClusterEndpointAccess.Type.ValueString()
+		if diag := validateClusterEndpointAccess(accessType); diag != nil {
+			response.Diagnostics.Append(diag)
+			return
+		}
+	}
 
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
@@ -289,14 +399,24 @@ func (r *resourceManagedKubernetesEngine) Configure(_ context.Context, request r
 }
 func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {
 	topLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
 	requiredStrings := []string{
 		"vpc_id", "cluster_name", "k8s_version", "purpose",
 		"pod_network", "pod_prefix", "service_network", "service_prefix",
-		"range_ip_lb_start", "range_ip_lb_end", "load_balancer_type", "network_id", "network_overlay",
-		"edge_gateway_id",
+		"network_overlay", "edge_gateway_id",
 	}
-
+	// Optional string fields
+	optionalStrings := []string{
+		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone",
+	}
+	// Required int fields
 	requiredInts := []string{"k8s_max_pod", "network_node_prefix"}
+	// Optional int fields
+	optionalInts := []string{}
+	// Optional bool fields
+	optionalBools := []string{"is_enable_auto_upgrade"}
+	// Optional list fields
+	optionalLists := []string{"auto_upgrade_expression"}
 
 	for _, attribute := range requiredStrings {
 		topLevelAttributes[attribute] = schema.StringAttribute{
@@ -305,12 +425,36 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 			Description:   descriptions[attribute],
 		}
 	}
-
+	for _, attribute := range optionalStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
 	for _, attribute := range requiredInts {
 		topLevelAttributes[attribute] = schema.Int64Attribute{
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersInt,
 			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalInts {
+		topLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalBools {
+		topLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		topLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:    true,
+			ElementType: types.StringType,
+			Description: descriptions[attribute],
 		}
 	}
 
@@ -323,23 +467,55 @@ func (r *resourceManagedKubernetesEngine) topFields() map[string]schema.Attribut
 		Description: descriptions["network_node_prefix"],
 	}
 
-	return topLevelAttributes
-}
-func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribute {
-	poolLevelAttributes := map[string]schema.Attribute{}
-	requiredStrings := []string{
-		"name",
-		"storage_profile", "worker_type",
-		"network_name", "network_id",
-		//"driver_installation_type", "gpu_driver_version",
-	}
-	requiredInts := []string{
-		"worker_disk_size", "scale_min", "scale_max",
+	// Optional nested block: cluster_autoscaler
+	topLevelAttributes["cluster_autoscaler"] = schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"isEnableAutoScaling":           schema.BoolAttribute{Optional: true, Description: descriptions["isEnableAutoScaling"]},
+			"scaleDownDelayAfterAdd":        schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownDelayAfterAdd"]},
+			"scaleDownDelayAfterDelete":     schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownDelayAfterDelete"]},
+			"scaleDownDelayAfterFailure":    schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownDelayAfterFailure"]},
+			"scaleDownUnneededTime":         schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownUnneededTime"]},
+			"scaleDownUtilizationThreshold": schema.Float64Attribute{Optional: true, Description: descriptions["scaleDownUtilizationThreshold"]},
+			"scanInterval":                  schema.Int64Attribute{Optional: true, Description: descriptions["scanInterval"]},
+			"expander":                      schema.StringAttribute{Optional: true, Description: descriptions["expander"]},
+		},
 	}
 
-	requiredBool := []string{
-		"auto_scale", "is_enable_auto_repair",
+	// Optional nested block: cluster_endpoint_access
+	topLevelAttributes["cluster_endpoint_access"] = schema.SingleNestedAttribute{
+		Optional: true,
+		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				Required:      true,
+				PlanModifiers: forceNewPlanModifiersString,
+				Description:   descriptions["clusterEndpointAccessType"],
+			},
+			"allow_cidr": schema.ListAttribute{
+				Required:    true,
+				ElementType: types.StringType,
+				Description: descriptions["clusterEndpointAccessAllowCidr"],
+			},
+		},
 	}
+
+	return topLevelAttributes
+}
+
+func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribute {
+	poolLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
+	requiredStrings := []string{
+		"name", "storage_profile", "worker_type", "network_name", "network_id",
+	}
+	// Optional string fields
+	optionalStrings := []string{"tags", "gpuSharingClient", "driverInstallationType"}
+	// Required int fields
+	requiredInts := []string{"worker_disk_size", "scale_min", "scale_max"}
+	// Optional int fields
+	optionalInts := []string{"maxClient"}
+	// Required bool fields
+	requiredBools := []string{"auto_scale", "is_enable_auto_repair"}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
@@ -348,7 +524,12 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 			Description:   descriptions[attribute],
 		}
 	}
-
+	for _, attribute := range optionalStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
 	for _, attribute := range requiredInts {
 		poolLevelAttributes[attribute] = schema.Int64Attribute{
 			Required:      true,
@@ -356,32 +537,36 @@ func (r *resourceManagedKubernetesEngine) poolFields() map[string]schema.Attribu
 			Description:   descriptions[attribute],
 		}
 	}
-
-	for _, attribute := range requiredBool {
+	for _, attribute := range optionalInts {
+		poolLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredBools {
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
 			Required:      true,
 			PlanModifiers: forceNewPlanModifiersBool,
 			Description:   descriptions[attribute],
 		}
 	}
-
-	poolLevelAttributes["scale_min"] = schema.Int64Attribute{
-		Required:    true,
-		Description: descriptions["scale_min"],
+	// kv: list of map[string]string
+	poolLevelAttributes["kv"] = schema.ListAttribute{
+		Optional:    true,
+		ElementType: types.MapType{ElemType: types.StringType},
+		Description: descriptions["kv"],
 	}
-
-	poolLevelAttributes["scale_max"] = schema.Int64Attribute{
-		Required:    true,
-		Description: descriptions["scale_max"],
+	// vGpuId: string or null
+	poolLevelAttributes["vGpuId"] = schema.StringAttribute{
+		Optional:    true,
+		Description: descriptions["vGpuId"],
 	}
-
 	return poolLevelAttributes
 }
 
 func (r *resourceManagedKubernetesEngine) fillJson(ctx context.Context, to *managedKubernetesEngineJson, vpcId string) *diag2.ErrorDiagnostic {
 	to.SSHKey = nil
 	to.TypeCreate = "create"
-	to.NetworkType = "calico"
 	for _, pool := range to.Pools {
 		pool.ContainerRuntime = "containerd"
 		pool.DriverInstallationType = "pre-install"
@@ -454,17 +639,15 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 			AutoScale:          item.AutoScale.ValueBool(),
 			ScaleMin:           item.ScaleMin.ValueInt64(),
 			ScaleMax:           item.ScaleMax.ValueInt64(),
-			NetworkName:        item.NetworkName.ValueString(),
 			NetworkID:          item.NetworkID.ValueString(),
 			IsEnableAutoRepair: item.IsEnableAutoRepair.ValueBool(),
 			WorkerPoolID:       &name,
 		}
-
 		pools = append(pools, &newItem)
 	}
 	to.Pools = pools
 
-	to.NetworkID = to.Pools[0].NetworkID
+	to.NetworkID = from.NetworkID.ValueString()
 
 	to.PodNetwork = from.PodNetwork.ValueString()
 	to.PodPrefix = from.PodPrefix.ValueString()
@@ -472,9 +655,6 @@ func (r *resourceManagedKubernetesEngine) remap(from *managedKubernetesEngine, t
 	to.ServicePrefix = from.ServicePrefix.ValueString()
 	to.K8SMaxPod = from.K8SMaxPod.ValueInt64()
 	to.NetworkNodePrefix = from.NetworkNodePrefix.ValueInt64()
-	to.RangeIPLbStart = from.RangeIPLbStart.ValueString()
-	to.RangeIPLbEnd = from.RangeIPLbEnd.ValueString()
-	to.LoadBalancerType = from.LoadBalancerType.ValueString()
 	to.NetworkOverlay = from.NetworkOverlay.ValueString()
 	to.EdgeGatewayId = from.EdgeGatewayId.ValueString()
 }
@@ -487,7 +667,6 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 		AutoScale:          item.AutoScale.ValueBool(),
 		ScaleMin:           item.ScaleMin.ValueInt64(),
 		ScaleMax:           item.ScaleMax.ValueInt64(),
-		NetworkName:        item.NetworkName.ValueString(),
 		NetworkID:          item.NetworkID.ValueString(),
 		IsEnableAutoRepair: item.IsEnableAutoRepair.ValueBool(),
 		WorkerPoolID:       &name,
@@ -725,7 +904,6 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 			AutoScale:          types.BoolValue(w.Maximum != w.Minimum),
 			ScaleMin:           types.Int64Value(int64(w.Minimum)),
 			ScaleMax:           types.Int64Value(int64(w.Maximum)),
-			NetworkName:        types.StringValue(w.ProviderConfig.NetworkName),
 			NetworkID:          types.StringValue(networkId),
 			IsEnableAutoRepair: types.BoolValue(autoRepair),
 			//DriverInstallationType: types.String{},
@@ -733,7 +911,7 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 		}
 
 		if strings.ToLower(platform) == "osp" {
-			item.NetworkName = types.StringValue(networkName)
+			item.NetworkID = types.StringValue(networkName)
 		}
 
 		pool = append(pool, &item)
@@ -751,10 +929,8 @@ func (r *resourceManagedKubernetesEngine) internalRead(ctx context.Context, id s
 
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 	// state.NetworkNodePrefix
-	state.RangeIPLbStart = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.LbIPRangeStart)
-	state.RangeIPLbEnd = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.LbIPRangeEnd)
-
-	state.LoadBalancerType = types.StringValue(data.Spec.LoadBalancerType)
+	state.NetworkNodePrefix = types.Int64Value(int64(parseNumber(data.Spec.Provider.InfrastructureConfig.Networks.Workers)))
+	state.NetworkOverlay = types.StringValue(data.Spec.Networking.Type)
 
 	return &d, nil
 }
@@ -860,6 +1036,20 @@ func errorCallingApi(s string) string {
 	return fmt.Sprintf("Error calling path: %s", s)
 }
 
+func validateAllowCidr(allowCidrs []types.String) *diag2.ErrorDiagnostic {
+	for _, cidr := range allowCidrs {
+		if cidr.IsNull() || cidr.IsUnknown() {
+			d := diag2.NewErrorDiagnostic("Invalid allowCidr entry", "allowCidr entry is null or unknown")
+			return &d
+		}
+		if _, _, err := net.ParseCIDR(cidr.ValueString()); err != nil {
+			d := diag2.NewErrorDiagnostic("Invalid allowCidr entry", "allowCidr entry '"+cidr.ValueString()+"' is not a valid CIDR: "+err.Error())
+			return &d
+		}
+	}
+	return nil
+}
+
 type managedKubernetesEngine struct {
 	Id          types.String `tfsdk:"id"`
 	VpcId       types.String `tfsdk:"vpc_id"`
@@ -867,23 +1057,18 @@ type managedKubernetesEngine struct {
 	NetworkID   types.String `tfsdk:"network_id"`
 	K8SVersion  types.String `tfsdk:"k8s_version"`
 	//OsVersion   struct{} `tfsdk:"os_version"`
-	Purpose           types.String                   `tfsdk:"purpose"`
-	Pools             []*managedKubernetesEnginePool `tfsdk:"pools"`
-	PodNetwork        types.String                   `tfsdk:"pod_network"`
-	PodPrefix         types.String                   `tfsdk:"pod_prefix"`
-	ServiceNetwork    types.String                   `tfsdk:"service_network"`
-	ServicePrefix     types.String                   `tfsdk:"service_prefix"`
-	K8SMaxPod         types.Int64                    `tfsdk:"k8s_max_pod"`
-	NetworkNodePrefix types.Int64                    `tfsdk:"network_node_prefix"`
-	RangeIPLbStart    types.String                   `tfsdk:"range_ip_lb_start"`
-	RangeIPLbEnd      types.String                   `tfsdk:"range_ip_lb_end"`
-	LoadBalancerType  types.String                   `tfsdk:"load_balancer_type"`
-	NetworkOverlay    types.String                   `tfsdk:"network_overlay"`
-	//SSHKey            interface{} `tfsdk:"sshKey"` // just set it nil
-	//TypeCreate types.String `tfsdk:"type_create"`
-	//RegionId types.String `tfsdk:"region_id"`
-
-	EdgeGatewayId types.String `tfsdk:"edge_gateway_id"`
+	Purpose               types.String                   `tfsdk:"purpose"`
+	Pools                 []*managedKubernetesEnginePool `tfsdk:"pools"`
+	PodNetwork            types.String                   `tfsdk:"pod_network"`
+	PodPrefix             types.String                   `tfsdk:"pod_prefix"`
+	ServiceNetwork        types.String                   `tfsdk:"service_network"`
+	ServicePrefix         types.String                   `tfsdk:"service_prefix"`
+	K8SMaxPod             types.Int64                    `tfsdk:"k8s_max_pod"`
+	NetworkNodePrefix     types.Int64                    `tfsdk:"network_node_prefix"`
+	NetworkOverlay        types.String                   `tfsdk:"network_overlay"`
+	EdgeGatewayId         types.String                   `tfsdk:"edge_gateway_id"`
+	ClusterAutoscaler     *ClusterAutoscaler             `tfsdk:"cluster_autoscaler"`
+	ClusterEndpointAccess *ClusterEndpointAccess         `tfsdk:"cluster_endpoint_access"`
 }
 type managedKubernetesEnginePool struct {
 	WorkerPoolID   types.String `tfsdk:"name"`
@@ -891,11 +1076,10 @@ type managedKubernetesEnginePool struct {
 	WorkerType     types.String `tfsdk:"worker_type"`
 	WorkerDiskSize types.Int64  `tfsdk:"worker_disk_size"`
 	//ContainerRuntime types.String `tfsdk:"container_runtime"`
-	AutoScale   types.Bool   `tfsdk:"auto_scale"`
-	ScaleMin    types.Int64  `tfsdk:"scale_min"`
-	ScaleMax    types.Int64  `tfsdk:"scale_max"`
-	NetworkName types.String `tfsdk:"network_name"`
-	NetworkID   types.String `tfsdk:"network_id"`
+	AutoScale types.Bool   `tfsdk:"auto_scale"`
+	ScaleMin  types.Int64  `tfsdk:"scale_min"`
+	ScaleMax  types.Int64  `tfsdk:"scale_max"`
+	NetworkID types.String `tfsdk:"network_id"`
 	//Kv               []struct {
 	//	Name types.String `tfsdk:"name"`
 	//} `tfsdk:"kv"`
@@ -921,13 +1105,9 @@ type managedKubernetesEngineJson struct {
 	ServicePrefix     string                             `json:"service_prefix"`
 	K8SMaxPod         int64                              `json:"k8s_max_pod"`
 	NetworkNodePrefix int64                              `json:"network_node_prefix"`
-	RangeIPLbStart    string                             `json:"range_ip_lb_start"`
-	RangeIPLbEnd      string                             `json:"range_ip_lb_end"`
-	LoadBalancerType  string                             `json:"loadBalancerType"`
-	NetworkType       string                             `json:"network_type"`
+	NetworkOverlay    string                             `json:"network_overlay"`
 	SSHKey            interface{}                        `json:"sshKey"`
 	TypeCreate        string                             `json:"type_create"`
-	NetworkOverlay    string                             `json:"network_overlay"`
 	InternalSubnetLb  interface{}                        `json:"internal_subnet_lb"`
 	//RegionId          string                             `json:"region_id"`
 	EdgeGatewayId         string      `json:"edge_gateway_id,omitempty"`
@@ -943,7 +1123,6 @@ type managedKubernetesEnginePoolJson struct {
 	AutoScale        bool    `json:"auto_scale"`
 	ScaleMin         int64   `json:"scale_min"`
 	ScaleMax         int64   `json:"scale_max"`
-	NetworkName      string  `json:"network_name"`
 	NetworkID        string  `json:"network_id"`
 	Kv               []struct {
 		Name string `json:"name"`
@@ -1024,10 +1203,8 @@ type managedKubernetesEngineDataSpec struct {
 	Provider struct {
 		InfrastructureConfig struct {
 			Networks struct {
-				Id             string `json:"id"`
-				LbIPRangeEnd   string `json:"lbIpRangeEnd"`
-				LbIPRangeStart string `json:"lbIpRangeStart"`
-				Workers        string `json:"workers"`
+				Id      string `json:"id"`
+				Workers string `json:"workers"`
 			} `json:"networks"`
 		} `json:"infrastructureConfig"`
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
@@ -1116,4 +1293,20 @@ type managedKubernetesEngineEditWorker struct {
 	K8sVersion        string                             `json:"k8s_version"`
 	TypeConfigure     string                             `json:"type_configure"`
 	CurrentNetworking string                             `json:"currentNetworking"`
+}
+
+type ClusterAutoscaler struct {
+	IsEnableAutoScaling           types.Bool    `tfsdk:"isEnableAutoScaling"`
+	ScaleDownDelayAfterAdd        types.Int64   `tfsdk:"scaleDownDelayAfterAdd"`     // seconds
+	ScaleDownDelayAfterDelete     types.Int64   `tfsdk:"scaleDownDelayAfterDelete"`  // seconds
+	ScaleDownDelayAfterFailure    types.Int64   `tfsdk:"scaleDownDelayAfterFailure"` // seconds
+	ScaleDownUnneededTime         types.Int64   `tfsdk:"scaleDownUnneededTime"`      // seconds
+	ScaleDownUtilizationThreshold types.Float64 `tfsdk:"scaleDownUtilizationThreshold"`
+	ScanInterval                  types.Int64   `tfsdk:"scanInterval"` // seconds
+	Expander                      types.String  `tfsdk:"expander"`
+}
+
+type ClusterEndpointAccess struct {
+	Type      types.String   `tfsdk:"type"`
+	AllowCidr []types.String `tfsdk:"allow_cidr"`
 }
