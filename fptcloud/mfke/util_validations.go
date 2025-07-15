@@ -2,9 +2,10 @@ package fptcloud_mfke
 
 import (
 	"fmt"
-	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"slices"
 	"strings"
+
+	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
 func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
@@ -32,7 +33,20 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 	return nil
 }
 
+func validateK8sVersion(version string) *diag2.ErrorDiagnostic {
+	allowed := []string{"1.32.5", "1.31.4", "1.30.8", "1.29.8", "1.28.13"}
+	for _, v := range allowed {
+		if version == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid Kubernetes version", "k8s_version must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+// Call this from validateNetwork (or validatePool if more appropriate)
 func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.ErrorDiagnostic {
+	// Use network_id as input; network_name is no longer used
 	if strings.ToLower(platform) == "osp" {
 		if state.NetworkID.ValueString() == "" {
 			d := diag2.NewErrorDiagnostic(
@@ -57,23 +71,12 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 			d := diag2.NewErrorDiagnostic("Edge gateway specification is not supported", "VPC platform is OSP. Edge gateway ID must be left empty")
 			return &d
 		}
-
-		if state.RangeIPLbStart.ValueString() != "" {
-			d := diag2.NewErrorDiagnostic("LB IP range is not supported", "VPC platform is OSP. LB IP range must be left empty")
-			return &d
-		}
-
-		if state.RangeIPLbEnd.ValueString() != "" {
-			d := diag2.NewErrorDiagnostic("LB IP range is not supported", "VPC platform is OSP. LB IP range must be left empty")
-			return &d
-		}
 	} else {
 		if state.NetworkID.ValueString() != "" {
 			d := diag2.NewErrorDiagnostic(
 				"Global network ID is not supported",
 				"VPC platform is VMW. Network ID must be specified per worker group, not globally",
 			)
-
 			return &d
 		}
 	}
@@ -88,6 +91,28 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 	}
 
 	return nil
+}
+
+func validateNetworkType(networkType string) *diag2.ErrorDiagnostic {
+	allowed := []string{"calico", "cilium"}
+	for _, v := range allowed {
+		if networkType == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid network_type", "network_type must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+func validateNetworkOverlay(networkOverlay string) *diag2.ErrorDiagnostic {
+	allowed := []string{"Always", "CrossSubnet"}
+	for _, v := range allowed {
+		if networkOverlay == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid network_overlay", "network_overlay must be one of: "+strings.Join(allowed, ", "))
+	return &d
 }
 
 func validatePoolNames(pool []*managedKubernetesEnginePool) ([]string, error) {
@@ -107,4 +132,37 @@ func validatePoolNames(pool []*managedKubernetesEnginePool) ([]string, error) {
 	}
 
 	return poolNames, nil
+}
+
+func validatePurpose(purpose string) *diag2.ErrorDiagnostic {
+	allowed := []string{"public", "private"}
+	for _, v := range allowed {
+		if purpose == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid purpose", "purpose must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+func validateExpander(expander string) *diag2.ErrorDiagnostic {
+	allowed := []string{"Random", "Lease-waste", "Most-pods", "Priority"}
+	for _, v := range allowed {
+		if expander == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid expander", "expander must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+func validateClusterEndpointAccess(accessType string) *diag2.ErrorDiagnostic {
+	allowed := []string{"public", "private", "mixed"}
+	for _, v := range allowed {
+		if accessType == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid clusterEndpointAccess type", "clusterEndpointAccess.type must be one of: "+strings.Join(allowed, ", "))
+	return &d
 }
