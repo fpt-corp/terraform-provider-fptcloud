@@ -163,7 +163,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 		}
 	}
 
-	var pool []*managedKubernetesEnginePool
+	var pool []managedKubernetesEnginePool
 
 	for _, name := range poolNames {
 		w, ok := workers[name]
@@ -191,7 +191,6 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			StorageProfile:     types.StringValue(w.Volume.Type),
 			WorkerType:         types.StringValue(flavorId),
 			WorkerDiskSize:     types.Int64Value(int64(parseNumber(w.Volume.Size))),
-			AutoScale:          types.BoolValue(w.Maximum != w.Minimum),
 			ScaleMin:           types.Int64Value(int64(w.Minimum)),
 			ScaleMax:           types.Int64Value(int64(w.Maximum)),
 			NetworkID:          types.StringValue(networkId),
@@ -200,7 +199,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			//GpuDriverVersion:       types.StringValue(gpuDriverVersion),
 		}
 
-		pool = append(pool, &item)
+		pool = append(pool, item)
 	}
 
 	state.Pools = pool
@@ -225,16 +224,16 @@ func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attrib
 	requiredStrings := []string{
 		"vpc_id", "cluster_name", "k8s_version", "purpose",
 		"pod_network", "pod_prefix", "service_network", "service_prefix",
-		"network_id", "network_overlay", "edge_gateway_id",
+		"network_id", "network_overlay",
 	}
 	// Optional string fields
 	optionalStrings := []string{
-		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone",
+		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone", "network_node_prefix",
 	}
 	// Required int fields
-	requiredInts := []string{"k8s_max_pod", "network_node_prefix"}
+	requiredInts := []string{}
 	// Optional int fields
-	optionalInts := []string{}
+	optionalInts := []string{"k8s_max_pod"}
 	// Optional bool fields
 	optionalBools := []string{"is_enable_auto_upgrade"}
 	// Optional list fields
@@ -282,24 +281,39 @@ func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attrib
 		Required:    true,
 		Description: descriptions["k8s_version"],
 	}
-	topLevelAttributes["network_node_prefix"] = schema.Int64Attribute{
-		Required:    true,
-		Description: descriptions["network_node_prefix"],
-	}
 
-	// Optional nested block: cluster_autoscaler
-	topLevelAttributes["cluster_autoscaler"] = schema.SingleNestedAttribute{
-		Optional: true,
-		Attributes: map[string]schema.Attribute{
-			"isEnableAutoScaling":           schema.BoolAttribute{Optional: true, Description: descriptions["isEnableAutoScaling"]},
-			"scaleDownDelayAfterAdd":        schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownDelayAfterAdd"]},
-			"scaleDownDelayAfterDelete":     schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownDelayAfterDelete"]},
-			"scaleDownDelayAfterFailure":    schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownDelayAfterFailure"]},
-			"scaleDownUnneededTime":         schema.Int64Attribute{Optional: true, Description: descriptions["scaleDownUnneededTime"]},
-			"scaleDownUtilizationThreshold": schema.Float64Attribute{Optional: true, Description: descriptions["scaleDownUtilizationThreshold"]},
-			"scanInterval":                  schema.Int64Attribute{Optional: true, Description: descriptions["scanInterval"]},
-			"expander":                      schema.StringAttribute{Optional: true, Description: descriptions["expander"]},
-		},
+	// Flatten cluster_autoscaler into individual attributes
+	topLevelAttributes["is_enable_auto_scaling"] = schema.BoolAttribute{
+		Optional:    true,
+		Description: descriptions["is_enable_auto_scaling"],
+	}
+	topLevelAttributes["scale_down_delay_after_add"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_delay_after_add"],
+	}
+	topLevelAttributes["scale_down_delay_after_delete"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_delay_after_delete"],
+	}
+	topLevelAttributes["scale_down_delay_after_failure"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_delay_after_failure"],
+	}
+	topLevelAttributes["scale_down_unneeded_time"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_unneeded_time"],
+	}
+	topLevelAttributes["scale_down_utilization_threshold"] = schema.Float64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_utilization_threshold"],
+	}
+	topLevelAttributes["scan_interval"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scan_interval"],
+	}
+	topLevelAttributes["expander"] = schema.StringAttribute{
+		Optional:    true,
+		Description: descriptions["expander"],
 	}
 
 	return topLevelAttributes
@@ -312,11 +326,11 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 		"name", "storage_profile", "worker_type", "network_id",
 	}
 	// Optional string fields
-	optionalStrings := []string{"tags", "gpuSharingClient", "driverInstallationType"}
+	optionalStrings := []string{"tags", "gpu_sharing_client", "driver_installation_type", "container_runtime", "gpu_driver_version", "network_name", "vgpu_id"}
 	// Required int fields
 	requiredInts := []string{"worker_disk_size", "scale_min", "scale_max"}
 	// Optional int fields
-	optionalInts := []string{"maxClient"}
+	optionalInts := []string{"max_client"}
 	// Required bool fields
 	requiredBools := []string{"auto_scale", "is_enable_auto_repair"}
 
@@ -355,11 +369,6 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 		Optional:    true,
 		ElementType: types.MapType{ElemType: types.StringType},
 		Description: descriptions["kv"],
-	}
-	// vGpuId: string or null
-	poolLevelAttributes["vGpuId"] = schema.StringAttribute{
-		Optional:    true,
-		Description: descriptions["vGpuId"],
 	}
 	return poolLevelAttributes
 }

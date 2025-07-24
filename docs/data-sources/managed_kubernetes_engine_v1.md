@@ -26,7 +26,6 @@ Manage managed FKE clusters.
 - `k8s_max_pod` (Number)
 - `k8s_version` (String)
 - `load_balancer_type` (String)
-- `network_node_prefix` (Number)
 - `pod_network` (String)
 - `pod_prefix` (String)
 - `pools` (Block List) (see [below for nested schema](#nestedblock--pools))
