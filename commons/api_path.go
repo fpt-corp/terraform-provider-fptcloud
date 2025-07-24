@@ -273,9 +273,6 @@ var ApiPath = struct {
 			vpcId, platform, clusterId, action,
 		)
 	},
-	GetFKEOSVersion: func(vpcId string, platform string) string {
-		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get_k8s_versions", vpcId, platform)
-	},
 
 	// Object Storage
 	// Common
