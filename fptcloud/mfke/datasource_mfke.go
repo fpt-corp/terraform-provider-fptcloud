@@ -163,7 +163,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 		}
 	}
 
-	var pool []managedKubernetesEnginePool
+	var pool []*managedKubernetesEnginePool
 
 	for _, name := range poolNames {
 		w, ok := workers[name]
@@ -186,7 +186,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			return nil, e
 		}
 
-		item := managedKubernetesEnginePool{
+		item := &managedKubernetesEnginePool{
 			WorkerPoolID:       types.StringValue(w.Name),
 			StorageProfile:     types.StringValue(w.Volume.Type),
 			WorkerType:         types.StringValue(flavorId),
@@ -333,6 +333,8 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 	optionalInts := []string{"max_client"}
 	// Required bool fields
 	requiredBools := []string{"auto_scale", "is_enable_auto_repair"}
+	// Optional bool fields
+	optionalBools := []string{"is_enable_auto_repair"}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
@@ -361,6 +363,12 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 	for _, attribute := range requiredBools {
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
 			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalBools {
+		poolLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:    true,
 			Description: descriptions[attribute],
 		}
 	}

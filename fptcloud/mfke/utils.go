@@ -144,9 +144,9 @@ func PoolFields() map[string]schema.Attribute {
 	// Optional int fields
 	optionalInts := []string{"max_client"}
 	// Required bool fields
-	requiredBools := []string{"is_enable_auto_repair"}
+	requiredBools := []string{}
 	// Optional bool fields
-	optionalBools := []string{"worker_base"}
+	optionalBools := []string{"worker_base", "is_enable_auto_repair"}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
@@ -213,7 +213,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		return &d
 	}
 
-	pools := make([]managedKubernetesEnginePoolJson, 0)
+	pools := make([]*managedKubernetesEnginePoolJson, 0)
 	for _, item := range from.Pools {
 		name := item.WorkerPoolID.ValueString()
 		// Convert []KV to []map[string]string for JSON
@@ -225,7 +225,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			kvs = append(kvs, goMap)
 		}
 
-		newItem := managedKubernetesEnginePoolJson{
+		newItem := &managedKubernetesEnginePoolJson{
 			StorageProfile:         item.StorageProfile.ValueString(),
 			WorkerType:             item.WorkerType.ValueString(),
 			WorkerDiskSize:         item.WorkerDiskSize.ValueInt64(),
@@ -328,16 +328,22 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 }
 
 // remapPools
-func (r *resourceManagedKubernetesEngine) remapPools(item managedKubernetesEnginePool, name string) managedKubernetesEnginePoolJson {
-	newItem := managedKubernetesEnginePoolJson{
-		StorageProfile:     item.StorageProfile.ValueString(),
-		WorkerType:         item.WorkerType.ValueString(),
-		WorkerDiskSize:     item.WorkerDiskSize.ValueInt64(),
-		ScaleMin:           item.ScaleMin.ValueInt64(),
-		ScaleMax:           item.ScaleMax.ValueInt64(),
-		NetworkID:          item.NetworkID.ValueString(),
-		IsEnableAutoRepair: item.IsEnableAutoRepair.ValueBool(),
-		WorkerPoolID:       &name,
+func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) *managedKubernetesEnginePoolJson {
+	newItem := &managedKubernetesEnginePoolJson{
+		StorageProfile:         item.StorageProfile.ValueString(),
+		WorkerType:             item.WorkerType.ValueString(),
+		WorkerDiskSize:         item.WorkerDiskSize.ValueInt64(),
+		ScaleMin:               item.ScaleMin.ValueInt64(),
+		ScaleMax:               item.ScaleMax.ValueInt64(),
+		NetworkID:              item.NetworkID.ValueString(),
+		IsEnableAutoRepair:     item.IsEnableAutoRepair.ValueBool(),
+		WorkerPoolID:           &name,
+		NetworkName:            item.NetworkName.ValueString(),
+		ContainerRuntime:       item.ContainerRuntime.ValueString(),
+		Tags:                   item.Tags.ValueString(),
+		VGpuID:                 item.VGpuID.ValueString(),
+		DriverInstallationType: item.DriverInstallationType.ValueString(),
+		GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
 	}
 	if item.ScaleMin.ValueInt64() == item.ScaleMax.ValueInt64() {
 		newItem.AutoScale = false
@@ -378,7 +384,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
 			return &di
 		}
-		pools := []managedKubernetesEnginePoolJson{}
+		pools := []*managedKubernetesEnginePoolJson{}
 		for _, pool := range to.Pools {
 			item := r.remapPools(pool, pool.WorkerPoolID.ValueString())
 			pools = append(pools, item)
@@ -448,13 +454,15 @@ func (r *resourceManagedKubernetesEngine) UpgradeVersion(ctx context.Context, fr
 
 // diffPool
 func (r *resourceManagedKubernetesEngine) DiffPool(_ context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) bool {
-	fromPool := map[string]managedKubernetesEnginePool{}
-	toPool := map[string]managedKubernetesEnginePool{}
+	fromPool := map[string]*managedKubernetesEnginePool{}
+	toPool := map[string]*managedKubernetesEnginePool{}
 	for _, pool := range from.Pools {
 		fromPool[pool.WorkerPoolID.ValueString()] = pool
+		fmt.Printf("fromPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
 	}
 	for _, pool := range to.Pools {
 		toPool[pool.WorkerPoolID.ValueString()] = pool
+		fmt.Printf("toPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
 	}
 	if len(fromPool) != len(toPool) {
 		return true
@@ -512,7 +520,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			poolNames = append(poolNames, worker.Name)
 		}
 	}
-	var pool []managedKubernetesEnginePool
+	var pool []*managedKubernetesEnginePool
 	for _, name := range poolNames {
 		w, ok := workers[name]
 		if !ok {
@@ -528,7 +536,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		if e != nil {
 			return nil, e
 		}
-		item := managedKubernetesEnginePool{
+		item := &managedKubernetesEnginePool{
 			WorkerPoolID:           types.StringValue(w.Name),
 			StorageProfile:         types.StringValue(w.Volume.Type),
 			WorkerType:             types.StringValue(flavorId),

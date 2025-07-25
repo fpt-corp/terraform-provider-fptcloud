@@ -9,21 +9,21 @@ import (
 )
 
 type managedKubernetesEngine struct {
-	Id             types.String                  `tfsdk:"id"`
-	VpcId          types.String                  `tfsdk:"vpc_id"`
-	ClusterName    types.String                  `tfsdk:"cluster_name"`
-	NetworkID      types.String                  `tfsdk:"network_id"`
-	K8SVersion     types.String                  `tfsdk:"k8s_version"`
-	Purpose        types.String                  `tfsdk:"purpose"`
-	Pools          []managedKubernetesEnginePool `tfsdk:"pools"`
-	PodNetwork     types.String                  `tfsdk:"pod_network"`
-	PodPrefix      types.String                  `tfsdk:"pod_prefix"`
-	ServiceNetwork types.String                  `tfsdk:"service_network"`
-	ServicePrefix  types.String                  `tfsdk:"service_prefix"`
-	K8SMaxPod      types.Int64                   `tfsdk:"k8s_max_pod"`
-	NetworkType    types.String                  `tfsdk:"network_type"`
-	NetworkOverlay types.String                  `tfsdk:"network_overlay"`
-	EdgeGatewayId  types.String                  `tfsdk:"edge_gateway_id"`
+	Id             types.String                   `tfsdk:"id"`
+	VpcId          types.String                   `tfsdk:"vpc_id"`
+	ClusterName    types.String                   `tfsdk:"cluster_name"`
+	NetworkID      types.String                   `tfsdk:"network_id"`
+	K8SVersion     types.String                   `tfsdk:"k8s_version"`
+	Purpose        types.String                   `tfsdk:"purpose"`
+	Pools          []*managedKubernetesEnginePool `tfsdk:"pools"`
+	PodNetwork     types.String                   `tfsdk:"pod_network"`
+	PodPrefix      types.String                   `tfsdk:"pod_prefix"`
+	ServiceNetwork types.String                   `tfsdk:"service_network"`
+	ServicePrefix  types.String                   `tfsdk:"service_prefix"`
+	K8SMaxPod      types.Int64                    `tfsdk:"k8s_max_pod"`
+	NetworkType    types.String                   `tfsdk:"network_type"`
+	NetworkOverlay types.String                   `tfsdk:"network_overlay"`
+	EdgeGatewayId  types.String                   `tfsdk:"edge_gateway_id"`
 	// New block fields
 	ClusterAutoscaler     types.Object           `tfsdk:"cluster_autoscaler"`
 	ClusterEndpointAccess *ClusterEndpointAccess `tfsdk:"cluster_endpoint_access"`
@@ -68,27 +68,27 @@ type KV struct {
 }
 
 type managedKubernetesEngineJson struct {
-	ClusterName           string                            `json:"cluster_name"`
-	NetworkID             string                            `json:"network_id"`
-	K8SVersion            string                            `json:"k8s_version,omitempty"`
-	OsVersion             interface{}                       `json:"os_version,omitempty"`
-	Purpose               string                            `json:"purpose,omitempty"`
-	Pools                 []managedKubernetesEnginePoolJson `json:"pools"`
-	PodNetwork            string                            `json:"pod_network,omitempty"`
-	PodPrefix             string                            `json:"pod_prefix,omitempty"`
-	ServiceNetwork        string                            `json:"service_network,omitempty"`
-	ServicePrefix         string                            `json:"service_prefix,omitempty"`
-	K8SMaxPod             int64                             `json:"k8s_max_pod,omitempty"`
-	NetworkOverlay        string                            `json:"network_overlay,omitempty"`
-	InternalSubnetLb      interface{}                       `json:"internal_subnet_lb,omitempty"`
-	EdgeGatewayId         string                            `json:"edge_gateway_id,omitempty"`
-	EdgeGatewayName       string                            `json:"edge_gateway_name,omitempty"`
-	ClusterEndpointAccess *ClusterEndpointAccessJson        `json:"clusterEndpointAccess,omitempty"`
-	IsEnableAutoUpgrade   bool                              `json:"is_enable_auto_upgrade,omitempty"`
-	AutoUpgradeExpression string                            `json:"auto_upgrade_expression,omitempty"`
-	AutoUpgradeTimezone   string                            `json:"auto_upgrade_timezone,omitempty"`
-	ClusterAutoscaler     interface{}                       `json:"cluster_autoscaler,omitempty"`
-	TypeCreate            string                            `json:"type_create,omitempty"`
+	ClusterName           string                             `json:"cluster_name"`
+	NetworkID             string                             `json:"network_id"`
+	K8SVersion            string                             `json:"k8s_version,omitempty"`
+	OsVersion             interface{}                        `json:"os_version,omitempty"`
+	Purpose               string                             `json:"purpose,omitempty"`
+	Pools                 []*managedKubernetesEnginePoolJson `json:"pools"`
+	PodNetwork            string                             `json:"pod_network,omitempty"`
+	PodPrefix             string                             `json:"pod_prefix,omitempty"`
+	ServiceNetwork        string                             `json:"service_network,omitempty"`
+	ServicePrefix         string                             `json:"service_prefix,omitempty"`
+	K8SMaxPod             int64                              `json:"k8s_max_pod,omitempty"`
+	NetworkOverlay        string                             `json:"network_overlay,omitempty"`
+	InternalSubnetLb      interface{}                        `json:"internal_subnet_lb,omitempty"`
+	EdgeGatewayId         string                             `json:"edge_gateway_id,omitempty"`
+	EdgeGatewayName       string                             `json:"edge_gateway_name,omitempty"`
+	ClusterEndpointAccess *ClusterEndpointAccessJson         `json:"clusterEndpointAccess,omitempty"`
+	IsEnableAutoUpgrade   bool                               `json:"is_enable_auto_upgrade,omitempty"`
+	AutoUpgradeExpression string                             `json:"auto_upgrade_expression,omitempty"`
+	AutoUpgradeTimezone   string                             `json:"auto_upgrade_timezone,omitempty"`
+	ClusterAutoscaler     interface{}                        `json:"cluster_autoscaler,omitempty"`
+	TypeCreate            string                             `json:"type_create,omitempty"`
 }
 
 type ClusterEndpointAccessJson struct {
@@ -287,10 +287,10 @@ type managedKubernetesEngineDataWorker struct {
 }
 
 type managedKubernetesEngineEditWorker struct {
-	Pools             []managedKubernetesEnginePoolJson `json:"pools"`
-	K8sVersion        string                            `json:"k8s_version"`
-	TypeConfigure     string                            `json:"type_configure"`
-	CurrentNetworking string                            `json:"currentNetworking"`
+	Pools             []*managedKubernetesEnginePoolJson `json:"pools"`
+	K8sVersion        string                             `json:"k8s_version"`
+	TypeConfigure     string                             `json:"type_configure"`
+	CurrentNetworking string                             `json:"currentNetworking"`
 }
 
 type ClusterAutoscaler struct {
