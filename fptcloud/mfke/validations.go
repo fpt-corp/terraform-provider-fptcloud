@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func validatePool(pools []managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
+func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 	if len(pools) == 0 {
 		d := diag2.NewErrorDiagnostic("Invalid configuration", "At least a worker pool must be configured")
 		return &d
@@ -131,6 +131,8 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 
 		network := state.NetworkID.ValueString()
 		for _, pool := range state.Pools {
+			fmt.Println("pool.NetworkID.ValueString(): " + pool.NetworkID.ValueString())
+			fmt.Printf("state.Pools: %v\n", state.Pools)
 			if pool.NetworkID.ValueString() != network {
 				d := diag2.NewErrorDiagnostic(
 					fmt.Sprintf("Worker network ID mismatch (%s and %s)", network, pool.NetworkID.ValueString()),
@@ -188,11 +190,11 @@ func validateNetworkOverlay(networkOverlay string) *diag2.ErrorDiagnostic {
 	return &d
 }
 
-func validatePoolNames(pool []managedKubernetesEnginePool) ([]string, error) {
+func validatePoolNames(pool []*managedKubernetesEnginePool) ([]string, error) {
 	var poolNames []string
 
 	if len(pool) != 0 {
-		existingPool := map[string]managedKubernetesEnginePool{}
+		existingPool := map[string]*managedKubernetesEnginePool{}
 		for _, pool := range pool {
 			name := pool.WorkerPoolID.ValueString()
 			if _, ok := existingPool[name]; ok {
@@ -393,7 +395,7 @@ func validateImmutableInt64Field(fieldName string, plan, state types.Int64) diag
 	return nil
 }
 
-func validateImmutablePoolStringField(fieldName string, planPools, statePools []managedKubernetesEnginePool) diag2.Diagnostic {
+func validateImmutablePoolStringField(planPools, statePools []*managedKubernetesEnginePool) diag2.Diagnostic {
 	if len(planPools) != len(statePools) {
 		return diag2.NewErrorDiagnostic(
 			"Pool count mismatch",
@@ -463,7 +465,7 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 		return false
 	}
 	// Deny changing container_runtime in worker pool
-	if diag := validateImmutablePoolStringField("container_runtime", plan.Pools, state.Pools); diag != nil {
+	if diag := validateImmutablePoolStringField(plan.Pools, state.Pools); diag != nil {
 		response.Diagnostics.Append(diag)
 		return false
 	}

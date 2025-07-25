@@ -210,6 +210,9 @@ func (r *resourceManagedKubernetesEngine) Update(ctx context.Context, request re
 		return
 	}
 
+	tflog.Info(ctx, "[DEBUG] State in Update: "+fmt.Sprintf("%#v", state))
+	tflog.Info(ctx, "[DEBUG] Plan in Update: "+fmt.Sprintf("%#v", plan))
+
 	errDiag := r.Diff(ctx, &state, &plan)
 	if errDiag != nil {
 		response.Diagnostics.Append(errDiag)

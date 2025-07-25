@@ -91,21 +91,25 @@ func SetDefaults(state *managedKubernetesEngine) {
 	}
 
 	// Set default network_id and network_name for each worker pool
-	for _, pool := range state.Pools {
+	for i := range state.Pools {
+		pool := state.Pools[i]
+		if pool == nil {
+			continue
+		}
 		if pool.NetworkID.IsNull() || pool.NetworkID.IsUnknown() || pool.NetworkID.ValueString() == "" {
 			pool.NetworkID = state.NetworkID
 		}
-	}
-
-	// Set default container_runtime for each worker pool
-	for _, pool := range state.Pools {
 		if pool.ContainerRuntime.IsNull() || pool.ContainerRuntime.IsUnknown() || pool.ContainerRuntime.ValueString() == "" {
 			pool.ContainerRuntime = types.StringValue("containerd")
 		}
 	}
+
 }
 
 func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
+	if plan.Id.IsNull() || plan.Id.IsUnknown() || plan.Id.ValueString() == "" {
+		plan.Id = state.Id
+	}
 	if plan.Purpose.IsNull() || plan.Purpose.IsUnknown() || plan.Purpose.ValueString() == "" {
 		plan.Purpose = state.Purpose
 	}
@@ -194,10 +198,89 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 	// Pools: default optional fields in each pool
 	for i := range plan.Pools {
 		if plan.Pools[i].NetworkID.IsNull() || plan.Pools[i].NetworkID.IsUnknown() || plan.Pools[i].NetworkID.ValueString() == "" {
-			plan.Pools[i].NetworkID = state.Pools[i].NetworkID
+			if state.Pools[i] != nil {
+				plan.Pools[i].NetworkID = state.Pools[i].NetworkID
+			} else {
+				plan.Pools[i].NetworkID = state.NetworkID
+			}
 		}
 		if plan.Pools[i].ContainerRuntime.IsNull() || plan.Pools[i].ContainerRuntime.IsUnknown() || plan.Pools[i].ContainerRuntime.ValueString() == "" {
-			plan.Pools[i].ContainerRuntime = state.Pools[i].ContainerRuntime
+			if state.Pools[i] != nil {
+				plan.Pools[i].ContainerRuntime = state.Pools[i].ContainerRuntime
+			} else {
+				plan.Pools[i].ContainerRuntime = types.StringValue("containerd")
+			}
+		}
+		// Additional fields
+		if plan.Pools[i].NetworkName.IsNull() || plan.Pools[i].NetworkName.IsUnknown() || plan.Pools[i].NetworkName.ValueString() == "" {
+			if state.Pools[i] != nil {
+				plan.Pools[i].NetworkName = state.Pools[i].NetworkName
+			} else {
+				plan.Pools[i].NetworkName = types.StringValue("")
+			}
+		}
+		if plan.Pools[i].Tags.IsNull() || plan.Pools[i].Tags.IsUnknown() || plan.Pools[i].Tags.ValueString() == "" {
+			if state.Pools[i] != nil {
+				plan.Pools[i].Tags = state.Pools[i].Tags
+			} else {
+				plan.Pools[i].Tags = types.StringValue("")
+			}
+		}
+		if plan.Pools[i].Kv == nil || len(plan.Pools[i].Kv) == 0 {
+			if state.Pools[i] != nil {
+				plan.Pools[i].Kv = state.Pools[i].Kv
+			} else {
+				plan.Pools[i].Kv = nil
+			}
+		}
+		if plan.Pools[i].VGpuID.IsNull() || plan.Pools[i].VGpuID.IsUnknown() || plan.Pools[i].VGpuID.ValueString() == "" {
+			if state.Pools[i] != nil {
+				plan.Pools[i].VGpuID = state.Pools[i].VGpuID
+			} else {
+				plan.Pools[i].VGpuID = types.StringValue("")
+			}
+		}
+		if plan.Pools[i].GpuSharingClient.IsNull() || plan.Pools[i].GpuSharingClient.IsUnknown() || plan.Pools[i].GpuSharingClient.ValueString() == "" {
+			if state.Pools[i] != nil {
+				plan.Pools[i].GpuSharingClient = state.Pools[i].GpuSharingClient
+			} else {
+				plan.Pools[i].GpuSharingClient = types.StringValue("")
+			}
+		}
+		if plan.Pools[i].MaxClient.IsNull() || plan.Pools[i].MaxClient.IsUnknown() || plan.Pools[i].MaxClient.ValueInt64() == 0 {
+			if state.Pools[i] != nil {
+				plan.Pools[i].MaxClient = state.Pools[i].MaxClient
+			} else {
+				plan.Pools[i].MaxClient = types.Int64Value(0)
+			}
+		}
+		if plan.Pools[i].IsEnableAutoRepair.IsNull() || plan.Pools[i].IsEnableAutoRepair.IsUnknown() {
+			if state.Pools[i] != nil {
+				plan.Pools[i].IsEnableAutoRepair = state.Pools[i].IsEnableAutoRepair
+			} else {
+				plan.Pools[i].IsEnableAutoRepair = types.BoolValue(false)
+			}
+		}
+		if plan.Pools[i].DriverInstallationType.IsNull() || plan.Pools[i].DriverInstallationType.IsUnknown() || plan.Pools[i].DriverInstallationType.ValueString() == "" {
+			if state.Pools[i] != nil {
+				plan.Pools[i].DriverInstallationType = state.Pools[i].DriverInstallationType
+			} else {
+				plan.Pools[i].DriverInstallationType = types.StringValue("")
+			}
+		}
+		if plan.Pools[i].GpuDriverVersion.IsNull() || plan.Pools[i].GpuDriverVersion.IsUnknown() || plan.Pools[i].GpuDriverVersion.ValueString() == "" {
+			if state.Pools[i] != nil {
+				plan.Pools[i].GpuDriverVersion = state.Pools[i].GpuDriverVersion
+			} else {
+				plan.Pools[i].GpuDriverVersion = types.StringValue("")
+			}
+		}
+		if plan.Pools[i].WorkerBase.IsNull() || plan.Pools[i].WorkerBase.IsUnknown() {
+			if state.Pools[i] != nil {
+				plan.Pools[i].WorkerBase = state.Pools[i].WorkerBase
+			} else {
+				plan.Pools[i].WorkerBase = types.BoolValue(false)
+			}
 		}
 	}
 }
