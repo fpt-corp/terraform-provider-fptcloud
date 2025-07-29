@@ -25,13 +25,29 @@ type managedKubernetesEngine struct {
 	NetworkOverlay types.String                   `tfsdk:"network_overlay"`
 	EdgeGatewayId  types.String                   `tfsdk:"edge_gateway_id"`
 	// New block fields
-	ClusterAutoscaler     types.Object           `tfsdk:"cluster_autoscaler"`
-	ClusterEndpointAccess *ClusterEndpointAccess `tfsdk:"cluster_endpoint_access"`
-	IsEnableAutoUpgrade   types.Bool             `tfsdk:"is_enable_auto_upgrade"`
-	AutoUpgradeExpression types.List             `tfsdk:"auto_upgrade_expression"`
-	AutoUpgradeTimezone   types.String           `tfsdk:"auto_upgrade_timezone"`
-	InternalSubnetLb      types.String           `tfsdk:"internal_subnet_lb"`
-	EdgeGatewayName       types.String           `tfsdk:"edge_gateway_name"`
+	ClusterAutoscaler     types.Object `tfsdk:"cluster_autoscaler"`
+	ClusterEndpointAccess types.Object `tfsdk:"cluster_endpoint_access"`
+	IsEnableAutoUpgrade   types.Bool   `tfsdk:"is_enable_auto_upgrade"`
+	AutoUpgradeExpression types.List   `tfsdk:"auto_upgrade_expression"`
+	AutoUpgradeTimezone   types.String `tfsdk:"auto_upgrade_timezone"`
+	InternalSubnetLb      types.String `tfsdk:"internal_subnet_lb"`
+	EdgeGatewayName       types.String `tfsdk:"edge_gateway_name"`
+}
+
+type ClusterAutoscaler struct {
+	IsEnableAutoScaling           types.Bool    `tfsdk:"is_enable_auto_scaling"`
+	ScaleDownDelayAfterAdd        types.Int64   `tfsdk:"scale_down_delay_after_add"`     // seconds
+	ScaleDownDelayAfterDelete     types.Int64   `tfsdk:"scale_down_delay_after_delete"`  // seconds
+	ScaleDownDelayAfterFailure    types.Int64   `tfsdk:"scale_down_delay_after_failure"` // seconds
+	ScaleDownUnneededTime         types.Int64   `tfsdk:"scale_down_unneeded_time"`       // seconds
+	ScaleDownUtilizationThreshold types.Float64 `tfsdk:"scale_down_utilization_threshold"`
+	ScanInterval                  types.Int64   `tfsdk:"scan_interval"` // seconds
+	Expander                      types.String  `tfsdk:"expander"`
+}
+
+type ClusterEndpointAccess struct {
+	Type      types.String `tfsdk:"type"`
+	AllowCidr types.List   `tfsdk:"allow_cidr"`
 }
 
 type resourceManagedKubernetesEngine struct {
@@ -291,20 +307,4 @@ type managedKubernetesEngineEditWorker struct {
 	K8sVersion        string                             `json:"k8s_version"`
 	TypeConfigure     string                             `json:"type_configure"`
 	CurrentNetworking string                             `json:"currentNetworking"`
-}
-
-type ClusterAutoscaler struct {
-	IsEnableAutoScaling           types.Bool    `tfsdk:"is_enable_auto_scaling"`
-	ScaleDownDelayAfterAdd        types.Int64   `tfsdk:"scale_down_delay_after_add"`     // seconds
-	ScaleDownDelayAfterDelete     types.Int64   `tfsdk:"scale_down_delay_after_delete"`  // seconds
-	ScaleDownDelayAfterFailure    types.Int64   `tfsdk:"scale_down_delay_after_failure"` // seconds
-	ScaleDownUnneededTime         types.Int64   `tfsdk:"scale_down_unneeded_time"`       // seconds
-	ScaleDownUtilizationThreshold types.Float64 `tfsdk:"scale_down_utilization_threshold"`
-	ScanInterval                  types.Int64   `tfsdk:"scan_interval"` // seconds
-	Expander                      types.String  `tfsdk:"expander"`
-}
-
-type ClusterEndpointAccess struct {
-	Type      types.String   `tfsdk:"type"`
-	AllowCidr []types.String `tfsdk:"allow_cidr"`
 }

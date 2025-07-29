@@ -312,14 +312,21 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		to.EdgeGatewayName = edge.Name
 	}
 
-	var allowCidrs []string
-	for _, v := range from.ClusterEndpointAccess.AllowCidr {
-		allowCidrs = append(allowCidrs, v.ValueString())
-	}
+	if !from.ClusterEndpointAccess.IsNull() && !from.ClusterEndpointAccess.IsUnknown() {
+		attrs := from.ClusterEndpointAccess.Attributes()
 
-	to.ClusterEndpointAccess = &ClusterEndpointAccessJson{
-		Type:      from.ClusterEndpointAccess.Type.ValueString(),
-		AllowCidr: allowCidrs,
+		typeStr := attrs["type"].(types.String).ValueString()
+
+		allowCidrsAttr := attrs["allow_cidr"].(types.List)
+		var allowCidrs []string
+		for _, v := range allowCidrsAttr.Elements() {
+			allowCidrs = append(allowCidrs, v.(types.String).ValueString())
+		}
+
+		to.ClusterEndpointAccess = &ClusterEndpointAccessJson{
+			Type:      typeStr,
+			AllowCidr: allowCidrs,
+		}
 	}
 
 	to.TypeCreate = "create"
@@ -569,12 +576,20 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
 
 	// Default cluster_endpoint_access if missing
-	if state.ClusterEndpointAccess == nil || state.ClusterEndpointAccess.Type.IsNull() || state.ClusterEndpointAccess.Type.IsUnknown() || state.ClusterEndpointAccess.Type.ValueString() == "" {
-		if state.ClusterEndpointAccess == nil {
-			state.ClusterEndpointAccess = &ClusterEndpointAccess{}
+	if state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
+		defaultAccessMap := map[string]attr.Value{
+			"type": types.StringValue("public"),
+			"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
+				types.StringValue("0.0.0.0/0"),
+			}),
 		}
-		state.ClusterEndpointAccess.Type = types.StringValue("public")
-		state.ClusterEndpointAccess.AllowCidr = []types.String{types.StringValue("0.0.0.0/0")}
+		state.ClusterEndpointAccess, _ = types.ObjectValue(
+			map[string]attr.Type{
+				"type":       types.StringType,
+				"allow_cidr": types.ListType{ElemType: types.StringType},
+			},
+			defaultAccessMap,
+		)
 	}
 
 	// Default cluster_autoscaler if missing

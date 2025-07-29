@@ -274,14 +274,30 @@ func ValidateCreate(state *managedKubernetesEngine, response *resource.CreateRes
 		return false
 	}
 	// Validate cluster_endpoint_access
-	accessType := state.ClusterEndpointAccess.Type.ValueString()
-	if diag := validateClusterEndpointAccess(accessType); diag != nil {
-		response.Diagnostics.Append(diag)
-		return false
-	}
-	if diag := validateAllowCidr(state.ClusterEndpointAccess.AllowCidr); diag != nil {
-		response.Diagnostics.Append(diag)
-		return false
+	if !state.ClusterEndpointAccess.IsNull() && !state.ClusterEndpointAccess.IsUnknown() {
+		accessAttrs := state.ClusterEndpointAccess.Attributes()
+
+		accessTypeAttr, ok := accessAttrs["type"].(types.String)
+		if !ok || accessTypeAttr.IsNull() || accessTypeAttr.IsUnknown() {
+			response.Diagnostics.AddError("Invalid cluster_endpoint_access.type", "Missing or invalid type field in cluster_endpoint_access")
+			return false
+		}
+
+		if diag := validateClusterEndpointAccess(accessTypeAttr.ValueString()); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+
+		allowCidrAttr, ok := accessAttrs["allow_cidr"].(types.List)
+		if !ok || allowCidrAttr.IsNull() || allowCidrAttr.IsUnknown() {
+			response.Diagnostics.AddError("Invalid cluster_endpoint_access.allow_cidr", "Missing or invalid allow_cidr field in cluster_endpoint_access")
+			return false
+		}
+
+		if diag := validateAllowCidr(allowCidrAttr); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
 	}
 	// Validate cluster_autoscaler expander
 	if !state.ClusterAutoscaler.IsNull() && !state.ClusterAutoscaler.IsUnknown() {
@@ -321,53 +337,74 @@ func validateClusterAutoscalerUpdate(plan *managedKubernetesEngine) diag2.Diagno
 	return nil
 }
 
-func validateAllowCidr(allowCidrs []types.String) *diag2.ErrorDiagnostic {
-	for _, cidr := range allowCidrs {
-		if cidr.IsNull() || cidr.IsUnknown() {
-			d := diag2.NewErrorDiagnostic("Invalid allowCidr entry", "allowCidr entry is null or unknown")
-			return &d
+func validateAllowCidr(allowCidr types.List) diag2.Diagnostic {
+	if allowCidr.IsNull() || allowCidr.IsUnknown() {
+		return nil
+	}
+
+	for _, v := range allowCidr.Elements() {
+		str, ok := v.(types.String)
+		if !ok || str.IsNull() || str.IsUnknown() {
+			continue // hoặc có thể báo lỗi nếu cần thiết
 		}
-		if _, _, err := net.ParseCIDR(cidr.ValueString()); err != nil {
-			d := diag2.NewErrorDiagnostic("Invalid allowCidr entry", "allowCidr entry '"+cidr.ValueString()+"' is not a valid CIDR: "+err.Error())
-			return &d
+		_, _, err := net.ParseCIDR(str.ValueString())
+		if err != nil {
+			return diag2.NewErrorDiagnostic(
+				"Invalid CIDR format in allow_cidr",
+				fmt.Sprintf("'%s' is not a valid CIDR string: %v", str.ValueString(), err),
+			)
 		}
 	}
+
 	return nil
 }
 
 func validateClusterEndpointAccessUpdate(plan, state *managedKubernetesEngine) diag2.Diagnostic {
-	if plan == nil || plan.ClusterEndpointAccess == nil {
+	if plan == nil || state == nil {
 		return nil
 	}
-	// If plan.ClusterEndpointAccess is not set (null/unknown), skip
-	if plan.ClusterEndpointAccess.Type.IsNull() || plan.ClusterEndpointAccess.Type.IsUnknown() {
+
+	// Kiểm tra null/unknown của object
+	if plan.ClusterEndpointAccess.IsNull() || plan.ClusterEndpointAccess.IsUnknown() ||
+		state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
 		return nil
 	}
-	if state == nil || state.ClusterEndpointAccess == nil {
+
+	planAttrs := plan.ClusterEndpointAccess.Attributes()
+	stateAttrs := state.ClusterEndpointAccess.Attributes()
+
+	planType, planOk := planAttrs["type"].(types.String)
+	stateType, stateOk := stateAttrs["type"].(types.String)
+
+	// Bỏ qua nếu không lấy được field type
+	if !planOk || planType.IsNull() || planType.IsUnknown() ||
+		!stateOk || stateType.IsNull() || stateType.IsUnknown() {
 		return nil
 	}
-	if state.ClusterEndpointAccess.Type.IsNull() || state.ClusterEndpointAccess.Type.IsUnknown() {
-		return nil
-	}
-	planType := plan.ClusterEndpointAccess.Type.ValueString()
-	stateType := state.ClusterEndpointAccess.Type.ValueString()
-	// Only allow transitions: private <-> mixed, but not public <-> private/mixed
-	if stateType == "public" && planType != "public" {
+
+	planTypeVal := planType.ValueString()
+	stateTypeVal := stateType.ValueString()
+
+	if stateTypeVal == "public" && planTypeVal != "public" {
 		return diag2.NewErrorDiagnostic(
 			"Invalid cluster_endpoint_access.type transition",
 			"Cannot change cluster_endpoint_access.type from 'public' to 'private' or 'mixed' after creation.",
 		)
 	}
-	if (stateType == "private" || stateType == "mixed") && planType == "public" {
+	if (stateTypeVal == "private" || stateTypeVal == "mixed") && planTypeVal == "public" {
 		return diag2.NewErrorDiagnostic(
 			"Invalid cluster_endpoint_access.type transition",
 			"Cannot change cluster_endpoint_access.type from 'private' or 'mixed' to 'public' after creation.",
 		)
 	}
-	// Validate allow_cidr here
-	if diag := validateAllowCidr(plan.ClusterEndpointAccess.AllowCidr); diag != nil {
-		return diag
+
+	// Validate allow_cidr
+	if allowCidrAttr, ok := planAttrs["allow_cidr"].(types.List); ok && !allowCidrAttr.IsNull() && !allowCidrAttr.IsUnknown() {
+		if diag := validateAllowCidr(allowCidrAttr); diag != nil {
+			return diag
+		}
 	}
+
 	return nil
 }
 
