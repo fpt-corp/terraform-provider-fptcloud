@@ -9,6 +9,7 @@ import (
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -49,6 +50,7 @@ func NewResourceManagedKubernetesEngine() resource.Resource {
 func (r *resourceManagedKubernetesEngine) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
 	response.TypeName = request.ProviderTypeName + "_managed_kubernetes_engine_v1"
 }
+
 func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	topLevelAttributes := TopFields()
 	poolAttributes := PoolFields()
@@ -57,31 +59,41 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 		Computed: true,
 	}
 
+	// Thêm các "block" của bạn vào đây như là các thuộc tính
+	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
+		Description: "Configuration for cluster autoscaler.",
+		Optional:    true, // ObjectAttribute HỖ TRỢ Optional
+		Computed:    true, // ObjectAttribute HỖ TRỢ Computed
+		AttributeTypes: map[string]attr.Type{
+			"is_enable_auto_scaling":           types.BoolType,
+			"scale_down_delay_after_add":       types.Int64Type,
+			"scale_down_delay_after_delete":    types.Int64Type,
+			"scale_down_delay_after_failure":   types.Int64Type,
+			"scale_down_unneeded_time":         types.Int64Type,
+			"scale_down_utilization_threshold": types.Float64Type,
+			"scan_interval":                    types.Int64Type,
+			"expander":                         types.StringType,
+		},
+	}
+
+	topLevelAttributes["cluster_endpoint_access"] = schema.ObjectAttribute{
+		Description: "Configuration for cluster endpoint access.",
+		Optional:    true,
+		Computed:    true,
+		AttributeTypes: map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+	}
+
 	response.Schema = schema.Schema{
 		Description: "Manage managed FKE clusters.",
-		Attributes:  topLevelAttributes,
+		Attributes:  topLevelAttributes, // Tất cả được định nghĩa trong Attributes
 		Blocks: map[string]schema.Block{
+			// Chỉ còn lại "pools" là block thực sự (ListNestedBlock)
 			"pools": schema.ListNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: poolAttributes,
-				},
-			},
-			"cluster_autoscaler": schema.SingleNestedBlock{
-				Attributes: map[string]schema.Attribute{
-					"is_enable_auto_scaling":           schema.BoolAttribute{Optional: true, Description: descriptions["is_enable_auto_scaling"]},
-					"scale_down_delay_after_add":       schema.Int64Attribute{Optional: true, Description: descriptions["scale_down_delay_after_add"]},
-					"scale_down_delay_after_delete":    schema.Int64Attribute{Optional: true, Description: descriptions["scale_down_delay_after_delete"]},
-					"scale_down_delay_after_failure":   schema.Int64Attribute{Optional: true, Description: descriptions["scale_down_delay_after_failure"]},
-					"scale_down_unneeded_time":         schema.Int64Attribute{Optional: true, Description: descriptions["scale_down_unneeded_time"]},
-					"scale_down_utilization_threshold": schema.Float64Attribute{Optional: true, Description: descriptions["scale_down_utilization_threshold"]},
-					"scan_interval":                    schema.Int64Attribute{Optional: true, Description: descriptions["scan_interval"]},
-					"expander":                         schema.StringAttribute{Optional: true, Description: descriptions["expander"]},
-				},
-			},
-			"cluster_endpoint_access": schema.SingleNestedBlock{
-				Attributes: map[string]schema.Attribute{
-					"type":       schema.StringAttribute{Optional: true, Description: descriptions["cluster_endpoint_access_type"]},
-					"allow_cidr": schema.ListAttribute{Optional: true, ElementType: types.StringType, Description: descriptions["cluster_endpoint_access_allow_cidr"]},
 				},
 			},
 		},

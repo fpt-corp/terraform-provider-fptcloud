@@ -54,16 +54,54 @@ func SetDefaults(state *managedKubernetesEngine) {
 	if state.K8SVersion.IsNull() || state.K8SVersion.IsUnknown() || state.K8SVersion.ValueString() == "" {
 		state.K8SVersion = types.StringValue("1.31.4")
 	}
-	if state.ClusterEndpointAccess == nil {
-		state.ClusterEndpointAccess = &ClusterEndpointAccess{}
+	if !state.ClusterEndpointAccess.IsNull() && !state.ClusterEndpointAccess.IsUnknown() {
+		attrs := state.ClusterEndpointAccess.Attributes()
+
+		// Xử lý field `type`
+		typeAttr := attrs["type"]
+		if typeAttr.IsNull() || typeAttr.IsUnknown() || typeAttr.(types.String).ValueString() == "" {
+			attrs["type"] = types.StringValue("public")
+		}
+
+		// Xử lý field `allow_cidr`
+		needSet := false
+		cidrAttr := attrs["allow_cidr"]
+		if cidrAttr.IsNull() || cidrAttr.IsUnknown() {
+			needSet = true
+		} else {
+			cidrList := cidrAttr.(types.List)
+			elements := cidrList.Elements()
+			if len(elements) == 0 {
+				needSet = true
+			}
+		}
+		if needSet {
+			attrs["allow_cidr"], _ = types.ListValue(
+				types.StringType,
+				[]attr.Value{types.StringValue("0.0.0.0/0")},
+			)
+		}
+
+		state.ClusterEndpointAccess, _ = types.ObjectValue(
+			map[string]attr.Type{
+				"type":       types.StringType,
+				"allow_cidr": types.ListType{ElemType: types.StringType},
+			},
+			attrs,
+		)
+	} else {
+		state.ClusterEndpointAccess, _ = types.ObjectValue(
+			map[string]attr.Type{
+				"type":       types.StringType,
+				"allow_cidr": types.ListType{ElemType: types.StringType},
+			},
+			map[string]attr.Value{
+				"type":       types.StringValue("public"),
+				"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{types.StringValue("0.0.0.0/0")}),
+			},
+		)
 	}
-	if state.ClusterEndpointAccess.Type.IsNull() || state.ClusterEndpointAccess.Type.IsUnknown() || state.ClusterEndpointAccess.Type.ValueString() == "" {
-		state.ClusterEndpointAccess.Type = types.StringValue("public")
-	}
-	if state.ClusterEndpointAccess.AllowCidr == nil {
-		state.ClusterEndpointAccess.AllowCidr = make([]types.String, 1)
-		state.ClusterEndpointAccess.AllowCidr[0] = types.StringValue("0.0.0.0/0")
-	}
+
 	if state.ClusterAutoscaler.IsNull() || state.ClusterAutoscaler.IsUnknown() {
 		defaultMap := map[string]attr.Value{
 			"is_enable_auto_scaling":           types.BoolValue(true),
@@ -156,14 +194,21 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 		plan.K8SVersion = state.K8SVersion
 	}
 	// cluster_endpoint_access: if not in state, fill default
-	if state.ClusterEndpointAccess == nil || state.ClusterEndpointAccess.Type.IsNull() || state.ClusterEndpointAccess.Type.IsUnknown() || state.ClusterEndpointAccess.Type.ValueString() == "" {
-		if plan.ClusterEndpointAccess == nil {
-			plan.ClusterEndpointAccess = &ClusterEndpointAccess{}
+	if state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
+		defaultAccess, _ := types.ObjectValue(map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		}, map[string]attr.Value{
+			"type": types.StringValue("public"),
+			"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
+				types.StringValue("0.0.0.0/0"),
+			}),
+		})
+		plan.ClusterEndpointAccess = defaultAccess
+	} else {
+		if plan.ClusterEndpointAccess.IsNull() || plan.ClusterEndpointAccess.IsUnknown() {
+			plan.ClusterEndpointAccess = state.ClusterEndpointAccess
 		}
-		plan.ClusterEndpointAccess.Type = types.StringValue("public")
-		plan.ClusterEndpointAccess.AllowCidr = []types.String{types.StringValue("0.0.0.0/0")}
-	} else if plan.ClusterEndpointAccess == nil {
-		plan.ClusterEndpointAccess = state.ClusterEndpointAccess
 	}
 	// cluster_autoscaler: if not in state, fill default
 	if state.ClusterAutoscaler.IsNull() || state.ClusterAutoscaler.IsUnknown() {
