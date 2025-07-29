@@ -58,6 +58,16 @@ func (m *MfkeApiClient) sendPatch(requestURL string, infraType string, params in
 	return m.sendRequestWithHeader(req, infraType)
 }
 
+func (m *MfkeApiClient) sendDelete(requestURL string, infraType string) ([]byte, error) {
+	u := m.Client.PrepareClientURL(requestURL)
+	req, err := http.NewRequest("DELETE", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return m.sendRequestWithHeader(req, infraType)
+}
+
 func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType string) ([]byte, error) {
 	switch m.Client.Region {
 	case "VN/HAN":

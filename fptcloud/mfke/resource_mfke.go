@@ -59,11 +59,10 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 		Computed: true,
 	}
 
-	// Thêm các "block" của bạn vào đây như là các thuộc tính
 	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
 		Description: "Configuration for cluster autoscaler.",
-		Optional:    true, // ObjectAttribute HỖ TRỢ Optional
-		Computed:    true, // ObjectAttribute HỖ TRỢ Computed
+		Optional:    true,
+		Computed:    true,
 		AttributeTypes: map[string]attr.Type{
 			"is_enable_auto_scaling":           types.BoolType,
 			"scale_down_delay_after_add":       types.Int64Type,
@@ -88,9 +87,8 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 
 	response.Schema = schema.Schema{
 		Description: "Manage managed FKE clusters.",
-		Attributes:  topLevelAttributes, // Tất cả được định nghĩa trong Attributes
+		Attributes:  topLevelAttributes,
 		Blocks: map[string]schema.Block{
-			// Chỉ còn lại "pools" là block thực sự (ListNestedBlock)
 			"pools": schema.ListNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: poolAttributes,
@@ -247,30 +245,35 @@ func (r *resourceManagedKubernetesEngine) Update(ctx context.Context, request re
 func (r *resourceManagedKubernetesEngine) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
 	var state managedKubernetesEngine
 	diags := request.State.Get(ctx, &state)
-
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
 		return
 	}
 
 	vpcId := state.VpcId.ValueString()
+	cluster := state.ClusterName.ValueString()
+	clusterId := state.Id.ValueString()
+
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error()))
 		return
 	}
 
-	cluster := state.ClusterName.ValueString()
-	path := commons.ApiPath.ManagedFKEDelete(state.VpcId.ValueString(), strings.ToLower(platform), cluster)
+	path := commons.ApiPath.ManagedFKEDelete(vpcId, strings.ToLower(platform), clusterId)
 
 	tflog.Info(ctx, "Attempting to delete cluster "+cluster+", DELETE "+path)
 
-	_, err = r.client.SendDeleteRequest(path)
+	_, err = r.mfkeClient.sendDelete(path, strings.ToLower(platform))
 	if err != nil {
+		tflog.Error(ctx, "Error deleting cluster "+cluster+": "+err.Error())
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error()))
 		return
 	}
+
+	tflog.Info(ctx, "Successfully deleted cluster "+cluster)
 }
+
 func (r *resourceManagedKubernetesEngine) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
 	tflog.Info(ctx, "Importing MFKE cluster ID "+request.ID)
 
