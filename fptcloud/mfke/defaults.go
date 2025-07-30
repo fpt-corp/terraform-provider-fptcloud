@@ -271,7 +271,7 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 				plan.Pools[i].Tags = types.StringValue("")
 			}
 		}
-		if plan.Pools[i].Kv == nil || len(plan.Pools[i].Kv) == 0 {
+		if len(plan.Pools[i].Kv) == 0 {
 			if state.Pools[i] != nil {
 				plan.Pools[i].Kv = state.Pools[i].Kv
 			} else {
