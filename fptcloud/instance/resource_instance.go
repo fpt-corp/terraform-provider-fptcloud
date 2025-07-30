@@ -2,12 +2,13 @@ package fptcloud_instance
 
 import (
 	"context"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
 	common "terraform-provider-fptcloud/commons"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 // ResourceInstance function returns a schema.Resource that represents an instance.
@@ -113,8 +114,8 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 
 	// Waiting for status active
 	createStateConf := &retry.StateChangeConf{
-		Pending: []string{"CREATING"},
-		Target:  []string{"POWERED_ON", "POWERED_OFF"},
+		Pending: []string{InstanceStatusCreating},
+		Target:  []string{InstanceStatusPoweredOn, InstanceStatusPoweredOff},
 		Refresh: func() (interface{}, string, error) {
 			findModel := FindInstanceDTO{
 				ID:    instanceId,
@@ -248,7 +249,6 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	instanceService := NewInstanceService(apiClient)
-
 	vpcId := d.Get("vpc_id").(string)
 	hasChangedName := d.HasChange("name")
 	hasChangeFlavor := d.HasChange("flavor_name")
@@ -283,7 +283,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 
 		updateStateConf := &retry.StateChangeConf{
 			Pending: []string{"VERIFY_RESIZE"},
-			Target:  []string{"POWERED_ON", "POWERED_OFF"},
+			Target:  []string{InstanceStatusPoweredOn, InstanceStatusPoweredOff},
 			Refresh: func() (interface{}, string, error) {
 				findModel := FindInstanceDTO{
 					ID:    d.Id(),
@@ -306,5 +306,175 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
+	if d.HasChange("vm_action") {
+		if err := handleVMAction(ctx, d, instanceService, vpcId, apiClient.Timeout); err != nil {
+			return diag.Errorf("[ERR] An error occurred while change vm_action instance %s", err)
+		}
+	}
+	if d.HasChange("snapshot_action") {
+		if err := handleSnapshotAction(ctx, d, instanceService, vpcId, apiClient.Timeout); err != nil {
+			return err
+		}
+	}
+	if d.HasChange("template_action") {
+		if err := handleTemplateAction(ctx, d, instanceService, vpcId, apiClient.Timeout); err != nil {
+			return err
+		}
+	}
+
+	// Xử lý reset_password
+	if d.HasChange("reset_password") {
+		resetVal := d.Get("reset_password")
+		if resetVal != nil && resetVal.(bool) {
+			_, err := instanceService.ResetPassword(vpcId, d.Id())
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while reset password %s", err)
+			}
+		}
+	}
+	// Xử lý block_deletion (termination protection)
+	if d.HasChange("block_deletion") {
+		isBlock := d.Get("block_deletion")
+		if isBlock.(bool) {
+			_, err := instanceService.ChangeTermination(vpcId, d.Id())
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while reset password %s", err)
+			}
+		}
+	}
+	// Xử lý is_delete (nếu cần logic riêng, ví dụ soft delete, có thể bổ sung ở đây)
+	if d.HasChange("is_delete") {
+		// coming soon
+	}
+	// Xử lý resize_config
+	if d.HasChange("resize_config") {
+		resizeMap := GetFirstBlockMap(d, "resize_config")
+		if resizeMap != nil {
+			_, err := instanceService.ResizeDisk(vpcId, d.Id(), resizeMap)
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while resize disk %s", err)
+			}
+		}
+	}
+
 	return resourceInstanceRead(ctx, d, m)
+}
+
+func handleVMAction(ctx context.Context, d *schema.ResourceData, instanceService InstanceService, vpcId string, timeout int) diag.Diagnostics {
+	vmAction := d.Get(INSTANCE_VM_ACTION)
+	if vmAction == nil {
+		return nil
+	}
+	action := ParseVMAction(vmAction)
+	if action != nil {
+		if action.Type == VmActionReboot {
+			_, err := instanceService.Reboot(vpcId, d.Id())
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while reboot instance %s", err)
+			}
+			if diags := waitForInstanceState(ctx, instanceService, vpcId, d.Id(), []string{"REBOOTING"}, []string{"POWERED_ON", "POWERED_OFF"}, timeout, "vm_action:reboot"); diags != nil {
+				return diags
+			}
+		} else {
+			_, err := instanceService.ChangeStatus(vpcId, d.Id(), action.Type)
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while change status instance %s", err)
+			}
+		}
+	}
+	return nil
+}
+
+func handleSnapshotAction(ctx context.Context, d *schema.ResourceData, instanceService InstanceService, vpcId string, timeout int) diag.Diagnostics {
+	snapshotAction := d.Get(INSTANCE_SNAPSHOT_ACTION)
+	if snapshotAction == nil {
+		return nil
+	}
+	action := ParseSnapshotAction(snapshotAction)
+	if action != nil {
+		typeVal := action.Type
+		params := map[string]any{}
+
+		switch typeVal {
+		case SnapshotActionCreate:
+			// Handle include_ram from SnapshotAction
+			if action.IncludeRam != nil {
+				params["include_ram"] = *action.IncludeRam
+			}
+			_, err := instanceService.CreateSnapshot(vpcId, d.Id(), params)
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while create snapshot %s", err)
+			}
+		}
+	}
+	return nil
+}
+
+func handleTemplateAction(ctx context.Context, d *schema.ResourceData, instanceService InstanceService, vpcId string, timeout int) diag.Diagnostics {
+	templateAction := d.Get(INSTANCE_TEMPLATE_ACTION)
+	if templateAction == nil {
+		return nil
+	}
+	action := ParseTemplateAction(templateAction)
+	if action != nil {
+		typeVal := action.Type
+		nameVal := action.Name
+		DescVal := action.Description
+		params := map[string]any{}
+
+		// Add instance ID to params
+		params["instance_id"] = d.Id()
+
+		if nameVal != "" {
+			params["name"] = nameVal
+		}
+		if DescVal != "" {
+			params["description"] = DescVal
+		}
+
+		switch typeVal {
+		case TemplateActionCreate:
+			_, err := instanceService.CaptureTemplate(vpcId, params)
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while create template (capture vapp) %s", err)
+			}
+		}
+	}
+	return nil
+}
+
+func waitForInstanceState(
+	ctx context.Context,
+	service InstanceService,
+	vpcId string,
+	instanceId string,
+	pending []string,
+	target []string,
+	timeoutMinutes int,
+	waitMsg string,
+) diag.Diagnostics {
+	stateConf := &retry.StateChangeConf{
+		Pending: pending,
+		Target:  target,
+		Refresh: func() (interface{}, string, error) {
+			findModel := FindInstanceDTO{
+				ID:    instanceId,
+				VpcId: vpcId,
+			}
+			resp, err := service.Find(findModel)
+			if err != nil {
+				return 0, "", common.DecodeError(err)
+			}
+			return resp, resp.Status, nil
+		},
+		Timeout:        time.Duration(timeoutMinutes) * time.Minute,
+		Delay:          3 * time.Second,
+		MinTimeout:     3 * time.Second,
+		NotFoundChecks: 120,
+	}
+	_, err := stateConf.WaitForStateContext(ctx)
+	if err != nil {
+		return diag.Errorf("[Error] Waiting for instance %s (%s) to be resize: %s", waitMsg, instanceId, err)
+	}
+	return nil
 }

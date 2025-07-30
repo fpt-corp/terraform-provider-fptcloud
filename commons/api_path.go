@@ -21,6 +21,12 @@ var ApiPath = struct {
 	RenameInstance             func(vpcId string, instanceId string) string
 	ChangeStatusInstance       func(vpcId string, instanceId string) string
 	ResizeInstance             func(vpcId string, instanceId string) string
+	RebootInstance             func(vpcId, instanceId string) string
+	CreateSnapshotInstance     func(vpcId, instanceId string) string
+	ResetPasswordInstance      func(vpcId, instanceId string) string
+	ChangeTerminationInstance  func(vpcId, instanceId string) string
+	ResizeDiskInstance         func(vpcId, instanceId string) string
+	CaptureTemplateInstance    func(vpcId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
 	VMGroupPolicies            func(vpcId string) string
@@ -115,6 +121,9 @@ var ApiPath = struct {
 	StoragePolicy: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage-policies", vpcId)
 	},
+	CaptureTemplateInstance: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/storage/capture-template", vpcId)
+	},
 	Flavor: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavors", vpcId)
 	},
@@ -147,6 +156,21 @@ var ApiPath = struct {
 	},
 	ResizeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
+	},
+	RebootInstance: func(vpcId, instanceId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/reboot", vpcId, instanceId)
+	},
+	CreateSnapshotInstance: func(vpcId, instanceId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/create-snapshot", vpcId, instanceId)
+	},
+	ResetPasswordInstance: func(vpcId, instanceId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/reset-password", vpcId, instanceId)
+	},
+	ChangeTerminationInstance: func(vpcId, instanceId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/change-instance-termination", vpcId, instanceId)
+	},
+	ResizeDiskInstance: func(vpcId, instanceId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/storages/resize", vpcId, instanceId)
 	},
 	GetFlavorByName: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavor/find-by-name", vpcId)

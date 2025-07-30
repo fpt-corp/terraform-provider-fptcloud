@@ -1,9 +1,10 @@
 package fptcloud_instance
 
 import (
+	"terraform-provider-fptcloud/commons/utils"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"terraform-provider-fptcloud/commons/utils"
 )
 
 var dataSourceInstanceSchema = map[string]*schema.Schema{
@@ -202,5 +203,114 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The created at of the security group",
 		ForceNew:    true,
+	},
+	"vm_action": {
+		Type:        schema.TypeList,
+		Optional:    true,
+		MaxItems:    1,
+		Description: "VM action configuration",
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"type": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "Type of VM action (e.g., REBOOT)",
+					ValidateFunc: validation.StringInSlice([]string{
+						"REBOOT", "POWER_ON", "POWER_OFF", "SUSPEND", "RESET",
+					}, false),
+				},
+			},
+		},
+	},
+	"snapshot_action": {
+		Type:        schema.TypeList,
+		Optional:    true,
+		MaxItems:    1,
+		Description: "Snapshot action configuration",
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"type": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "Type of snapshot action (e.g., CREATE)",
+					ValidateFunc: validation.StringInSlice([]string{
+						"CREATE", "DELETE", "UPDATE",
+					}, false),
+				},
+				"include_ram": {
+					Type:        schema.TypeBool,
+					Optional:    true,
+					Description: "Whether to include RAM in the snapshot",
+				},
+			},
+		},
+	},
+	"template_action": {
+		Type:        schema.TypeList,
+		Optional:    true,
+		MaxItems:    1,
+		Description: "Template action configuration",
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"type": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "Type of template action (e.g., CREATE)",
+					ValidateFunc: validation.StringInSlice([]string{
+						"CREATE",
+					}, false),
+				},
+				"name": {
+					Type:        schema.TypeString,
+					Optional:    true,
+					Description: "Name of the template",
+				},
+				"description": {
+					Type:        schema.TypeString,
+					Optional:    true,
+					Description: "Description of the template",
+				},
+			},
+		},
+	},
+	"reset_password": {
+		Type:         schema.TypeBool,
+		Optional:     true,
+		Description:  "The reset password of the instance",
+	},
+	"block_deletion": {
+		Type:         schema.TypeBool,
+		Optional:     true,
+		Description:  "The block deletion of the instance",
+	},
+	"resize_config": {
+		Type:        schema.TypeList,
+		Optional:    true,
+		MaxItems:    1,
+		Description: "Configuration for resizing disk",
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"increase_in_size_mb": {
+					Type:        schema.TypeInt,
+					Required:    true,
+					Description: "The increase in size in MB",
+				},
+				"disk_id": {
+					Type:        schema.TypeInt,
+					Required:    true,
+					Description: "The disk ID to resize",
+				},
+				"name": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "The name of the disk",
+				},
+				"storage_policy_id": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "The storage policy ID for the disk",
+				},
+			},
+		},
 	},
 }

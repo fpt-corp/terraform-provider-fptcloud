@@ -15,6 +15,12 @@ type InstanceService interface {
 	ChangeStatus(vpcId string, instanceId string, status string) (*common.SimpleResponse, error)
 	Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error)
 	GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error)
+	Reboot(vpcId, instanceId string) (*common.SimpleResponse, error)
+	CreateSnapshot(vpcId, instanceId string, req any) (*common.SimpleResponse, error)
+	CaptureTemplate(vpcId string, req any) (*common.SimpleResponse, error)
+	ResetPassword(vpcId, instanceId string) (*common.SimpleResponse, error)
+	ChangeTermination(vpcId, instanceId string) (*common.SimpleResponse, error)
+	ResizeDisk(vpcId, instanceId string, req any) (*common.SimpleResponse, error)
 }
 
 // InstanceServiceImpl is the implementation of InstanceService
@@ -144,4 +150,89 @@ func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string) (
 	}
 
 	return &flavor, nil
+}
+
+// Reboot instance
+func (s *InstanceServiceImpl) Reboot(vpcId, instanceId string) (*common.SimpleResponse, error) {
+	apiPath := common.ApiPath.RebootInstance(vpcId, instanceId)
+	_, err := s.client.SendPostRequest(apiPath, nil)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
+}
+
+// CreateSnapshot for instance
+func (s *InstanceServiceImpl) CreateSnapshot(vpcId, instanceId string, req any) (*common.SimpleResponse, error) {
+	apiPath := common.ApiPath.CreateSnapshotInstance(vpcId, instanceId)
+	_, err := s.client.SendPostRequest(apiPath, req)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
+}
+
+// CaptureTemplate vApp (create template)
+func (s *InstanceServiceImpl) CaptureTemplate(vpcId string, req any) (*common.SimpleResponse, error) {
+	apiPath := common.ApiPath.CaptureTemplateInstance(vpcId)
+	_, err := s.client.SendPostRequest(apiPath, req)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
+}
+
+// ResetPassword password for instance
+func (s *InstanceServiceImpl) ResetPassword(vpcId, instanceId string) (*common.SimpleResponse, error) {
+	apiPath := common.ApiPath.ResetPasswordInstance(vpcId, instanceId)
+	_, err := s.client.SendPostRequest(apiPath, nil)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
+}
+
+// ChangeTermination protection for instance
+func (s *InstanceServiceImpl) ChangeTermination(vpcId, instanceId string) (*common.SimpleResponse, error) {
+	apiPath := common.ApiPath.ChangeTerminationInstance(vpcId, instanceId)
+
+	_, err := s.client.SendPostRequest(apiPath, nil)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
+}
+
+// ResizeDisk for instance
+func (s *InstanceServiceImpl) ResizeDisk(vpcId, instanceId string, req any) (*common.SimpleResponse, error) {
+	apiPath := common.ApiPath.ResizeDiskInstance(vpcId, instanceId)
+	_, err := s.client.SendPostRequest(apiPath, req)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
 }
