@@ -47,3 +47,28 @@ type FlavorDTO struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
+
+type ActionBlock struct {
+	Type        string      `json:"type"`
+	Name        string      `json:"name,omitempty"`
+	Description string      `json:"description,omitempty"`
+	IncludeRam  interface{} `json:"include_ram,omitempty"`
+}
+
+// VMAction represents VM-specific actions
+type VMAction struct {
+	Type      string `json:"type"`
+}
+
+// SnapshotAction represents snapshot-specific actions
+type SnapshotAction struct {
+	Type        string `json:"type"`
+	IncludeRam  *bool  `json:"include_ram,omitempty"`
+}
+
+// TemplateAction represents template-specific actions
+type TemplateAction struct {
+	Type        string `json:"type"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+}
