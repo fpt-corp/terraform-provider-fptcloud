@@ -574,24 +574,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.ServicePrefix = types.StringValue(serviceNetwork[1])
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
-
-	// Default cluster_endpoint_access if missing
-	if state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
-		defaultAccessMap := map[string]attr.Value{
-			"type": types.StringValue("public"),
-			"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
-				types.StringValue("0.0.0.0/0"),
-			}),
-		}
-		state.ClusterEndpointAccess, _ = types.ObjectValue(
-			map[string]attr.Type{
-				"type":       types.StringType,
-				"allow_cidr": types.ListType{ElemType: types.StringType},
-			},
-			defaultAccessMap,
-		)
-	}
-
 	// Default cluster_autoscaler if missing
 	if state.ClusterAutoscaler.IsNull() || state.ClusterAutoscaler.IsUnknown() {
 		defaultMap := map[string]attr.Value{
@@ -617,6 +599,27 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			},
 			defaultMap,
 		)
+	}
+	// Default cluster_endpoint_access if missing
+	if state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
+		defaultAccessMap := map[string]attr.Value{
+			"type": types.StringValue("public"),
+			"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
+				types.StringValue("0.0.0.0/0"),
+			}),
+		}
+		state.ClusterEndpointAccess, _ = types.ObjectValue(
+			map[string]attr.Type{
+				"type":       types.StringType,
+				"allow_cidr": types.ListType{ElemType: types.StringType},
+			},
+			defaultAccessMap,
+		)
+	}
+
+	// Default auto_upgrade_expression if missing
+	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
+		state.AutoUpgradeExpression = types.ListNull(types.StringType)
 	}
 
 	return &d, nil

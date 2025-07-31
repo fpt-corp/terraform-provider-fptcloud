@@ -69,7 +69,7 @@ func (d *datasourceManagedKubernetesEngine) Schema(ctx context.Context, request 
 	}
 
 	response.Schema = schema.Schema{
-		Description: "Manage managed FKE clusters.",
+		Description: "Retrieve information about a managed FKE cluster.",
 		Attributes:  topLevelAttributes,
 	}
 

@@ -305,6 +305,7 @@ func (r *resourceManagedKubernetesEngine) ImportState(ctx context.Context, reque
 		return
 	}
 }
+
 func (r *resourceManagedKubernetesEngine) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) {
 	if request.ProviderData == nil {
 		return
