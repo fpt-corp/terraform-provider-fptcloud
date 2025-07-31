@@ -18,39 +18,81 @@ Manage managed FKE clusters.
 ### Required
 
 - `cluster_name` (String) Cluster name
-- `k8s_max_pod` (Number) Max pods per node
-- `k8s_version` (String) Kubernetes version
-- `load_balancer_type` (String) Load balancer type
 - `network_id` (String) Subnet ID
-- `pod_network` (String) Pod network (subnet ID)
-- `pod_prefix` (String) Pod network (prefix)
-- `purpose` (String) Cluster purpose
-- `range_ip_lb_end` (String) IP stop for range of LB
-- `range_ip_lb_start` (String) IP start for range of LB
-- `service_network` (String) Service network (subnet ID)
-- `service_prefix` (String) Service prefix (prefix)
 - `vpc_id` (String) VPC ID
 
 ### Optional
 
+- `auto_upgrade_expression` (List of String) Auto-upgrade cron expressions (optional)
+- `auto_upgrade_timezone` (String) Timezone for auto-upgrade (optional)
+- `cluster_autoscaler` (Object) Configuration for cluster autoscaler. (see [below for nested schema](#nestedatt--cluster_autoscaler))
+- `cluster_endpoint_access` (Object) Configuration for cluster endpoint access. (see [below for nested schema](#nestedatt--cluster_endpoint_access))
+- `edge_gateway_id` (String) Edge gateway ID, in the format of urn:vcloud:gateway:<uuid>
+- `edge_gateway_name` (String) Edge gateway name (optional)
+- `internal_subnet_lb` (String) Internal subnet for load balancer (optional)
+- `is_enable_auto_upgrade` (Boolean) Whether to enable auto-upgrade (optional)
+- `k8s_max_pod` (Number) Max pods per node
+- `k8s_version` (String) Kubernetes version
+- `network_overlay` (String) Whether to encapsulate pod traffic between different subnets or same subnet
+- `network_type` (String)
+- `pod_network` (String) Pod network (subnet ID)
+- `pod_prefix` (String) Pod network (prefix)
 - `pools` (Block List) (see [below for nested schema](#nestedblock--pools))
+- `purpose` (String) Cluster purpose
+- `service_network` (String) Service network (subnet ID)
+- `service_prefix` (String) Service prefix (prefix)
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
+
+<a id="nestedatt--cluster_autoscaler"></a>
+### Nested Schema for `cluster_autoscaler`
+
+Optional:
+
+- `expander` (String)
+- `is_enable_auto_scaling` (Boolean)
+- `scale_down_delay_after_add` (Number)
+- `scale_down_delay_after_delete` (Number)
+- `scale_down_delay_after_failure` (Number)
+- `scale_down_unneeded_time` (Number)
+- `scale_down_utilization_threshold` (Number)
+- `scan_interval` (Number)
+
+
+<a id="nestedatt--cluster_endpoint_access"></a>
+### Nested Schema for `cluster_endpoint_access`
+
+Optional:
+
+- `allow_cidr` (List of String)
+- `type` (String)
+
 
 <a id="nestedblock--pools"></a>
 ### Nested Schema for `pools`
 
 Required:
 
-- `auto_scale` (Boolean) Whether to enable autoscaling
-- `is_enable_auto_repair` (Boolean) Whether to enable auto-repair
 - `name` (String) Pool name
-- `network_id` (String) Subnet ID
-- `network_name` (String) Subnet name
 - `scale_max` (Number) Maximum number of nodes for autoscaling
 - `scale_min` (Number) Minimum number of nodes for autoscaling
 - `storage_profile` (String) Pool storage profile
 - `worker_disk_size` (Number) Worker disk size
 - `worker_type` (String) Worker flavor ID
+
+Optional:
+
+- `container_runtime` (String)
+- `driver_installation_type` (String) Driver installation type (optional)
+- `gpu_driver_version` (String)
+- `gpu_sharing_client` (String) GPU sharing client (optional)
+- `is_enable_auto_repair` (Boolean) Whether to enable auto-repair
+- `kv` (List of Map of String) Label for the pool (optional)
+- `max_client` (Number) Maximum number of clients (optional)
+- `network_id` (String) Subnet ID
+- `network_name` (String) Subnet name
+- `tags` (String) Tags for the worker pool (optional)
+- `vgpu_id` (String) Virtual GPU ID (optional)
+- `worker_base` (Boolean)
