@@ -150,9 +150,8 @@ func PoolFields() map[string]schema.Attribute {
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
-			Required:      true,
-			PlanModifiers: forceNewPlanModifiersString,
-			Description:   descriptions[attribute],
+			Required:    true,
+			Description: descriptions[attribute],
 		}
 	}
 	for _, attribute := range optionalStrings {
@@ -164,9 +163,8 @@ func PoolFields() map[string]schema.Attribute {
 	}
 	for _, attribute := range requiredInts {
 		poolLevelAttributes[attribute] = schema.Int64Attribute{
-			Required:      true,
-			PlanModifiers: forceNewPlanModifiersInt,
-			Description:   descriptions[attribute],
+			Required:    true,
+			Description: descriptions[attribute],
 		}
 	}
 	for _, attribute := range optionalInts {
@@ -178,9 +176,8 @@ func PoolFields() map[string]schema.Attribute {
 	}
 	for _, attribute := range requiredBools {
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
-			Required:      true,
-			PlanModifiers: forceNewPlanModifiersBool,
-			Description:   descriptions[attribute],
+			Required:    true,
+			Description: descriptions[attribute],
 		}
 	}
 
@@ -336,26 +333,55 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 
 // remapPools
 func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) *managedKubernetesEnginePoolJson {
+	var workerPoolID *string
+	if name == "" || name == "worker-new" || item.WorkerPoolID.IsNull() || item.WorkerPoolID.IsUnknown() {
+		workerPoolID = nil // new pool
+	} else {
+		workerPoolID = &name // existing pool
+	}
 	newItem := &managedKubernetesEnginePoolJson{
+		WorkerPoolID:           workerPoolID,
 		StorageProfile:         item.StorageProfile.ValueString(),
 		WorkerType:             item.WorkerType.ValueString(),
 		WorkerDiskSize:         item.WorkerDiskSize.ValueInt64(),
 		ScaleMin:               item.ScaleMin.ValueInt64(),
 		ScaleMax:               item.ScaleMax.ValueInt64(),
+		MaxClient:              item.MaxClient.ValueInt64(),
 		NetworkID:              item.NetworkID.ValueString(),
-		IsEnableAutoRepair:     item.IsEnableAutoRepair.ValueBool(),
-		WorkerPoolID:           &name,
 		NetworkName:            item.NetworkName.ValueString(),
-		ContainerRuntime:       item.ContainerRuntime.ValueString(),
-		Tags:                   item.Tags.ValueString(),
 		VGpuID:                 item.VGpuID.ValueString(),
 		DriverInstallationType: item.DriverInstallationType.ValueString(),
 		GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
+		Tags:                   item.Tags.ValueString(),
+		GpuSharingClient:       item.GpuSharingClient.ValueString(),
+		ContainerRuntime:       item.ContainerRuntime.ValueString(),
+		Kv:                     nil, // handle below
+		AutoScale:              item.ScaleMin.ValueInt64() != item.ScaleMax.ValueInt64(),
+		IsDisplayGPU:           false, // set below if needed
+		IsCreate:               false, // set below if needed
+		IsScale:                false,
+		IsOthers:               false,
+		IsEnableAutoRepair:     item.IsEnableAutoRepair.ValueBool(),
+		WorkerBase:             item.WorkerBase.ValueBool(),
 	}
-	if item.ScaleMin.ValueInt64() == item.ScaleMax.ValueInt64() {
-		newItem.AutoScale = false
+	// Handle Kv
+	if len(item.Kv) > 0 {
+		kvs := make([]map[string]string, 0, len(item.Kv))
+		for _, kv := range item.Kv {
+			goMap := map[string]string{"name": kv.Name, "value": kv.Value}
+			kvs = append(kvs, goMap)
+		}
+		newItem.Kv = kvs
 	} else {
-		newItem.AutoScale = true
+		newItem.Kv = []map[string]string{}
+	}
+	// Set IsDisplayGPU if VGpuID is set
+	if item.VGpuID.ValueString() != "" {
+		newItem.IsDisplayGPU = true
+	}
+	// Set IsCreate for new pool
+	if workerPoolID == nil {
+		newItem.IsCreate = true
 	}
 	return newItem
 }
@@ -516,56 +542,48 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	} else {
 		state.Purpose = types.StringValue("private")
 	}
-	poolNames, err := validatePoolNames(state.Pools)
-	if err != nil {
-		return nil, err
-	}
-	workers := map[string]*managedKubernetesEngineDataWorker{}
+
+	var newPools []*managedKubernetesEnginePool
+
+	// Lặp trực tiếp qua TẤT CẢ các worker mà API trả về
 	for _, worker := range data.Spec.Provider.Workers {
-		workers[worker.Name] = worker
-		if len(state.Pools) == 0 {
-			poolNames = append(poolNames, worker.Name)
-		}
-	}
-	var pool []*managedKubernetesEnginePool
-	for _, name := range poolNames {
-		w, ok := workers[name]
-		if !ok {
-			continue
-		}
-		flavorPoolKey := "fptcloud.com/flavor_pool_" + name
+		// `worker` ở đây chính là object `w` mà bạn cần
+		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
 		if !ok {
 			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
 		}
-		autoRepair := w.AutoRepair()
-		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, w, &data)
+		autoRepair := worker.AutoRepair()
+		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, worker, &data)
 		if e != nil {
 			return nil, e
 		}
 		item := &managedKubernetesEnginePool{
-			WorkerPoolID:           types.StringValue(w.Name),
-			StorageProfile:         types.StringValue(w.Volume.Type),
+			WorkerPoolID:           types.StringValue(worker.Name),
+			StorageProfile:         types.StringValue(worker.Volume.Type),
 			WorkerType:             types.StringValue(flavorId),
-			WorkerDiskSize:         types.Int64Value(int64(parseNumber(w.Volume.Size))),
-			ScaleMin:               types.Int64Value(int64(w.Minimum)),
-			ScaleMax:               types.Int64Value(int64(w.Maximum)),
+			WorkerDiskSize:         types.Int64Value(int64(parseNumber(worker.Volume.Size))),
+			ScaleMin:               types.Int64Value(int64(worker.Minimum)),
+			ScaleMax:               types.Int64Value(int64(worker.Maximum)),
 			NetworkID:              types.StringValue(networkId),
 			IsEnableAutoRepair:     types.BoolValue(autoRepair),
-			ContainerRuntime:       types.StringValue(w.Cri.Name),
-			Tags:                   types.StringValue(w.Tags()),
-			VGpuID:                 types.StringValue(w.ProviderConfig.VGpuID),
-			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
-			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
-			WorkerBase:             types.BoolValue(w.IsWorkerBase()),
+			ContainerRuntime:       types.StringValue(worker.Cri.Name),
+			Tags:                   types.StringValue(worker.Tags()),
+			VGpuID:                 types.StringValue(worker.ProviderConfig.VGpuID),
+			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
+			GpuDriverVersion:       types.StringValue(worker.Machine.Image.GpuDriverVersion),
+			WorkerBase:             types.BoolValue(worker.IsWorkerBase()),
 		}
 		if strings.ToLower(platform) == "osp" {
 			item.NetworkID = types.StringValue(networkId)
 			item.NetworkName = types.StringValue(networkName)
 		}
-		pool = append(pool, item)
+		newPools = append(newPools, item)
 	}
-	state.Pools = pool
+
+	// Gán danh sách pool mới, đầy đủ vào state
+	state.Pools = newPools
+
 	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
 	state.PodNetwork = types.StringValue(podNetwork[0])
 	state.PodPrefix = types.StringValue(podNetwork[1])

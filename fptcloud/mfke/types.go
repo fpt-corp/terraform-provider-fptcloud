@@ -144,6 +144,7 @@ type managedKubernetesEnginePoolJson struct {
 	IsScale            bool `json:"isScale"`
 	IsOthers           bool `json:"isOthers"`
 	IsEnableAutoRepair bool `json:"isEnableAutoRepair"`
+	WorkerBase         bool `json:"worker_base"`
 }
 
 type managedKubernetesEngineCreateResponse struct {

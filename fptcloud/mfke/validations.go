@@ -46,6 +46,21 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 		}
 	}
 
+	// Check: if more than one pool, at least one must have worker_base = true
+	if len(pools) > 1 {
+		hasBase := false
+		for _, pool := range pools {
+			if pool.WorkerBase.ValueBool() {
+				hasBase = true
+				break
+			}
+		}
+		if !hasBase {
+			d := diag2.NewErrorDiagnostic("Missing worker_base", "When you define more than one worker group, at least one must have worker_base = true.")
+			return &d
+		}
+	}
+
 	return nil
 }
 
@@ -433,13 +448,17 @@ func validateImmutableInt64Field(fieldName string, plan, state types.Int64) diag
 }
 
 func validateImmutablePoolStringField(planPools, statePools []*managedKubernetesEnginePool) diag2.Diagnostic {
-	if len(planPools) != len(statePools) {
-		return diag2.NewErrorDiagnostic(
-			"Pool count mismatch",
-			"The number of pools in plan and state do not match.",
-		)
-	}
+	// if len(planPools) != len(statePools) {
+	// 	return diag2.NewErrorDiagnostic(
+	// 		"Pool count mismatch",
+	// 		"The number of pools in plan and state do not match.",
+	// 	)
+	// }
 	for i := range planPools {
+		if i >= len(statePools) {
+			// New pool, nothing to check
+			continue
+		}
 		planVal := planPools[i].ContainerRuntime
 		stateVal := statePools[i].ContainerRuntime
 		if !planVal.IsNull() && !planVal.IsUnknown() && planVal.ValueString() != "" &&
