@@ -13,7 +13,6 @@ import (
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -32,10 +31,6 @@ var (
 
 	forceNewPlanModifiersInt = []planmodifier.Int64{
 		int64planmodifier.RequiresReplace(),
-	}
-
-	forceNewPlanModifiersBool = []planmodifier.Bool{
-		boolplanmodifier.RequiresReplace(),
 	}
 )
 

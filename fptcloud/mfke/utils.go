@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
+	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	"unicode"
@@ -81,6 +82,7 @@ func TopFields() map[string]schema.Attribute {
 	optionalInts := []string{"k8s_max_pod"}
 	// Optional bool fields
 	optionalBools := []string{"is_enable_auto_upgrade"}
+	// Special handling for is_running - it should be user-configurable for hibernation/wake-up
 	// Optional list fields
 	optionalLists := []string{"auto_upgrade_expression"}
 
@@ -118,6 +120,12 @@ func TopFields() map[string]schema.Attribute {
 			Computed:    true,
 			Description: descriptions[attribute],
 		}
+	}
+	// Special handling for is_running - make it computed to avoid inconsistent state
+	topLevelAttributes["is_running"] = schema.BoolAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: descriptions["is_running"],
 	}
 	for _, attribute := range optionalLists {
 		topLevelAttributes[attribute] = schema.ListAttribute{
@@ -410,6 +418,31 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			return err
 		}
 	}
+
+	if from.IsRunning.ValueBool() != to.IsRunning.ValueBool() {
+		tflog.Info(ctx, "[DIFF] is_running changed → calling hibernate/wakeup API")
+
+		vpcId := from.VpcId.ValueString()
+		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+			return &d
+		}
+
+		platform = strings.ToLower(platform)
+		isWakeup := to.IsRunning.ValueBool()
+		path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
+
+		resp, err := r.mfkeClient.sendPatch(path, platform, nil)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error calling hibernate API", err.Error())
+			return &d
+		}
+		if diagErr := fptcloud_dfke.CheckForError(resp); diagErr != nil {
+			return diagErr
+		}
+	}
+
 	editGroup := r.DiffPool(ctx, from, to)
 	if editGroup {
 		d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
@@ -417,23 +450,27 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
 			return &di
 		}
+
 		pools := []*managedKubernetesEnginePoolJson{}
 		for _, pool := range to.Pools {
 			item := r.remapPools(pool, pool.WorkerPoolID.ValueString())
 			pools = append(pools, item)
 		}
+
 		body := managedKubernetesEngineEditWorker{
 			K8sVersion:        to.K8SVersion.ValueString(),
 			CurrentNetworking: d.Data.Spec.Networking.Nodes,
 			Pools:             pools,
 			TypeConfigure:     "configure",
 		}
+
 		vpcId := from.VpcId.ValueString()
 		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
 			return &d
 		}
+
 		platform = strings.ToLower(platform)
 		path := fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/configure-worker-cluster/shoots/%s/0",
@@ -441,6 +478,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			platform,
 			from.Id.ValueString(),
 		)
+
 		res, err := r.mfkeClient.sendPatch(path, platform, body)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
@@ -450,6 +488,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			return e2
 		}
 	}
+
 	return nil
 }
 
@@ -639,6 +678,16 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
 		state.AutoUpgradeExpression = types.ListNull(types.StringType)
 	}
+
+	// Use the same logic as the power state resource to determine if cluster is running
+	isRunning := false
+	if len(data.Status.Conditions) > 0 {
+		isRunning = data.Status.Conditions[0].Status == "True"
+	}
+	if data.Spec.Hibernate != nil {
+		isRunning = !data.Spec.Hibernate.Enabled
+	}
+	state.IsRunning = types.BoolValue(isRunning)
 
 	return &d, nil
 }

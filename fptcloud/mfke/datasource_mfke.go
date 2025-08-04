@@ -235,7 +235,7 @@ func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attrib
 	// Optional int fields
 	optionalInts := []string{"k8s_max_pod"}
 	// Optional bool fields
-	optionalBools := []string{"is_enable_auto_upgrade"}
+	optionalBools := []string{"is_enable_auto_upgrade", "is_running"}
 	// Optional list fields
 	optionalLists := []string{"auto_upgrade_expression"}
 
