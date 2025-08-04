@@ -142,6 +142,9 @@ func SetDefaults(state *managedKubernetesEngine) {
 		}
 	}
 
+	if state.IsRunning.IsNull() || state.IsRunning.IsUnknown() {
+		state.IsRunning = types.BoolValue(true)
+	}
 }
 
 func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
@@ -193,6 +196,11 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 	if plan.K8SVersion.IsNull() || plan.K8SVersion.IsUnknown() || plan.K8SVersion.ValueString() == "" {
 		plan.K8SVersion = state.K8SVersion
 	}
+
+	if plan.IsRunning.IsNull() || plan.IsRunning.IsUnknown() {
+		plan.IsRunning = state.IsRunning
+	}
+
 	// cluster_endpoint_access: if not in state, fill default
 	if state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
 		defaultAccess, _ := types.ObjectValue(map[string]attr.Type{

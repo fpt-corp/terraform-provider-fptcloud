@@ -38,6 +38,7 @@ var descriptions = map[string]string{
 	"auto_upgrade_expression":  "Auto-upgrade cron expressions (optional)",
 	"auto_upgrade_timezone":    "Timezone for auto-upgrade (optional)",
 	"cluster_autoscaler":       "Cluster autoscaler configuration block (optional)",
+	"is_running":               "Whether the cluster is running (optional)",
 	// cluster_autoscaler subfields
 	"is_enable_auto_scaling":           "Enable cluster autoscaling (optional)",
 	"scale_down_delay_after_add":       "Delay after adding a node before scale down (seconds, optional)",

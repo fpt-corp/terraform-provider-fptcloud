@@ -32,6 +32,7 @@ type managedKubernetesEngine struct {
 	AutoUpgradeTimezone   types.String `tfsdk:"auto_upgrade_timezone"`
 	InternalSubnetLb      types.String `tfsdk:"internal_subnet_lb"`
 	EdgeGatewayName       types.String `tfsdk:"edge_gateway_name"`
+	IsRunning             types.Bool   `tfsdk:"is_running"`
 }
 
 type ClusterAutoscaler struct {
@@ -58,6 +59,7 @@ type resourceManagedKubernetesEngine struct {
 }
 
 type managedKubernetesEnginePool struct {
+	WorkerBase             types.Bool   `tfsdk:"worker_base"`
 	WorkerPoolID           types.String `tfsdk:"name"`
 	StorageProfile         types.String `tfsdk:"storage_profile"`
 	WorkerType             types.String `tfsdk:"worker_type"`
@@ -70,12 +72,11 @@ type managedKubernetesEnginePool struct {
 	Tags                   types.String `tfsdk:"tags"`
 	Kv                     []KV         `tfsdk:"kv"`
 	VGpuID                 types.String `tfsdk:"vgpu_id"`
-	GpuSharingClient       types.String `tfsdk:"gpu_sharing_client"`
 	MaxClient              types.Int64  `tfsdk:"max_client"`
+	GpuSharingClient       types.String `tfsdk:"gpu_sharing_client"`
 	IsEnableAutoRepair     types.Bool   `tfsdk:"is_enable_auto_repair"`
 	DriverInstallationType types.String `tfsdk:"driver_installation_type"`
 	GpuDriverVersion       types.String `tfsdk:"gpu_driver_version"`
-	WorkerBase             types.Bool   `tfsdk:"worker_base"`
 }
 
 type KV struct {
@@ -175,6 +176,7 @@ type managedKubernetesEngineDataStatus struct {
 	Conditions []struct {
 		Status string `json:"status"`
 	} `json:"conditions"`
+	IsRunning bool `json:"is_running"`
 }
 type managedKubernetesEngineDataMetadata struct {
 	Name   string            `json:"name"`
