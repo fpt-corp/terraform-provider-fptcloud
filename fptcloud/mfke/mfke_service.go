@@ -71,9 +71,11 @@ func (m *MfkeApiClient) sendDelete(requestURL string, infraType string) ([]byte,
 func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType string) ([]byte, error) {
 	switch m.Client.Region {
 	case "VN/HAN":
-		request.Header.Set("fpt-region", "VN/HAN")
+		request.Header.Set("fpt-region", "hanoi-vn")
 	case "VN/SGN":
 		request.Header.Set("fpt-region", "saigon-vn")
+	case "VN/HAN2":
+		request.Header.Set("fpt-region", "hanoi-2-vn")
 	case "JP/JCSI2":
 		request.Header.Set("fpt-region", "JP/JCSI2")
 	default:

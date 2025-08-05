@@ -84,6 +84,25 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 		Description: "Manage managed FKE clusters.",
 		Attributes:  topLevelAttributes,
 		Blocks: map[string]schema.Block{
+			"hibernation_schedules": schema.ListNestedBlock{
+				Description: "List of hibernation schedules for the cluster. Each schedule specifies a start and end time in cron format.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"start": schema.StringAttribute{
+							Description: "Cron format for the start of the hibernation window (e.g., '0 23 * * 2,4').",
+							Required:    true,
+						},
+						"end": schema.StringAttribute{
+							Description: "Cron format for the end of the hibernation window (e.g., '0 7 * * 2,4').",
+							Required:    true,
+						},
+						"location": schema.StringAttribute{
+							Description: "The timezone for the schedule (e.g., 'Asia/Bangkok').",
+							Required:    true,
+						},
+					},
+				},
+			},
 			"pools": schema.ListNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: poolAttributes,
