@@ -33,6 +33,7 @@ type managedKubernetesEngine struct {
 	InternalSubnetLb      types.String `tfsdk:"internal_subnet_lb"`
 	EdgeGatewayName       types.String `tfsdk:"edge_gateway_name"`
 	IsRunning             types.Bool   `tfsdk:"is_running"`
+	HibernationSchedules  types.List   `tfsdk:"hibernation_schedules"`
 }
 
 type ClusterAutoscaler struct {
@@ -233,9 +234,12 @@ type managedKubernetesEngineDataSpec struct {
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
 	} `json:"provider"`
 
-	Hibernate *struct {
-		Enabled bool `json:"enabled"`
-	} `json:"hibernation"`
+	Hibernate *HibernateSpec `json:"hibernation"`
+}
+
+type HibernateSpec struct {
+	Enabled   bool                      `json:"enabled"`
+	Schedules []HibernationScheduleJson `json:"schedules,omitempty"`
 }
 
 type managedKubernetesEngineDataWorker struct {
@@ -310,4 +314,23 @@ type managedKubernetesEngineEditWorker struct {
 	K8sVersion        string                             `json:"k8s_version"`
 	TypeConfigure     string                             `json:"type_configure"`
 	CurrentNetworking string                             `json:"currentNetworking"`
+}
+
+// HibernationSchedule represents a single hibernation schedule
+type HibernationSchedule struct {
+	Start    types.String `tfsdk:"start"`
+	End      types.String `tfsdk:"end"`
+	Location types.String `tfsdk:"location"`
+}
+
+// HibernationScheduleJson represents the JSON structure for hibernation schedules
+type HibernationScheduleJson struct {
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	Location string `json:"location"`
+}
+
+// HibernationSchedulesRequest represents the request body for hibernation schedules
+type HibernationSchedulesRequest struct {
+	Schedules []HibernationScheduleJson `json:"schedules"`
 }

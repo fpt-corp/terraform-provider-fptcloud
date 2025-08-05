@@ -443,6 +443,17 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 	}
 
+	// Handle hibernation schedules changes
+	if !to.HibernationSchedules.Equal(from.HibernationSchedules) {
+		tflog.Info(ctx, "[DIFF] hibernation_schedules changed → calling update API")
+
+		err := r.updateHibernationSchedules(ctx, to, from)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error updating hibernation schedules", err.Error())
+			return &d
+		}
+	}
+
 	editGroup := r.DiffPool(ctx, from, to)
 	if editGroup {
 		d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
@@ -689,6 +700,42 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	}
 	state.IsRunning = types.BoolValue(isRunning)
 
+	if d.Data.Spec.Hibernate != nil && d.Data.Spec.Hibernate.Schedules != nil {
+		var schedulesFromAPI []HibernationSchedule
+
+		for _, apiSchedule := range d.Data.Spec.Hibernate.Schedules {
+			schedulesFromAPI = append(schedulesFromAPI, HibernationSchedule{
+				Start:    types.StringValue(apiSchedule.Start),
+				End:      types.StringValue(apiSchedule.End),
+				Location: types.StringValue(apiSchedule.Location),
+			})
+		}
+
+		// 2. Sửa `AttrTypes` thành `ElemTypes`
+		hibernationScheduleObjectType := types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		}
+
+		var diags diag2.Diagnostics
+		state.HibernationSchedules, diags = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
+		if diags.HasError() {
+			return nil, fmt.Errorf("error creating hibernation schedules list for state: %v", diags)
+		}
+	} else {
+		// Nếu API không trả về schedule nào, đảm bảo state cũng là một danh sách rỗng
+		state.HibernationSchedules = types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		})
+	}
+
 	return &d, nil
 }
 
@@ -765,4 +812,57 @@ func (w *managedKubernetesEngineDataWorker) Tags() string {
 
 func (w *managedKubernetesEngineDataWorker) IsWorkerBase() bool {
 	return w.SystemComponents.Allow
+}
+
+// updateHibernationSchedules updates hibernation schedules for the cluster
+func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) error {
+	vpcId := state.VpcId.ValueString()
+
+	var hibernationSchedulesFromPlan []HibernationSchedule
+
+	diags := plan.HibernationSchedules.ElementsAs(ctx, &hibernationSchedulesFromPlan, false)
+	if diags.HasError() {
+		return fmt.Errorf("error parsing hibernation schedules from plan: %v", diags.Errors())
+	}
+
+	// Convert to JSON format for API
+	var schedulesForJson []HibernationScheduleJson
+	for _, scheduleData := range hibernationSchedulesFromPlan {
+		if scheduleData.Start.IsNull() || scheduleData.End.IsNull() || scheduleData.Location.IsNull() {
+			tflog.Warn(ctx, "Skipping one hibernation schedule because it has null values.")
+			continue
+		}
+		schedulesForJson = append(schedulesForJson, HibernationScheduleJson{
+			Start:    scheduleData.Start.ValueString(),
+			End:      scheduleData.End.ValueString(),
+			Location: scheduleData.Location.ValueString(),
+		})
+	}
+
+	requestBody := HibernationSchedulesRequest{
+		Schedules: schedulesForJson,
+	}
+
+	if len(requestBody.Schedules) == 0 {
+		requestBody.Schedules = []HibernationScheduleJson{}
+	}
+
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		return fmt.Errorf("error getting platform: %v", err)
+	}
+
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKEHibernationSchedules(vpcId, platform, state.Id.ValueString())
+
+	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	if err != nil {
+		return fmt.Errorf("error calling hibernation schedules API: %v", err)
+	}
+
+	tflog.Info(ctx, "Hibernation schedules API response: "+string(resp))
+
+	tflog.Info(ctx, "Successfully updated hibernation schedules.")
+
+	return nil
 }

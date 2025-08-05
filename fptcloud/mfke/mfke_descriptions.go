@@ -51,4 +51,9 @@ var descriptions = map[string]string{
 	// cluster_endpoint_access subfields
 	"cluster_endpoint_access_type":       "Type of cluster endpoint access (public, private, or mixed)",
 	"cluster_endpoint_access_allow_cidr": "Allowed CIDR blocks for cluster endpoint access",
+	// hibernation schedules
+	"hibernation_schedules": "List of hibernation schedules for the cluster",
+	"start":                 "Cron expression for when hibernation should start",
+	"end":                   "Cron expression for when hibernation should end",
+	"location":              "Timezone for the hibernation schedule (e.g., Asia/Bangkok)",
 }
