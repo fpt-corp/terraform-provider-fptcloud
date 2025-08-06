@@ -103,7 +103,7 @@ type managedKubernetesEngineJson struct {
 	EdgeGatewayName       string                             `json:"edge_gateway_name,omitempty"`
 	ClusterEndpointAccess *ClusterEndpointAccessJson         `json:"clusterEndpointAccess,omitempty"`
 	IsEnableAutoUpgrade   bool                               `json:"is_enable_auto_upgrade,omitempty"`
-	AutoUpgradeExpression string                             `json:"auto_upgrade_expression,omitempty"`
+	AutoUpgradeExpression []string                           `json:"auto_upgrade_expression,omitempty"`
 	AutoUpgradeTimezone   string                             `json:"auto_upgrade_timezone,omitempty"`
 	ClusterAutoscaler     interface{}                        `json:"cluster_autoscaler,omitempty"`
 	TypeCreate            string                             `json:"type_create,omitempty"`
@@ -179,33 +179,10 @@ type managedKubernetesEngineDataStatus struct {
 	} `json:"conditions"`
 	IsRunning bool `json:"is_running"`
 }
+
 type managedKubernetesEngineDataMetadata struct {
 	Name   string            `json:"name"`
 	Labels map[string]string `json:"labels"`
-}
-type managedKubernetesEngineDataClusterAutoscaler struct {
-	Expander                      string  `json:"expander,omitempty"`
-	MaxGracefulTerminationSeconds int     `json:"maxGracefulTerminationSeconds,omitempty"`
-	MaxNodeProvisionTime          string  `json:"maxNodeProvisionTime,omitempty"`
-	ScaleDownDelayAfterAdd        string  `json:"scaleDownDelayAfterAdd,omitempty"`
-	ScaleDownDelayAfterDelete     string  `json:"scaleDownDelayAfterDelete,omitempty"`
-	ScaleDownDelayAfterFailure    string  `json:"scaleDownDelayAfterFailure,omitempty"`
-	ScaleDownUnneededTime         string  `json:"scaleDownUnneededTime,omitempty"`
-	ScaleDownUtilizationThreshold float64 `json:"scaleDownUtilizationThreshold,omitempty"`
-	ScanInterval                  string  `json:"scanInterval,omitempty"`
-}
-
-type managedKubernetesEngineDataNetworking struct {
-	Nodes          string `json:"nodes"`
-	Pods           string `json:"pods"`
-	Services       string `json:"services"`
-	Type           string `json:"type"`
-	ProviderConfig struct {
-		Overlay struct {
-			Enabled bool `json:"enabled"`
-		} `json:"overlay"`
-		Ipip string `json:"ipip"`
-	} `json:"providerConfig"`
 }
 
 type managedKubernetesEngineDataSpec struct {
@@ -234,7 +211,33 @@ type managedKubernetesEngineDataSpec struct {
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
 	} `json:"provider"`
 
-	Hibernate *HibernateSpec `json:"hibernation"`
+	Hibernate   *HibernateSpec   `json:"hibernation"`
+	AutoUpgrade *AutoUpgradeSpec `json:"autoUpgrade,omitempty"`
+}
+
+type managedKubernetesEngineDataClusterAutoscaler struct {
+	Expander                      string  `json:"expander,omitempty"`
+	MaxGracefulTerminationSeconds int     `json:"maxGracefulTerminationSeconds,omitempty"`
+	MaxNodeProvisionTime          string  `json:"maxNodeProvisionTime,omitempty"`
+	ScaleDownDelayAfterAdd        string  `json:"scaleDownDelayAfterAdd,omitempty"`
+	ScaleDownDelayAfterDelete     string  `json:"scaleDownDelayAfterDelete,omitempty"`
+	ScaleDownDelayAfterFailure    string  `json:"scaleDownDelayAfterFailure,omitempty"`
+	ScaleDownUnneededTime         string  `json:"scaleDownUnneededTime,omitempty"`
+	ScaleDownUtilizationThreshold float64 `json:"scaleDownUtilizationThreshold,omitempty"`
+	ScanInterval                  string  `json:"scanInterval,omitempty"`
+}
+
+type managedKubernetesEngineDataNetworking struct {
+	Nodes          string `json:"nodes"`
+	Pods           string `json:"pods"`
+	Services       string `json:"services"`
+	Type           string `json:"type"`
+	ProviderConfig struct {
+		Overlay struct {
+			Enabled bool `json:"enabled"`
+		} `json:"overlay"`
+		Ipip string `json:"ipip"`
+	} `json:"providerConfig"`
 }
 
 type HibernateSpec struct {
@@ -333,4 +336,9 @@ type HibernationScheduleJson struct {
 // HibernationSchedulesRequest represents the request body for hibernation schedules
 type HibernationSchedulesRequest struct {
 	Schedules []HibernationScheduleJson `json:"schedules"`
+}
+
+type AutoUpgradeSpec struct {
+	TimeUpgrade []string `json:"timeUpgrade"`
+	TimeZone    string   `json:"timeZone"`
 }
