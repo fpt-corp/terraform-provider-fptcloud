@@ -68,6 +68,37 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
 }
 ```
 
+### With Auto Upgrade Version
+
+```hcl
+resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
+  vpc_id       = "your-vpc-id"
+  cluster_name = "example-cluster-with-hibernation"
+  network_id   = "your-network-id"
+  k8s_version  = "1.28.0"
+
+  # Enable auto upgrade verion configuration
+
+  is_enable_auto_upgrade = true
+  auto_upgrade_expression = [ "0 0 * * *" ]
+  auto_upgrade_timezone = "Asia/Saigon"
+
+  # Disable auto upgrade verion configuration
+
+  is_enable_auto_upgrade = false
+
+  pools {
+    name             = "worker-pool-1"
+    storage_profile  = "your-storage-profile"
+    worker_type      = "your-worker-type"
+    worker_disk_size = 40
+    scale_min        = 1
+    scale_max        = 3
+    worker_base      = true
+  }
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:

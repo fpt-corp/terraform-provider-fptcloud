@@ -59,8 +59,10 @@ var ApiPath = struct {
 	ManagedFKEGet                  func(vpcId string, platform string, clusterId string) string
 	ManagedFKEDelete               func(vpcId string, platform string, clusterName string) string
 	ManagedFKECreate               func(vpcId string, platform string) string
-	ManagedFKEHibernate            func(vpcId, platform, clusterId string, isWakeup bool) string
-	ManagedFKEHibernationSchedules func(vpcId, platform, clusterId string) string
+	ManagedFKEHibernate            func(vpcId string, platform string, clusterId string, isWakeup bool) string
+	ManagedFKEHibernationSchedules func(vpcId string, platform string, clusterId string) string
+	ManagedFKEAutoUpgradeVersion   func(vpcId string, platform string, clusterId string) string
+	ManagedFKEConfigWorker         func(vpcId string, platform string, clusterId string) string
 	GetFKEOSVersion                func(vpcId string, platform string) string
 
 	// Object Storage
@@ -263,7 +265,7 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
-	ManagedFKEHibernate: func(vpcId, platform, clusterId string, isWakeup bool) string {
+	ManagedFKEHibernate: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
 		action := "hibernate"
 		if isWakeup {
 			action = "wakeup"
@@ -274,9 +276,23 @@ var ApiPath = struct {
 			vpcId, platform, clusterId, action,
 		)
 	},
-	ManagedFKEHibernationSchedules: func(vpcId, platform, clusterId string) string {
+	ManagedFKEHibernationSchedules: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/schedules",
+			vpcId, platform, clusterId,
+		)
+	},
+
+	ManagedFKEAutoUpgradeVersion: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-auto-upgrade-version/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+
+	ManagedFKEConfigWorker: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/configure-worker-cluster/shoots/%s/0",
 			vpcId, platform, clusterId,
 		)
 	},

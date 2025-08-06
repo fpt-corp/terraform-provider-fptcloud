@@ -334,6 +334,24 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		}
 	}
 
+	if !from.IsEnableAutoUpgrade.IsNull() && !from.IsEnableAutoUpgrade.IsUnknown() {
+		to.IsEnableAutoUpgrade = from.IsEnableAutoUpgrade.ValueBool()
+	}
+
+	if !from.AutoUpgradeExpression.IsNull() && !from.AutoUpgradeExpression.IsUnknown() {
+		var exprs []string
+		for _, e := range from.AutoUpgradeExpression.Elements() {
+			if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
+				exprs = append(exprs, str.ValueString())
+			}
+		}
+		to.AutoUpgradeExpression = exprs
+	}
+
+	if !from.AutoUpgradeTimezone.IsNull() && !from.AutoUpgradeTimezone.IsUnknown() {
+		to.AutoUpgradeTimezone = from.AutoUpgradeTimezone.ValueString()
+	}
+
 	to.TypeCreate = "create"
 
 	return nil
@@ -413,15 +431,15 @@ func (r *resourceManagedKubernetesEngine) CheckForError(a []byte) *diag2.ErrorDi
 
 // diff
 func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	// Handle Version changes
 	if from.K8SVersion != to.K8SVersion {
 		if err := r.UpgradeVersion(ctx, from, to); err != nil {
 			return err
 		}
 	}
 
+	// Handle is_running changes
 	if from.IsRunning.ValueBool() != to.IsRunning.ValueBool() {
-		tflog.Info(ctx, "[DIFF] is_running changed → calling hibernate/wakeup API")
-
 		vpcId := from.VpcId.ValueString()
 		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 		if err != nil {
@@ -445,12 +463,51 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 
 	// Handle hibernation schedules changes
 	if !to.HibernationSchedules.Equal(from.HibernationSchedules) {
-		tflog.Info(ctx, "[DIFF] hibernation_schedules changed → calling update API")
-
 		err := r.updateHibernationSchedules(ctx, to, from)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error updating hibernation schedules", err.Error())
 			return &d
+		}
+	}
+
+	// Handle auto upgrade version changes
+	if from.IsEnableAutoUpgrade.ValueBool() != to.IsEnableAutoUpgrade.ValueBool() ||
+		!to.AutoUpgradeTimezone.Equal(from.AutoUpgradeTimezone) ||
+		!to.AutoUpgradeExpression.Equal(from.AutoUpgradeExpression) {
+
+		exprs := []string{}
+		if !to.AutoUpgradeExpression.IsNull() && !to.AutoUpgradeExpression.IsUnknown() {
+			for _, e := range to.AutoUpgradeExpression.Elements() {
+				if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
+					exprs = append(exprs, str.ValueString())
+				}
+			}
+		}
+
+		body := map[string]interface{}{
+			"is_enable_auto_upgrade":  to.IsEnableAutoUpgrade.ValueBool(),
+			"auto_upgrade_expression": exprs,
+			"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
+		}
+
+		vpcId := from.VpcId.ValueString()
+		clusterId := from.Id.ValueString()
+		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+			return &d
+		}
+		platform = strings.ToLower(platform)
+
+		path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
+
+		res, err := r.mfkeClient.sendPatch(path, platform, body)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error calling auto upgrade API", err.Error())
+			return &d
+		}
+		if diagErr := r.CheckForError(res); diagErr != nil {
+			return diagErr
 		}
 	}
 
@@ -483,12 +540,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 
 		platform = strings.ToLower(platform)
-		path := fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/configure-worker-cluster/shoots/%s/0",
-			from.VpcId.ValueString(),
-			platform,
-			from.Id.ValueString(),
-		)
+		path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
 
 		res, err := r.mfkeClient.sendPatch(path, platform, body)
 		if err != nil {
@@ -595,9 +647,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 
 	var newPools []*managedKubernetesEnginePool
 
-	// Lặp trực tiếp qua TẤT CẢ các worker mà API trả về
 	for _, worker := range data.Spec.Provider.Workers {
-		// `worker` ở đây chính là object `w` mà bạn cần
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
 		if !ok {
@@ -630,8 +680,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		}
 		newPools = append(newPools, item)
 	}
-
-	// Gán danh sách pool mới, đầy đủ vào state
 	state.Pools = newPools
 
 	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
@@ -642,6 +690,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.ServicePrefix = types.StringValue(serviceNetwork[1])
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
+
 	// Default cluster_autoscaler if missing
 	if state.ClusterAutoscaler.IsNull() || state.ClusterAutoscaler.IsUnknown() {
 		defaultMap := map[string]attr.Value{
@@ -711,7 +760,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			})
 		}
 
-		// 2. Sửa `AttrTypes` thành `ElemTypes`
 		hibernationScheduleObjectType := types.ObjectType{
 			AttrTypes: map[string]attr.Type{
 				"start":    types.StringType,
@@ -726,7 +774,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			return nil, fmt.Errorf("error creating hibernation schedules list for state: %v", diags)
 		}
 	} else {
-		// Nếu API không trả về schedule nào, đảm bảo state cũng là một danh sách rỗng
 		state.HibernationSchedules = types.ListNull(types.ObjectType{
 			AttrTypes: map[string]attr.Type{
 				"start":    types.StringType,
@@ -734,6 +781,29 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 				"location": types.StringType,
 			},
 		})
+	}
+
+	if d.Data.Spec.AutoUpgrade != nil {
+		autoUpgradeInfo := d.Data.Spec.AutoUpgrade
+
+		isEnabled := len(autoUpgradeInfo.TimeUpgrade) > 0
+		state.IsEnableAutoUpgrade = types.BoolValue(isEnabled)
+
+		state.AutoUpgradeTimezone = types.StringValue(autoUpgradeInfo.TimeZone)
+
+		if isEnabled {
+			listVal, diags := types.ListValueFrom(ctx, types.StringType, autoUpgradeInfo.TimeUpgrade)
+			if diags.HasError() {
+				return nil, fmt.Errorf("error creating auto_upgrade_expression list for state: %v", diags)
+			}
+			state.AutoUpgradeExpression = listVal
+		} else {
+			state.AutoUpgradeExpression = types.ListNull(types.StringType)
+		}
+	} else {
+		state.IsEnableAutoUpgrade = types.BoolValue(false)
+		state.AutoUpgradeTimezone = types.StringNull()
+		state.AutoUpgradeExpression = types.ListNull(types.StringType)
 	}
 
 	return &d, nil
@@ -814,7 +884,6 @@ func (w *managedKubernetesEngineDataWorker) IsWorkerBase() bool {
 	return w.SystemComponents.Allow
 }
 
-// updateHibernationSchedules updates hibernation schedules for the cluster
 func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) error {
 	vpcId := state.VpcId.ValueString()
 
