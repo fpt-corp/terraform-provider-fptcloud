@@ -283,12 +283,10 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 				plan.Pools[i].Tags = types.StringValue("")
 			}
 		}
-		if len(plan.Pools[i].Kv) == 0 {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].Kv = state.Pools[i].Kv
-			} else {
-				plan.Pools[i].Kv = nil
-			}
+
+		if len(plan.Pools[i].Kv) > 0 {
+		} else {
+			plan.Pools[i].Kv = []KV{}
 		}
 		if plan.Pools[i].VGpuID.IsNull() || plan.Pools[i].VGpuID.IsUnknown() || plan.Pools[i].VGpuID.ValueString() == "" {
 			if i < len(state.Pools) && state.Pools[i] != nil {

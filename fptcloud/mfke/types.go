@@ -81,8 +81,8 @@ type managedKubernetesEnginePool struct {
 }
 
 type KV struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name  types.String `tfsdk:"name" json:"name"`
+	Value types.String `tfsdk:"value" json:"value"`
 }
 
 type managedKubernetesEngineJson struct {

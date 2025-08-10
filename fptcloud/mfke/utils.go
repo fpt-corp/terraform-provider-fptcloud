@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
@@ -14,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -197,12 +200,6 @@ func PoolFields() map[string]schema.Attribute {
 		}
 	}
 
-	// kv: list of map[string]string
-	poolLevelAttributes["kv"] = schema.ListAttribute{
-		Optional:    true,
-		ElementType: types.MapType{ElemType: types.StringType},
-		Description: descriptions["kv"],
-	}
 	return poolLevelAttributes
 }
 
@@ -221,13 +218,24 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 	pools := make([]*managedKubernetesEnginePoolJson, 0)
 	for _, item := range from.Pools {
 		name := item.WorkerPoolID.ValueString()
-		// Convert []KV to []map[string]string for JSON
+
 		kvs := make([]map[string]string, 0)
-		for _, kv := range item.Kv {
-			goMap := make(map[string]string)
-			goMap["name"] = kv.Name
-			goMap["value"] = kv.Value
-			kvs = append(kvs, goMap)
+
+		if len(item.Kv) > 0 {
+			// Sort KV blocks by key name for consistent ordering during plan
+			sortedKv := sortKVByKey(item.Kv)
+
+			for _, kv := range sortedKv {
+				if kv.Name.IsNull() && kv.Value.IsNull() {
+					continue
+				}
+				key := kv.Name.ValueString()
+				val := kv.Value.ValueString()
+				if key == "" && val == "" {
+					continue
+				}
+				kvs = append(kvs, map[string]string{key: val})
+			}
 		}
 
 		newItem := &managedKubernetesEnginePoolJson{
@@ -246,7 +254,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			IsScale:                false,
 			IsOthers:               false,
 			ContainerRuntime:       item.ContainerRuntime.ValueString(),
-			Kv:                     kvs,
+			Kv:                     kvs, // Gán kvs đã được xử lý
 		}
 		if item.VGpuID.ValueString() != "" {
 			newItem.IsDisplayGPU = true
@@ -358,12 +366,31 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 }
 
 // remapPools
-func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) *managedKubernetesEnginePoolJson {
+func (r *resourceManagedKubernetesEngine) remapPools(ctx context.Context, item *managedKubernetesEnginePool, name string) (*managedKubernetesEnginePoolJson, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
 	var workerPoolID *string
 	if name == "" || name == "worker-new" || item.WorkerPoolID.IsNull() || item.WorkerPoolID.IsUnknown() {
 		workerPoolID = nil // new pool
 	} else {
 		workerPoolID = &name // existing pool
+	}
+
+	kvs := make([]map[string]string, 0)
+	if len(item.Kv) > 0 {
+		// Sort KV blocks by key name for consistent ordering during plan
+		sortedKv := sortKVByKey(item.Kv)
+		for _, kv := range sortedKv {
+			if kv.Name.IsNull() && kv.Value.IsNull() {
+				continue
+			}
+			key := kv.Name.ValueString()
+			val := kv.Value.ValueString()
+			if key == "" && val == "" {
+				continue
+			}
+			kvs = append(kvs, map[string]string{key: val})
+		}
 	}
 
 	newItem := &managedKubernetesEnginePoolJson{
@@ -382,26 +409,16 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 		Tags:                   item.Tags.ValueString(),
 		GpuSharingClient:       item.GpuSharingClient.ValueString(),
 		ContainerRuntime:       item.ContainerRuntime.ValueString(),
-		Kv:                     nil, // handle below
+		Kv:                     kvs,
 		AutoScale:              item.ScaleMin.ValueInt64() != item.ScaleMax.ValueInt64(),
-		IsDisplayGPU:           false, // set below if needed
-		IsCreate:               false, // set below if needed
+		IsDisplayGPU:           false,
+		IsCreate:               false,
 		IsScale:                false,
 		IsOthers:               false,
 		IsEnableAutoRepair:     item.IsEnableAutoRepair.ValueBool(),
 		WorkerBase:             item.WorkerBase.ValueBool(),
 	}
-	// Handle Kv
-	if len(item.Kv) > 0 {
-		kvs := make([]map[string]string, 0, len(item.Kv))
-		for _, kv := range item.Kv {
-			goMap := map[string]string{"name": kv.Name, "value": kv.Value}
-			kvs = append(kvs, goMap)
-		}
-		newItem.Kv = kvs
-	} else {
-		newItem.Kv = []map[string]string{}
-	}
+
 	// Set IsDisplayGPU if VGpuID is set
 	if item.VGpuID.ValueString() != "" {
 		newItem.IsDisplayGPU = true
@@ -410,7 +427,8 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 	if workerPoolID == nil {
 		newItem.IsCreate = true
 	}
-	return newItem
+
+	return newItem, diags
 }
 
 // checkForError
@@ -522,7 +540,11 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 
 		pools := []*managedKubernetesEnginePoolJson{}
 		for _, pool := range to.Pools {
-			item := r.remapPools(pool, pool.WorkerPoolID.ValueString())
+			item, err := r.remapPools(ctx, pool, pool.WorkerPoolID.ValueString())
+			if err != nil {
+				d := diag2.NewErrorDiagnostic("Error remapping pools", err.Errors()[0].Detail())
+				return &d
+			}
 			pools = append(pools, item)
 		}
 
@@ -592,6 +614,20 @@ func (r *resourceManagedKubernetesEngine) UpgradeVersion(ctx context.Context, fr
 func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) bool {
 	fromPool := map[string]*managedKubernetesEnginePool{}
 	toPool := map[string]*managedKubernetesEnginePool{}
+
+	kvMap := func(p *managedKubernetesEnginePool) map[string]string {
+		m := map[string]string{}
+		// Sort KV blocks by key name for consistent comparison
+		sortedKv := sortKVByKey(p.Kv)
+		for _, kv := range sortedKv {
+			k := kv.Name.ValueString()
+			v := kv.Value.ValueString()
+			if k != "" || v != "" {
+				m[k] = v
+			}
+		}
+		return m
+	}
 	for _, pool := range from.Pools {
 		fromPool[pool.WorkerPoolID.ValueString()] = pool
 		fmt.Printf("fromPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
@@ -610,7 +646,8 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 			f.ScaleMax != t.ScaleMax ||
 			f.WorkerBase != t.WorkerBase ||
 			f.IsEnableAutoRepair != t.IsEnableAutoRepair ||
-			f.Tags.ValueString() != t.Tags.ValueString() {
+			f.Tags.ValueString() != t.Tags.ValueString() ||
+			!reflect.DeepEqual(kvMap(f), kvMap(t)) {
 			return true
 		}
 	}
@@ -681,6 +718,34 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			GpuDriverVersion:       types.StringValue(worker.Machine.Image.GpuDriverVersion),
 			WorkerBase:             types.BoolValue(worker.IsWorkerBase()),
 		}
+
+		if worker.Labels != nil && len(worker.Labels) > 0 {
+			kvs := make([]KV, 0)
+			for _, l := range worker.Labels {
+				switch m := l.(type) {
+				case map[string]interface{}:
+					for k, v := range m {
+						vs := fmt.Sprint(v)
+						kvs = append(kvs, KV{
+							Name:  types.StringValue(k),
+							Value: types.StringValue(vs),
+						})
+					}
+				case map[string]string:
+					for k, v := range m {
+						kvs = append(kvs, KV{
+							Name:  types.StringValue(k),
+							Value: types.StringValue(v),
+						})
+					}
+				}
+			}
+			// Sort KV blocks by key name for consistent ordering when reading from API
+			item.Kv = sortKVByKey(kvs)
+		} else {
+			item.Kv = []KV{}
+		}
+
 		if strings.ToLower(platform) == "osp" {
 			item.NetworkID = types.StringValue(networkId)
 			item.NetworkName = types.StringValue(networkName)
@@ -951,4 +1016,21 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 	tflog.Info(ctx, "Successfully updated hibernation schedules.")
 
 	return nil
+}
+
+// sortKVByKey sorts KV blocks by key name to ensure consistent ordering
+func sortKVByKey(kvs []KV) []KV {
+	if len(kvs) <= 1 {
+		return kvs
+	}
+
+	// Create a copy to avoid modifying the original slice
+	sorted := make([]KV, len(kvs))
+	copy(sorted, kvs)
+
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Name.ValueString() < sorted[j].Name.ValueString()
+	})
+
+	return sorted
 }
