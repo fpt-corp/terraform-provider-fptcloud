@@ -365,6 +365,7 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 	} else {
 		workerPoolID = &name // existing pool
 	}
+
 	newItem := &managedKubernetesEnginePoolJson{
 		WorkerPoolID:           workerPoolID,
 		StorageProfile:         item.StorageProfile.ValueString(),
@@ -588,7 +589,7 @@ func (r *resourceManagedKubernetesEngine) UpgradeVersion(ctx context.Context, fr
 }
 
 // diffPool
-func (r *resourceManagedKubernetesEngine) DiffPool(_ context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) bool {
+func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) bool {
 	fromPool := map[string]*managedKubernetesEnginePool{}
 	toPool := map[string]*managedKubernetesEnginePool{}
 	for _, pool := range from.Pools {
@@ -605,7 +606,11 @@ func (r *resourceManagedKubernetesEngine) DiffPool(_ context.Context, from *mana
 	for _, pool := range from.Pools {
 		f := fromPool[pool.WorkerPoolID.ValueString()]
 		t := toPool[pool.WorkerPoolID.ValueString()]
-		if f.ScaleMin != t.ScaleMin || f.ScaleMax != t.ScaleMax {
+		if f.ScaleMin != t.ScaleMin ||
+			f.ScaleMax != t.ScaleMax ||
+			f.WorkerBase != t.WorkerBase ||
+			f.IsEnableAutoRepair != t.IsEnableAutoRepair ||
+			f.Tags.ValueString() != t.Tags.ValueString() {
 			return true
 		}
 	}
@@ -645,9 +650,10 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.Purpose = types.StringValue("private")
 	}
 
-	var newPools []*managedKubernetesEnginePool
+	apiPools := make(map[string]*managedKubernetesEnginePool)
 
 	for _, worker := range data.Spec.Provider.Workers {
+		// ... (logic tạo 'item' vẫn như bạn đã làm, không thay đổi)
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
 		if !ok {
@@ -658,6 +664,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		if e != nil {
 			return nil, e
 		}
+
 		item := &managedKubernetesEnginePool{
 			WorkerPoolID:           types.StringValue(worker.Name),
 			StorageProfile:         types.StringValue(worker.Volume.Type),
@@ -678,8 +685,18 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			item.NetworkID = types.StringValue(networkId)
 			item.NetworkName = types.StringValue(networkName)
 		}
-		newPools = append(newPools, item)
+
+		apiPools[worker.Name] = item
+
 	}
+
+	var newPools []*managedKubernetesEnginePool
+	for _, oldPool := range state.Pools {
+		if newPool, exists := apiPools[oldPool.WorkerPoolID.ValueString()]; exists {
+			newPools = append(newPools, newPool)
+		}
+	}
+
 	state.Pools = newPools
 
 	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")

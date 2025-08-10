@@ -140,6 +140,10 @@ func SetDefaults(state *managedKubernetesEngine) {
 		if pool.ContainerRuntime.IsNull() || pool.ContainerRuntime.IsUnknown() || pool.ContainerRuntime.ValueString() == "" {
 			pool.ContainerRuntime = types.StringValue("containerd")
 		}
+		// Set default for IsEnableAutoRepair
+		if pool.IsEnableAutoRepair.IsNull() || pool.IsEnableAutoRepair.IsUnknown() {
+			pool.IsEnableAutoRepair = types.BoolValue(true)
+		}
 	}
 
 	if state.IsRunning.IsNull() || state.IsRunning.IsUnknown() {
@@ -311,7 +315,7 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 			if i < len(state.Pools) && state.Pools[i] != nil {
 				plan.Pools[i].IsEnableAutoRepair = state.Pools[i].IsEnableAutoRepair
 			} else {
-				plan.Pools[i].IsEnableAutoRepair = types.BoolValue(false)
+				plan.Pools[i].IsEnableAutoRepair = types.BoolValue(true)
 			}
 		}
 		if plan.Pools[i].DriverInstallationType.IsNull() || plan.Pools[i].DriverInstallationType.IsUnknown() || plan.Pools[i].DriverInstallationType.ValueString() == "" {
