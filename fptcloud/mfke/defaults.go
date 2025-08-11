@@ -302,7 +302,7 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 				plan.Pools[i].GpuSharingClient = types.StringValue("")
 			}
 		}
-		if plan.Pools[i].MaxClient.IsNull() || plan.Pools[i].MaxClient.IsUnknown() || plan.Pools[i].MaxClient.ValueInt64() == 0 {
+		if plan.Pools[i].MaxClient.IsNull() || plan.Pools[i].MaxClient.IsUnknown() {
 			if i < len(state.Pools) && state.Pools[i] != nil {
 				plan.Pools[i].MaxClient = state.Pools[i].MaxClient
 			} else {

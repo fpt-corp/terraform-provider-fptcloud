@@ -2,6 +2,13 @@ package fptcloud
 
 import (
 	"context"
+	"os"
+	common "terraform-provider-fptcloud/commons"
+	fptcloud_database "terraform-provider-fptcloud/fptcloud/database"
+	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
+	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
+
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -9,12 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"os"
-	common "terraform-provider-fptcloud/commons"
-	fptcloud_database "terraform-provider-fptcloud/fptcloud/database"
-	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
-	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
-	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
 )
 
 var (
@@ -172,7 +173,6 @@ func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resourc
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngine,
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngineState,
 		fptcloud_mfke.NewResourceManagedKubernetesEngine,
-		fptcloud_mfke.NewResourceDedicatedKubernetesEngineState,
 		fptcloud_database.NewResourceDatabase,
 		fptcloud_database.NewResourceDatabaseStatus,
 	}

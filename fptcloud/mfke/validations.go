@@ -44,6 +44,83 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 			d := diag2.NewErrorDiagnostic("Invalid scale_max", "scale_max must be greater than or equal to scale_min for pool '"+name+"'")
 			return &d
 		}
+
+		// Validate: if worker_base = true, taints must be empty
+		if pool.WorkerBase.ValueBool() && len(pool.Taints) > 0 {
+			d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker pool '"+name+"' has worker_base = true, but taints are not allowed for base worker pools")
+			return &d
+		}
+
+		// Validate taint effect values
+		for _, taint := range pool.Taints {
+			if !taint.Effect.IsNull() && !taint.Effect.IsUnknown() {
+				effect := taint.Effect.ValueString()
+				allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
+				isValid := false
+				for _, allowed := range allowedEffects {
+					if effect == allowed {
+						isValid = true
+						break
+					}
+				}
+				if !isValid {
+					d := diag2.NewErrorDiagnostic("Invalid taint effect", "Taint effect '"+effect+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedEffects, ", "))
+					return &d
+				}
+			}
+		}
+
+		// Validate gpu_sharing_client
+		if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
+			gpuSharingClient := pool.GpuSharingClient.ValueString()
+			allowedGpuSharingClients := []string{"", "timeSlicing"}
+			isValid := false
+			for _, allowed := range allowedGpuSharingClients {
+				if gpuSharingClient == allowed {
+					isValid = true
+					break
+				}
+			}
+			if !isValid {
+				d := diag2.NewErrorDiagnostic("Invalid gpu_sharing_client", "gpu_sharing_client '"+gpuSharingClient+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedGpuSharingClients, ", "))
+				return &d
+			}
+		}
+
+		// Validate max_client (must be between 2 and 48)
+		if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
+			maxClient := pool.MaxClient.ValueInt64()
+			if maxClient < 2 || maxClient > 48 {
+				d := diag2.NewErrorDiagnostic("Invalid max_client", fmt.Sprintf("max_client must be between 2 and 48 for pool '%s', got: %d", name, maxClient))
+				return &d
+			}
+		}
+
+		// Validate driver_installation_type (must be "pre-install")
+		if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
+			driverInstallationType := pool.DriverInstallationType.ValueString()
+			if driverInstallationType != "pre-install" {
+				d := diag2.NewErrorDiagnostic("Invalid driver_installation_type", fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", name, driverInstallationType))
+				return &d
+			}
+		}
+
+		// Validate gpu_driver_version (must be "default" or "latest")
+		if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
+			gpuDriverVersion := pool.GpuDriverVersion.ValueString()
+			allowedGpuDriverVersions := []string{"default", "latest"}
+			isValid := false
+			for _, allowed := range allowedGpuDriverVersions {
+				if gpuDriverVersion == allowed {
+					isValid = true
+					break
+				}
+			}
+			if !isValid {
+				d := diag2.NewErrorDiagnostic("Invalid gpu_driver_version", fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedGpuDriverVersions, ", "), name, gpuDriverVersion))
+				return &d
+			}
+		}
 	}
 
 	// Check: if more than one pool, at least one must have worker_base = true
@@ -525,6 +602,103 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 		response.Diagnostics.Append(diag)
 		return false
 	}
+
+	// Validate taints configuration for worker pools during update
+	for _, pool := range plan.Pools {
+		if pool.WorkerBase.ValueBool() && len(pool.Taints) > 0 {
+			response.Diagnostics.AddError(
+				"Invalid taints configuration",
+				fmt.Sprintf("Worker pool '%s' has worker_base = true, but taints are not allowed for base worker pools", pool.WorkerPoolID.ValueString()),
+			)
+			return false
+		}
+		// Validate taint effect values
+		for _, taint := range pool.Taints {
+			if !taint.Effect.IsNull() && !taint.Effect.IsUnknown() {
+				effect := taint.Effect.ValueString()
+				allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
+				isValid := false
+				for _, allowed := range allowedEffects {
+					if effect == allowed {
+						isValid = true
+						break
+					}
+				}
+				if !isValid {
+					response.Diagnostics.AddError(
+						"Invalid taint effect",
+						fmt.Sprintf("Taint effect '%s' in pool '%s' is not allowed. Must be one of: %s", effect, pool.WorkerPoolID.ValueString(), strings.Join(allowedEffects, ", ")),
+					)
+					return false
+				}
+			}
+		}
+
+		// Validate gpu_sharing_client
+		if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
+			gpuSharingClient := pool.GpuSharingClient.ValueString()
+			allowedGpuSharingClients := []string{"", "timeSlicing"}
+			isValid := false
+			for _, allowed := range allowedGpuSharingClients {
+				if gpuSharingClient == allowed {
+					isValid = true
+					break
+				}
+			}
+			if !isValid {
+				response.Diagnostics.AddError(
+					"Invalid gpu_sharing_client",
+					fmt.Sprintf("gpu_sharing_client '%s' in pool '%s' is not allowed. Must be one of: %s", gpuSharingClient, pool.WorkerPoolID.ValueString(), strings.Join(allowedGpuSharingClients, ", ")),
+				)
+				return false
+			}
+		}
+
+		// Validate max_client (must be between 2 and 48)
+		if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
+			maxClient := pool.MaxClient.ValueInt64()
+			if maxClient < 2 || maxClient > 48 {
+				response.Diagnostics.AddError(
+					"Invalid max_client",
+					fmt.Sprintf("max_client must be between 2 and 48 for pool '%s', got: %d", pool.WorkerPoolID.ValueString(), maxClient),
+				)
+				return false
+			}
+		}
+
+		// Validate driver_installation_type (must be "pre-install")
+		if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
+			driverInstallationType := pool.DriverInstallationType.ValueString()
+			if driverInstallationType != "pre-install" {
+				response.Diagnostics.AddError(
+					"Invalid driver_installation_type",
+					fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", pool.WorkerPoolID.ValueString(), driverInstallationType),
+				)
+				return false
+			}
+		}
+
+		// Validate gpu_driver_version (must be "default" or "latest")
+		if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
+			gpuDriverVersion := pool.GpuDriverVersion.ValueString()
+			allowedGpuDriverVersions := []string{"default", "latest"}
+			isValid := false
+			for _, allowed := range allowedGpuDriverVersions {
+				if gpuDriverVersion == allowed {
+					isValid = true
+					break
+				}
+			}
+			if !isValid {
+				response.Diagnostics.AddError(
+					"Invalid gpu_driver_version",
+					fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", allowedGpuDriverVersions, pool.WorkerPoolID.ValueString(), gpuDriverVersion),
+				)
+				return false
+			}
+		}
+	}
+
 	// Add other update-time validations here as needed
 	return true
 }

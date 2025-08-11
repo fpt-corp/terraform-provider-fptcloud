@@ -115,6 +115,15 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 								},
 							},
 						},
+						"taints": schema.ListNestedBlock{
+							NestedObject: schema.NestedBlockObject{
+								Attributes: map[string]schema.Attribute{
+									"key":    schema.StringAttribute{Required: true, Description: "The taint key"},
+									"value":  schema.StringAttribute{Required: true, Description: "The taint value"},
+									"effect": schema.StringAttribute{Required: true, Description: "The taint effect (NoSchedule, NoExecute, PreferNoSchedule)"},
+								},
+							},
+						},
 					},
 				},
 			},
