@@ -33,6 +33,44 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example" {
 }
 ```
 
+### GPU Worker Pool
+
+```hcl
+resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
+  vpc_id       = "your-vpc-id"
+  cluster_name = "gpu-cluster"
+  network_id   = "your-network-id"
+  k8s_version  = "1.31.4"
+
+  pools {
+    name                  = "gpu-pool"
+    storage_profile       = "Premium-SSD"
+    worker_type           = "your-gpu-worker-type"
+    worker_disk_size      = 40
+    scale_min             = 1
+    scale_max             = 3
+    worker_base           = false
+    
+    # GPU Configuration
+    vgpu_id               = "your-vgpu-id"
+    max_client            = 2
+    gpu_sharing_client    = "timeSlicing"
+    driver_installation_type = "pre-install"
+    gpu_driver_version    = "default"
+    
+    # Required KV labels for GPU pools
+    kv {
+      name  = "nvidia.com/mig.config"
+      value = "all-1g.6gb"  # One of: "all-1g.6gb", "all-2g.12gb", "all-4g.24gb", ...
+    }
+    kv {
+      name  = "worker.fptcloud/type"
+      value = "gpu"
+    }
+  }
+}
+```
+
 ### With Hibernation Schedules
 
 ```hcl
@@ -99,6 +137,50 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
 }
 ```
 
+### KV Labels and Taints Examples
+
+#### KV Labels Example
+```hcl
+pools {
+  # ... other pool configuration ...
+  
+  # KV labels for node identification and scheduling
+  kv {
+    name  = "environment"
+    value = "production"
+  }
+  kv {
+    name  = "zone"
+    value = "us-east-1a"
+  }
+  kv {
+    name  = "instance-type"
+    value = "compute-optimized"
+  }
+}
+```
+
+#### Taints Example
+```hcl
+pools {
+  # ... other pool configuration ...
+  
+  # Taints for workload isolation
+  taints {
+    key    = "dedicated"
+    value  = "gpu-workloads"
+    effect = "NoSchedule"
+  }
+  
+  # Taints for spot instances
+  taints {
+    key    = "spot-instance"
+    value  = "true"
+    effect = "PreferNoSchedule"
+  }
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:
@@ -161,6 +243,41 @@ The `cluster_endpoint_access` block supports the following:
 
 The `pools` block supports the following:
 
+#### GPU Configuration
+When `vgpu_id` is specified, the following GPU-related fields become available:
+
+- **`vgpu_id`**: Virtual GPU ID for GPU-enabled worker nodes
+- **`max_client`**: Maximum number of clients that can share the GPU (2-48)
+- **`gpu_sharing_client`**: GPU sharing strategy (`""` or `"timeSlicing"`)
+- **`driver_installation_type`**: Driver installation method (must be `"pre-install"`)
+- **`gpu_driver_version`**: GPU driver version (`"default"` or `"latest"`)
+
+**Note**: All GPU-related fields are required when `vgpu_id` is specified.
+
+#### GPU Requirements
+When creating a GPU-enabled worker pool, the following KV labels are **mandatory**:
+
+1. **`nvidia.com/mig.config`**: Specifies the MIG (Multi-Instance GPU) configuration
+   - **`"all-1g.6gb"`**: 1GB memory per GPU instance
+   - **`"all-2g.12gb"`**: 2GB memory per GPU instance  
+   - **`"all-4g.24gb"`**: 4GB memory per GPU instance
+
+2. **`worker.fptcloud/type`**: Must be set to `"gpu"` to identify GPU worker nodes
+
+**Example of required GPU KV labels:**
+```hcl
+kv {
+  name  = "nvidia.com/mig.config"
+  value = "all-1g.6gb"  # Choose based on your workload requirements
+}
+kv {
+  name  = "worker.fptcloud/type"
+  value = "gpu"
+}
+```
+
+#### Basic Configuration
+
 * `name` - (Required) Pool name
 * `storage_profile` - (Required) Pool storage profile
 * `worker_type` - (Required) Worker flavor ID
@@ -174,10 +291,10 @@ The `pools` block supports the following:
 * `tags` - (Optional) Tags for the worker pool
 * `kv` - (Optional) Label for the pool
 * `vgpu_id` - (Optional) Virtual GPU ID
-* `max_client` - (Optional) Maximum number of clients
-* `gpu_sharing_client` - (Optional) GPU sharing client
-* `driver_installation_type` - (Optional) Driver installation type
-* `gpu_driver_version` - (Optional) GPU driver version
+* `max_client` - (Optional) Maximum number of clients. Must be between 2 and 48
+* `gpu_sharing_client` - (Optional) GPU sharing client. Must be one of: `""` (empty string) or `"timeSlicing"`
+* `driver_installation_type` - (Optional) Driver installation type. Must be `"pre-install"`
+* `gpu_driver_version` - (Optional) GPU driver version. Must be one of: `"default"` or `"latest"`
 * `is_enable_auto_repair` - (Optional) Whether to enable auto-repair
 
 ## Attributes Reference
@@ -194,6 +311,45 @@ Managed Kubernetes Engine clusters can be imported using the format `vpcId/clust
 terraform import fptcloud_managed_kubernetes_engine_v1.example vpc-123/cluster-456
 ```
 
+## Validation Rules
+
+The following validation rules are enforced for worker pools:
+
+### GPU Configuration Validation
+- **`gpu_sharing_client`**: Must be either an empty string (`""`) or `"timeSlicing"`
+- **`max_client`**: Must be between 2 and 48 (inclusive)
+- **`driver_installation_type`**: Must be `"pre-install"`
+- **`gpu_driver_version`**: Must be either `"default"` or `"latest"`
+- **`nvidia.com/mig.config`**: One of: `"all-1g.6gb"`, `"all-2g.12gb"`, `"all-4g.24gb"`, ... (when `vgpu_id` is specified)
+
+### Worker Pool Validation
+- **`worker_disk_size`**: Must be at least 40GB
+- **`scale_max`**: Must be greater than or equal to `scale_min`
+- **`worker_base`**: If set to `true`, taints are not allowed
+- **Pool names**: Cannot use reserved name `"worker-new"`
+- **Duplicate names**: Pool names must be unique within a cluster
+
+### Taint Validation
+- **Taint effects**: Must be one of: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"`
+- **Base worker pools**: Cannot have taints when `worker_base = true`
+
+### Network Validation
+- **Network overlay**: Must be either `"Always"` or `"CrossSubnet"`
+- **Network type**: Must be either `"calico"` or `"cilium"`
+- **Purpose**: Must be either `"public"` or `"private"`
+
+### Kubernetes Version Validation
+- **Supported versions**: `1.32.5`, `1.31.4`, `1.30.8`, `1.29.8`, `1.28.13`
+- **Version upgrades**: Can only upgrade by one minor version at a time
+- **Version downgrades**: Not allowed
+
+### Cluster Autoscaler Validation
+- **Expander strategies**: Must be one of: `"Random"`, `"Least-waste"`, `"Most-pods"`, `"Priority"`
+
+### Cluster Endpoint Access Validation
+- **Access types**: Must be one of: `"public"`, `"private"`, or `"mixed"`
+- **CIDR format**: Must be valid CIDR notation (e.g., `"10.0.0.0/8"`)
+
 ## Notes
 
 - Hibernation schedules use cron expressions for the `start` and `end` fields
@@ -201,3 +357,32 @@ terraform import fptcloud_managed_kubernetes_engine_v1.example vpc-123/cluster-4
 - When hibernation schedules are configured, the cluster will automatically hibernate and wake up according to the specified schedule
 - Hibernation schedules can be updated after cluster creation
 - The cluster must be in a running state to apply hibernation schedules
+- Validation errors will be displayed during `terraform plan` and `terraform apply` operations
+- GPU-related fields are only applicable when `vgpu_id` is specified
+
+## Error Handling
+
+### Validation Errors
+When validation rules are violated, Terraform will display descriptive error messages:
+
+```hcl
+# Example of validation error for max_client
+Error: Invalid max_client
+  max_client must be between 2 and 48 for pool 'gpu-test', got: 1
+
+# Example of validation error for gpu_sharing_client
+Error: Invalid gpu_sharing_client
+  gpu_sharing_client 'invalid' in pool 'gpu-test' is not allowed. Must be one of: , timeSlicing
+```
+
+### Common Validation Issues
+1. **GPU Configuration**: Ensure all GPU fields are properly set when `vgpu_id` is specified
+2. **Version Constraints**: Check Kubernetes version compatibility and upgrade restrictions
+3. **Network Configuration**: Verify network overlay and type settings match your requirements
+4. **Pool Naming**: Avoid reserved names and ensure uniqueness across pools
+
+### Troubleshooting
+- Run `terraform plan` to identify validation issues before applying changes
+- Check the error messages for specific field requirements
+- Ensure all required fields are properly configured
+- Verify that immutable fields are not being modified during updates
