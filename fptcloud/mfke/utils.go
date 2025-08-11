@@ -238,6 +238,28 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			}
 		}
 
+		taints := make([]map[string]interface{}, 0)
+		if len(item.Taints) > 0 {
+			for _, taint := range item.Taints {
+				if taint.Key.IsNull() && taint.Value.IsNull() && taint.Effect.IsNull() {
+					continue
+				}
+				key := taint.Key.ValueString()
+				val := taint.Value.ValueString()
+				effect := taint.Effect.ValueString()
+				if key == "" && val == "" && effect == "" {
+					continue
+				}
+				taintMap := map[string]interface{}{
+					key: map[string]string{
+						"value":  val,
+						"effect": effect,
+					},
+				}
+				taints = append(taints, taintMap)
+			}
+		}
+
 		newItem := &managedKubernetesEnginePoolJson{
 			StorageProfile:         item.StorageProfile.ValueString(),
 			WorkerType:             item.WorkerType.ValueString(),
@@ -254,7 +276,8 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			IsScale:                false,
 			IsOthers:               false,
 			ContainerRuntime:       item.ContainerRuntime.ValueString(),
-			Kv:                     kvs, // Gán kvs đã được xử lý
+			Kv:                     kvs,
+			Taints:                 taints,
 		}
 		if item.VGpuID.ValueString() != "" {
 			newItem.IsDisplayGPU = true
@@ -366,7 +389,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 }
 
 // remapPools
-func (r *resourceManagedKubernetesEngine) remapPools(ctx context.Context, item *managedKubernetesEnginePool, name string) (*managedKubernetesEnginePoolJson, diag.Diagnostics) {
+func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) (*managedKubernetesEnginePoolJson, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	var workerPoolID *string
@@ -393,6 +416,28 @@ func (r *resourceManagedKubernetesEngine) remapPools(ctx context.Context, item *
 		}
 	}
 
+	taints := make([]map[string]interface{}, 0)
+	if len(item.Taints) > 0 {
+		for _, taint := range item.Taints {
+			if taint.Key.IsNull() && taint.Value.IsNull() && taint.Effect.IsNull() {
+				continue
+			}
+			key := taint.Key.ValueString()
+			val := taint.Value.ValueString()
+			effect := taint.Effect.ValueString()
+			if key == "" && val == "" && effect == "" {
+				continue
+			}
+			taintMap := map[string]interface{}{
+				key: map[string]string{
+					"value":  val,
+					"effect": effect,
+				},
+			}
+			taints = append(taints, taintMap)
+		}
+	}
+
 	newItem := &managedKubernetesEnginePoolJson{
 		WorkerPoolID:           workerPoolID,
 		StorageProfile:         item.StorageProfile.ValueString(),
@@ -410,6 +455,7 @@ func (r *resourceManagedKubernetesEngine) remapPools(ctx context.Context, item *
 		GpuSharingClient:       item.GpuSharingClient.ValueString(),
 		ContainerRuntime:       item.ContainerRuntime.ValueString(),
 		Kv:                     kvs,
+		Taints:                 taints,
 		AutoScale:              item.ScaleMin.ValueInt64() != item.ScaleMax.ValueInt64(),
 		IsDisplayGPU:           false,
 		IsCreate:               false,
@@ -540,7 +586,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 
 		pools := []*managedKubernetesEnginePoolJson{}
 		for _, pool := range to.Pools {
-			item, err := r.remapPools(ctx, pool, pool.WorkerPoolID.ValueString())
+			item, err := r.remapPools(pool, pool.WorkerPoolID.ValueString())
 			if err != nil {
 				d := diag2.NewErrorDiagnostic("Error remapping pools", err.Errors()[0].Detail())
 				return &d
@@ -628,6 +674,22 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 		}
 		return m
 	}
+
+	taintMap := func(p *managedKubernetesEnginePool) map[string]interface{} {
+		m := map[string]interface{}{}
+		for _, taint := range p.Taints {
+			k := taint.Key.ValueString()
+			v := taint.Value.ValueString()
+			effect := taint.Effect.ValueString()
+			if k != "" || v != "" || effect != "" {
+				m[k] = map[string]string{
+					"value":  v,
+					"effect": effect,
+				}
+			}
+		}
+		return m
+	}
 	for _, pool := range from.Pools {
 		fromPool[pool.WorkerPoolID.ValueString()] = pool
 		fmt.Printf("fromPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
@@ -642,12 +704,22 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 	for _, pool := range from.Pools {
 		f := fromPool[pool.WorkerPoolID.ValueString()]
 		t := toPool[pool.WorkerPoolID.ValueString()]
+
+		// Debug logging for MaxClient comparison
+		if f.MaxClient.ValueInt64() != t.MaxClient.ValueInt64() {
+			fmt.Printf("DEBUG: MaxClient changed from %d to %d for pool %s\n",
+				f.MaxClient.ValueInt64(), t.MaxClient.ValueInt64(), pool.WorkerPoolID.ValueString())
+		}
+
 		if f.ScaleMin != t.ScaleMin ||
 			f.ScaleMax != t.ScaleMax ||
 			f.WorkerBase != t.WorkerBase ||
 			f.IsEnableAutoRepair != t.IsEnableAutoRepair ||
 			f.Tags.ValueString() != t.Tags.ValueString() ||
-			!reflect.DeepEqual(kvMap(f), kvMap(t)) {
+			f.MaxClient != t.MaxClient ||
+			f.GpuSharingClient.ValueString() != t.GpuSharingClient.ValueString() ||
+			!reflect.DeepEqual(kvMap(f), kvMap(t)) ||
+			!reflect.DeepEqual(taintMap(f), taintMap(t)) {
 			return true
 		}
 	}
@@ -687,10 +759,9 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.Purpose = types.StringValue("private")
 	}
 
-	apiPools := make(map[string]*managedKubernetesEnginePool)
+	apiPools := make([]*managedKubernetesEnginePool, 0)
 
 	for _, worker := range data.Spec.Provider.Workers {
-		// ... (logic tạo 'item' vẫn như bạn đã làm, không thay đổi)
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
 		if !ok {
@@ -703,13 +774,14 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		}
 
 		item := &managedKubernetesEnginePool{
-			WorkerPoolID:           types.StringValue(worker.Name),
-			StorageProfile:         types.StringValue(worker.Volume.Type),
-			WorkerType:             types.StringValue(flavorId),
-			WorkerDiskSize:         types.Int64Value(int64(parseNumber(worker.Volume.Size))),
-			ScaleMin:               types.Int64Value(int64(worker.Minimum)),
-			ScaleMax:               types.Int64Value(int64(worker.Maximum)),
-			NetworkID:              types.StringValue(networkId),
+			WorkerPoolID:   types.StringValue(worker.Name),
+			StorageProfile: types.StringValue(worker.Volume.Type),
+			WorkerType:     types.StringValue(flavorId),
+			WorkerDiskSize: types.Int64Value(int64(parseNumber(worker.Volume.Size))),
+			ScaleMin:       types.Int64Value(int64(worker.Minimum)),
+			ScaleMax:       types.Int64Value(int64(worker.Maximum)),
+			NetworkID:      types.StringValue(networkId),
+			// NetworkName:            types.StringValue(networkName),
 			IsEnableAutoRepair:     types.BoolValue(autoRepair),
 			ContainerRuntime:       types.StringValue(worker.Cri.Name),
 			Tags:                   types.StringValue(worker.Tags()),
@@ -717,6 +789,9 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
 			GpuDriverVersion:       types.StringValue(worker.Machine.Image.GpuDriverVersion),
 			WorkerBase:             types.BoolValue(worker.IsWorkerBase()),
+			// Read MaxClient from addons configuration
+			MaxClient:        types.Int64Value(r.MaxClientFromAddons(&data.Spec, worker.Name)),
+			GpuSharingClient: types.StringValue("timeSlicing"), // Default to timeSlicing when GPU is enabled
 		}
 
 		if worker.Labels != nil && len(worker.Labels) > 0 {
@@ -740,10 +815,38 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 					}
 				}
 			}
-			// Sort KV blocks by key name for consistent ordering when reading from API
 			item.Kv = sortKVByKey(kvs)
 		} else {
 			item.Kv = []KV{}
+		}
+
+		if worker.Taints != nil && len(worker.Taints) > 0 {
+			taints := make([]Taint, 0)
+			for _, t := range worker.Taints {
+				switch taintData := t.(type) {
+				case map[string]interface{}:
+					for key, taintValue := range taintData {
+						if taintMap, ok := taintValue.(map[string]interface{}); ok {
+							value := ""
+							effect := ""
+							if v, exists := taintMap["value"]; exists {
+								value = fmt.Sprint(v)
+							}
+							if e, exists := taintMap["effect"]; exists {
+								effect = fmt.Sprint(e)
+							}
+							taints = append(taints, Taint{
+								Key:    types.StringValue(key),
+								Value:  types.StringValue(value),
+								Effect: types.StringValue(effect),
+							})
+						}
+					}
+				}
+			}
+			item.Taints = taints
+		} else {
+			item.Taints = []Taint{}
 		}
 
 		if strings.ToLower(platform) == "osp" {
@@ -751,18 +854,11 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			item.NetworkName = types.StringValue(networkName)
 		}
 
-		apiPools[worker.Name] = item
-
+		apiPools = append(apiPools, item)
 	}
 
-	var newPools []*managedKubernetesEnginePool
-	for _, oldPool := range state.Pools {
-		if newPool, exists := apiPools[oldPool.WorkerPoolID.ValueString()]; exists {
-			newPools = append(newPools, newPool)
-		}
-	}
-
-	state.Pools = newPools
+	// Assign the fully reconstructed list of pools to the state
+	state.Pools = apiPools
 
 	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
 	state.PodNetwork = types.StringValue(podNetwork[0])
@@ -960,6 +1056,28 @@ func (w *managedKubernetesEngineDataWorker) AutoRepair() bool {
 
 func (w *managedKubernetesEngineDataWorker) Tags() string {
 	return w.Annotations["tagging.fke.fptcloud.com/worker-tags"]
+}
+
+// MaxClient reads the maxClient value from the addons configuration
+// The maxClient is stored in spec.addons.gpuOperator.timeSliceConfig.maxClient
+// Format: ["pool-name:value"] e.g. ["gpu-test:2"]
+func (r *resourceManagedKubernetesEngine) MaxClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) int64 {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return 0
+	}
+
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		// Parse format "pool-name:value" e.g. "gpu-test:2"
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			parts := strings.Split(maxClientStr, ":")
+			if len(parts) == 2 {
+				if value, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+					return value
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func (w *managedKubernetesEngineDataWorker) IsWorkerBase() bool {

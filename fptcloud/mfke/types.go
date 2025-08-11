@@ -72,6 +72,7 @@ type managedKubernetesEnginePool struct {
 	NetworkName            types.String `tfsdk:"network_name"`
 	Tags                   types.String `tfsdk:"tags"`
 	Kv                     []KV         `tfsdk:"kv"`
+	Taints                 []Taint      `tfsdk:"taints"`
 	VGpuID                 types.String `tfsdk:"vgpu_id"`
 	MaxClient              types.Int64  `tfsdk:"max_client"`
 	GpuSharingClient       types.String `tfsdk:"gpu_sharing_client"`
@@ -83,6 +84,12 @@ type managedKubernetesEnginePool struct {
 type KV struct {
 	Name  types.String `tfsdk:"name" json:"name"`
 	Value types.String `tfsdk:"value" json:"value"`
+}
+
+type Taint struct {
+	Key    types.String `tfsdk:"key" json:"key"`
+	Value  types.String `tfsdk:"value" json:"value"`
+	Effect types.String `tfsdk:"effect" json:"effect"`
 }
 
 type managedKubernetesEngineJson struct {
@@ -119,7 +126,7 @@ type managedKubernetesEnginePoolJson struct {
 	WorkerDiskSize int64 `json:"worker_disk_size"`
 	ScaleMin       int64 `json:"scale_min"`
 	ScaleMax       int64 `json:"scale_max"`
-	MaxClient      int64 `json:"max_client"`
+	MaxClient      int64 `json:"maxClient"`
 
 	// pointer fields
 	WorkerPoolID *string `json:"worker_pool_id"`
@@ -137,7 +144,8 @@ type managedKubernetesEnginePoolJson struct {
 	ContainerRuntime       string `json:"container_runtime"`
 
 	// slice fields
-	Kv []map[string]string `json:"kv"`
+	Kv     []map[string]string      `json:"kv"`
+	Taints []map[string]interface{} `json:"taints"`
 
 	// bool fields
 	AutoScale          bool `json:"auto_scale"`
@@ -213,6 +221,22 @@ type managedKubernetesEngineDataSpec struct {
 
 	Hibernate   *HibernateSpec   `json:"hibernation"`
 	AutoUpgrade *AutoUpgradeSpec `json:"autoUpgrade,omitempty"`
+	Addons      *AddonsSpec      `json:"addons,omitempty"`
+}
+
+// AddonsSpec represents the addons configuration in the API response
+type AddonsSpec struct {
+	GpuOperator *GpuOperatorSpec `json:"gpuOperator,omitempty"`
+}
+
+// GpuOperatorSpec represents the GPU operator configuration
+type GpuOperatorSpec struct {
+	TimeSliceConfig *TimeSliceConfigSpec `json:"timeSliceConfig,omitempty"`
+}
+
+// TimeSliceConfigSpec represents the time slice configuration
+type TimeSliceConfigSpec struct {
+	MaxClient []string `json:"maxClient"`
 }
 
 type managedKubernetesEngineDataClusterAutoscaler struct {
