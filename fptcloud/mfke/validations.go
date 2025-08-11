@@ -70,55 +70,58 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 			}
 		}
 
-		// Validate gpu_sharing_client
-		if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
-			gpuSharingClient := pool.GpuSharingClient.ValueString()
-			allowedGpuSharingClients := []string{"", "timeSlicing"}
-			isValid := false
-			for _, allowed := range allowedGpuSharingClients {
-				if gpuSharingClient == allowed {
-					isValid = true
-					break
+		// Only validate GPU-related fields if this is a GPU pool (has VGpuID)
+		if !pool.VGpuID.IsNull() && !pool.VGpuID.IsUnknown() && pool.VGpuID.ValueString() != "" {
+			// Validate gpu_sharing_client
+			if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
+				gpuSharingClient := pool.GpuSharingClient.ValueString()
+				allowedGpuSharingClients := []string{"", "timeSlicing"}
+				isValid := false
+				for _, allowed := range allowedGpuSharingClients {
+					if gpuSharingClient == allowed {
+						isValid = true
+						break
+					}
+				}
+				if !isValid {
+					d := diag2.NewErrorDiagnostic("Invalid gpu_sharing_client", "gpu_sharing_client '"+gpuSharingClient+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedGpuSharingClients, ", "))
+					return &d
 				}
 			}
-			if !isValid {
-				d := diag2.NewErrorDiagnostic("Invalid gpu_sharing_client", "gpu_sharing_client '"+gpuSharingClient+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedGpuSharingClients, ", "))
-				return &d
-			}
-		}
 
-		// Validate max_client (must be between 2 and 48)
-		if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
-			maxClient := pool.MaxClient.ValueInt64()
-			if maxClient < 2 || maxClient > 48 {
-				d := diag2.NewErrorDiagnostic("Invalid max_client", fmt.Sprintf("max_client must be between 2 and 48 for pool '%s', got: %d", name, maxClient))
-				return &d
-			}
-		}
-
-		// Validate driver_installation_type (must be "pre-install")
-		if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
-			driverInstallationType := pool.DriverInstallationType.ValueString()
-			if driverInstallationType != "pre-install" {
-				d := diag2.NewErrorDiagnostic("Invalid driver_installation_type", fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", name, driverInstallationType))
-				return &d
-			}
-		}
-
-		// Validate gpu_driver_version (must be "default" or "latest")
-		if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
-			gpuDriverVersion := pool.GpuDriverVersion.ValueString()
-			allowedGpuDriverVersions := []string{"default", "latest"}
-			isValid := false
-			for _, allowed := range allowedGpuDriverVersions {
-				if gpuDriverVersion == allowed {
-					isValid = true
-					break
+			// Validate max_client (must be between 2 and 48)
+			if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
+				maxClient := pool.MaxClient.ValueInt64()
+				if maxClient < 2 || maxClient > 48 {
+					d := diag2.NewErrorDiagnostic("Invalid max_client", fmt.Sprintf("max_client must be between 2 and 48 for pool '%s', got: %d", name, maxClient))
+					return &d
 				}
 			}
-			if !isValid {
-				d := diag2.NewErrorDiagnostic("Invalid gpu_driver_version", fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedGpuDriverVersions, ", "), name, gpuDriverVersion))
-				return &d
+
+			// Validate driver_installation_type (must be "pre-install")
+			if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
+				driverInstallationType := pool.DriverInstallationType.ValueString()
+				if driverInstallationType != "pre-install" {
+					d := diag2.NewErrorDiagnostic("Invalid driver_installation_type", fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", name, driverInstallationType))
+					return &d
+				}
+			}
+
+			// Validate gpu_driver_version (must be "default" or "latest")
+			if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
+				gpuDriverVersion := pool.GpuDriverVersion.ValueString()
+				allowedGpuDriverVersions := []string{"default", "latest"}
+				isValid := false
+				for _, allowed := range allowedGpuDriverVersions {
+					if gpuDriverVersion == allowed {
+						isValid = true
+						break
+					}
+				}
+				if !isValid {
+					d := diag2.NewErrorDiagnostic("Invalid gpu_driver_version", fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedGpuDriverVersions, ", "), name, gpuDriverVersion))
+					return &d
+				}
 			}
 		}
 	}
@@ -634,67 +637,65 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 			}
 		}
 
-		// Validate gpu_sharing_client
-		if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
-			gpuSharingClient := pool.GpuSharingClient.ValueString()
-			allowedGpuSharingClients := []string{"", "timeSlicing"}
-			isValid := false
-			for _, allowed := range allowedGpuSharingClients {
-				if gpuSharingClient == allowed {
-					isValid = true
-					break
+		if !pool.VGpuID.IsNull() && !pool.VGpuID.IsUnknown() && pool.VGpuID.ValueString() != "" {
+			if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
+				gpuSharingClient := pool.GpuSharingClient.ValueString()
+				allowedGpuSharingClients := []string{"", "timeSlicing"}
+				isValid := false
+				for _, allowed := range allowedGpuSharingClients {
+					if gpuSharingClient == allowed {
+						isValid = true
+						break
+					}
+				}
+				if !isValid {
+					response.Diagnostics.AddError(
+						"Invalid gpu_sharing_client",
+						fmt.Sprintf("gpu_sharing_client '%s' in pool '%s' is not allowed. Must be one of: %s", gpuSharingClient, pool.WorkerPoolID.ValueString(), strings.Join(allowedGpuSharingClients, ", ")),
+					)
+					return false
 				}
 			}
-			if !isValid {
-				response.Diagnostics.AddError(
-					"Invalid gpu_sharing_client",
-					fmt.Sprintf("gpu_sharing_client '%s' in pool '%s' is not allowed. Must be one of: %s", gpuSharingClient, pool.WorkerPoolID.ValueString(), strings.Join(allowedGpuSharingClients, ", ")),
-				)
-				return false
-			}
-		}
 
-		// Validate max_client (must be between 2 and 48)
-		if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
-			maxClient := pool.MaxClient.ValueInt64()
-			if maxClient < 2 || maxClient > 48 {
-				response.Diagnostics.AddError(
-					"Invalid max_client",
-					fmt.Sprintf("max_client must be between 2 and 48 for pool '%s', got: %d", pool.WorkerPoolID.ValueString(), maxClient),
-				)
-				return false
-			}
-		}
-
-		// Validate driver_installation_type (must be "pre-install")
-		if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
-			driverInstallationType := pool.DriverInstallationType.ValueString()
-			if driverInstallationType != "pre-install" {
-				response.Diagnostics.AddError(
-					"Invalid driver_installation_type",
-					fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", pool.WorkerPoolID.ValueString(), driverInstallationType),
-				)
-				return false
-			}
-		}
-
-		// Validate gpu_driver_version (must be "default" or "latest")
-		if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
-			gpuDriverVersion := pool.GpuDriverVersion.ValueString()
-			allowedGpuDriverVersions := []string{"default", "latest"}
-			isValid := false
-			for _, allowed := range allowedGpuDriverVersions {
-				if gpuDriverVersion == allowed {
-					isValid = true
-					break
+			if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
+				maxClient := pool.MaxClient.ValueInt64()
+				if maxClient < 2 || maxClient > 48 {
+					response.Diagnostics.AddError(
+						"Invalid max_client",
+						fmt.Sprintf("max_client must be between 2 and 48 for pool '%s', got: %d", pool.WorkerPoolID.ValueString(), maxClient),
+					)
+					return false
 				}
 			}
-			if !isValid {
-				response.Diagnostics.AddError(
-					"Invalid gpu_driver_version",
-					fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", allowedGpuDriverVersions, pool.WorkerPoolID.ValueString(), gpuDriverVersion),
-				)
-				return false
+
+			if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
+				driverInstallationType := pool.DriverInstallationType.ValueString()
+				if driverInstallationType != "pre-install" {
+					response.Diagnostics.AddError(
+						"Invalid driver_installation_type",
+						fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", pool.WorkerPoolID.ValueString(), driverInstallationType),
+					)
+					return false
+				}
+			}
+
+			if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
+				gpuDriverVersion := pool.GpuDriverVersion.ValueString()
+				allowedGpuDriverVersions := []string{"default", "latest"}
+				isValid := false
+				for _, allowed := range allowedGpuDriverVersions {
+					if gpuDriverVersion == allowed {
+						isValid = true
+						break
+					}
+				}
+				if !isValid {
+					response.Diagnostics.AddError(
+						"Invalid gpu_driver_version",
+						fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", allowedGpuDriverVersions, pool.WorkerPoolID.ValueString(), gpuDriverVersion),
+					)
+					return false
+				}
 			}
 		}
 	}
