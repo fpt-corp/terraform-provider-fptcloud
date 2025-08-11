@@ -157,8 +157,9 @@ func (s *InstanceServiceImpl) Reboot(vpcId, instanceId string) (*common.SimpleRe
 	apiPath := common.ApiPath.RebootInstance(vpcId, instanceId)
 	_, err := s.client.SendPostRequest(apiPath, nil)
 	if err != nil {
-		return nil, common.DecodeError(err)
+		return nil, common.BaseError(err)
 	}
+
 	var result = &common.SimpleResponse{
 		Data: "Successfully",
 	}
@@ -170,9 +171,11 @@ func (s *InstanceServiceImpl) Reboot(vpcId, instanceId string) (*common.SimpleRe
 func (s *InstanceServiceImpl) CreateSnapshot(vpcId, instanceId string, req any) (*common.SimpleResponse, error) {
 	apiPath := common.ApiPath.CreateSnapshotInstance(vpcId, instanceId)
 	_, err := s.client.SendPostRequest(apiPath, req)
+
 	if err != nil {
-		return nil, common.DecodeError(err)
+		return nil, common.BaseError(err)
 	}
+
 	var result = &common.SimpleResponse{
 		Data: "Successfully",
 	}
@@ -184,9 +187,11 @@ func (s *InstanceServiceImpl) CreateSnapshot(vpcId, instanceId string, req any) 
 func (s *InstanceServiceImpl) CaptureTemplate(vpcId string, req any) (*common.SimpleResponse, error) {
 	apiPath := common.ApiPath.CaptureTemplateInstance(vpcId)
 	_, err := s.client.SendPostRequest(apiPath, req)
+
 	if err != nil {
-		return nil, common.DecodeError(err)
+		return nil, common.BaseError(err)
 	}
+
 	var result = &common.SimpleResponse{
 		Data: "Successfully",
 	}
@@ -198,9 +203,11 @@ func (s *InstanceServiceImpl) CaptureTemplate(vpcId string, req any) (*common.Si
 func (s *InstanceServiceImpl) ResetPassword(vpcId, instanceId string) (*common.SimpleResponse, error) {
 	apiPath := common.ApiPath.ResetPasswordInstance(vpcId, instanceId)
 	_, err := s.client.SendPostRequest(apiPath, nil)
+
 	if err != nil {
-		return nil, common.DecodeError(err)
+		return nil, common.BaseError(err)
 	}
+
 	var result = &common.SimpleResponse{
 		Data: "Successfully",
 	}
@@ -214,8 +221,9 @@ func (s *InstanceServiceImpl) ChangeTermination(vpcId, instanceId string) (*comm
 
 	_, err := s.client.SendPostRequest(apiPath, nil)
 	if err != nil {
-		return nil, common.DecodeError(err)
+		return nil, common.BaseError(err)
 	}
+
 	var result = &common.SimpleResponse{
 		Data: "Successfully",
 	}
@@ -227,9 +235,11 @@ func (s *InstanceServiceImpl) ChangeTermination(vpcId, instanceId string) (*comm
 func (s *InstanceServiceImpl) ResizeDisk(vpcId, instanceId string, req any) (*common.SimpleResponse, error) {
 	apiPath := common.ApiPath.ResizeDiskInstance(vpcId, instanceId)
 	_, err := s.client.SendPostRequest(apiPath, req)
+
 	if err != nil {
-		return nil, common.DecodeError(err)
+		return nil, common.BaseError(err)
 	}
+
 	var result = &common.SimpleResponse{
 		Data: "Successfully",
 	}
