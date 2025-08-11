@@ -244,7 +244,7 @@ The `cluster_endpoint_access` block supports the following:
 The `pools` block supports the following:
 
 #### GPU Configuration
-When `vgpu_id` is specified, the following GPU-related fields become available:
+The following GPU-related fields are available for all worker pools, but are only validated when `vgpu_id` is specified:
 
 - **`vgpu_id`**: Virtual GPU ID for GPU-enabled worker nodes
 - **`max_client`**: Maximum number of clients that can share the GPU (2-48)
@@ -252,7 +252,7 @@ When `vgpu_id` is specified, the following GPU-related fields become available:
 - **`driver_installation_type`**: Driver installation method (must be `"pre-install"`)
 - **`gpu_driver_version`**: GPU driver version (`"default"` or `"latest"`)
 
-**Note**: All GPU-related fields are required when `vgpu_id` is specified.
+**Note**: All GPU-related fields are only validated when `vgpu_id` is specified. For non-GPU pools, these fields can have any value and are not validated.
 
 #### GPU Requirements
 When creating a GPU-enabled worker pool, the following KV labels are **mandatory**:
@@ -291,10 +291,10 @@ kv {
 * `tags` - (Optional) Tags for the worker pool
 * `kv` - (Optional) Label for the pool
 * `vgpu_id` - (Optional) Virtual GPU ID
-* `max_client` - (Optional) Maximum number of clients. Must be between 2 and 48
-* `gpu_sharing_client` - (Optional) GPU sharing client. Must be one of: `""` (empty string) or `"timeSlicing"`
-* `driver_installation_type` - (Optional) Driver installation type. Must be `"pre-install"`
-* `gpu_driver_version` - (Optional) GPU driver version. Must be one of: `"default"` or `"latest"`
+* `max_client` - (Optional) Maximum number of clients. Must be between 2 and 48 when `vgpu_id` is set (GPU pools)
+* `gpu_sharing_client` - (Optional) GPU sharing client. Must be one of: `""` (empty string) or `"timeSlicing"` when `vgpu_id` is set (GPU pools)
+* `driver_installation_type` - (Optional) Driver installation type. Must be `"pre-install"` when `vgpu_id` is set (GPU pools)
+* `gpu_driver_version` - (Optional) GPU driver version. Must be one of: `"default"` or `"latest"` when `vgpu_id` is set (GPU pools)
 * `is_enable_auto_repair` - (Optional) Whether to enable auto-repair
 
 ## Attributes Reference
@@ -316,6 +316,8 @@ terraform import fptcloud_managed_kubernetes_engine_v1.example vpc-123/cluster-4
 The following validation rules are enforced for worker pools:
 
 ### GPU Configuration Validation
+The following fields are only validated when `vgpu_id` is set (indicating a GPU pool). For non-GPU pools, these fields are not validated and can have any value:
+
 - **`gpu_sharing_client`**: Must be either an empty string (`""`) or `"timeSlicing"`
 - **`max_client`**: Must be between 2 and 48 (inclusive)
 - **`driver_installation_type`**: Must be `"pre-install"`
@@ -358,7 +360,7 @@ The following validation rules are enforced for worker pools:
 - Hibernation schedules can be updated after cluster creation
 - The cluster must be in a running state to apply hibernation schedules
 - Validation errors will be displayed during `terraform plan` and `terraform apply` operations
-- GPU-related fields are only applicable when `vgpu_id` is specified
+- GPU-related fields are available for all pools but are only validated when `vgpu_id` is specified
 
 ## Error Handling
 
