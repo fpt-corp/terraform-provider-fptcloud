@@ -195,6 +195,25 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 		return diag.FromErr(err)
 	}
 
+	if err := d.Set("resize_config", nil); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("snapshot_action", nil); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("template_action", nil); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("vm_action", nil); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("reset_password", nil); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("block_deletion", nil); err != nil {
+		return diag.FromErr(err)
+	}
+
 	return nil
 }
 
@@ -308,16 +327,16 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 
 	if d.HasChange("vm_action") {
 		if err := handleVMAction(ctx, d, instanceService, vpcId, apiClient.Timeout); err != nil {
-			return diag.Errorf("[ERR] An error occurred while change vm_action instance %s", err)
+			return err
 		}
 	}
 	if d.HasChange("snapshot_action") {
-		if err := handleSnapshotAction(ctx, d, instanceService, vpcId, apiClient.Timeout); err != nil {
+		if err := handleSnapshotAction(d, instanceService, vpcId); err != nil {
 			return err
 		}
 	}
 	if d.HasChange("template_action") {
-		if err := handleTemplateAction(ctx, d, instanceService, vpcId, apiClient.Timeout); err != nil {
+		if err := handleTemplateAction(d, instanceService, vpcId); err != nil {
 			return err
 		}
 	}
@@ -328,7 +347,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		if resetVal != nil && resetVal.(bool) {
 			_, err := instanceService.ResetPassword(vpcId, d.Id())
 			if err != nil {
-				return diag.Errorf("[ERR] An error occurred while reset password %s", err)
+				return diag.Errorf("[ERR] Reset password failed %s", err)
 			}
 		}
 	}
@@ -338,13 +357,9 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		if isBlock.(bool) {
 			_, err := instanceService.ChangeTermination(vpcId, d.Id())
 			if err != nil {
-				return diag.Errorf("[ERR] An error occurred while reset password %s", err)
+				return diag.Errorf("[ERR] Change termination failed %s", err)
 			}
 		}
-	}
-	// Xử lý is_delete (nếu cần logic riêng, ví dụ soft delete, có thể bổ sung ở đây)
-	if d.HasChange("is_delete") {
-		// coming soon
 	}
 	// Xử lý resize_config
 	if d.HasChange("resize_config") {
@@ -352,7 +367,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		if resizeMap != nil {
 			_, err := instanceService.ResizeDisk(vpcId, d.Id(), resizeMap)
 			if err != nil {
-				return diag.Errorf("[ERR] An error occurred while resize disk %s", err)
+				return diag.Errorf("[ERR] Resize disk failed %s", err)
 			}
 		}
 	}
@@ -385,7 +400,7 @@ func handleVMAction(ctx context.Context, d *schema.ResourceData, instanceService
 	return nil
 }
 
-func handleSnapshotAction(ctx context.Context, d *schema.ResourceData, instanceService InstanceService, vpcId string, timeout int) diag.Diagnostics {
+func handleSnapshotAction(d *schema.ResourceData, instanceService InstanceService, vpcId string) diag.Diagnostics {
 	snapshotAction := d.Get(INSTANCE_SNAPSHOT_ACTION)
 	if snapshotAction == nil {
 		return nil
@@ -410,7 +425,7 @@ func handleSnapshotAction(ctx context.Context, d *schema.ResourceData, instanceS
 	return nil
 }
 
-func handleTemplateAction(ctx context.Context, d *schema.ResourceData, instanceService InstanceService, vpcId string, timeout int) diag.Diagnostics {
+func handleTemplateAction(d *schema.ResourceData, instanceService InstanceService, vpcId string) diag.Diagnostics {
 	templateAction := d.Get(INSTANCE_TEMPLATE_ACTION)
 	if templateAction == nil {
 		return nil
