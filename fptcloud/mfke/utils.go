@@ -16,7 +16,6 @@ import (
 	"unicode"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -389,8 +388,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 }
 
 // remapPools
-func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) (*managedKubernetesEnginePoolJson, diag.Diagnostics) {
-	var diags diag.Diagnostics
+func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) *managedKubernetesEnginePoolJson {
 
 	var workerPoolID *string
 	if name == "" || name == "worker-new" || item.WorkerPoolID.IsNull() || item.WorkerPoolID.IsUnknown() {
@@ -474,7 +472,7 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 		newItem.IsCreate = true
 	}
 
-	return newItem, diags
+	return newItem
 }
 
 // checkForError
@@ -586,11 +584,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 
 		pools := []*managedKubernetesEnginePoolJson{}
 		for _, pool := range to.Pools {
-			item, err := r.remapPools(pool, pool.WorkerPoolID.ValueString())
-			if err != nil {
-				d := diag2.NewErrorDiagnostic("Error remapping pools", err.Errors()[0].Detail())
-				return &d
-			}
+			item := r.remapPools(pool, pool.WorkerPoolID.ValueString())
 			pools = append(pools, item)
 		}
 
@@ -794,7 +788,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			GpuSharingClient: types.StringValue("timeSlicing"), // Default to timeSlicing when GPU is enabled
 		}
 
-		if worker.Labels != nil && len(worker.Labels) > 0 {
+		if len(worker.Labels) > 0 {
 			kvs := make([]KV, 0)
 			for _, l := range worker.Labels {
 				switch m := l.(type) {
@@ -820,7 +814,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			item.Kv = []KV{}
 		}
 
-		if worker.Taints != nil && len(worker.Taints) > 0 {
+		if len(worker.Taints) > 0 {
 			taints := make([]Taint, 0)
 			for _, t := range worker.Taints {
 				switch taintData := t.(type) {
