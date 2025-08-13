@@ -57,13 +57,13 @@ type ActionBlock struct {
 
 // VMAction represents VM-specific actions
 type VMAction struct {
-	Type      string `json:"type"`
+	Type string `json:"type"`
 }
 
 // SnapshotAction represents snapshot-specific actions
 type SnapshotAction struct {
-	Type        string `json:"type"`
-	IncludeRam  *bool  `json:"include_ram,omitempty"`
+	Type       string `json:"type"`
+	IncludeRam *bool  `json:"include_ram,omitempty"`
 }
 
 // TemplateAction represents template-specific actions

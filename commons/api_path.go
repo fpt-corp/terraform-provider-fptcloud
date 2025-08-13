@@ -121,9 +121,6 @@ var ApiPath = struct {
 	StoragePolicy: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage-policies", vpcId)
 	},
-	CaptureTemplateInstance: func(vpcId string) string {
-		return fmt.Sprintf("/v2/vpc/%s/storage/capture-template", vpcId)
-	},
 	Flavor: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavors", vpcId)
 	},
@@ -403,5 +400,10 @@ var ApiPath = struct {
 	},
 	DeleteAccessKey: func(vpcId, s3ServiceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/user/credentials/delete", vpcId, s3ServiceId)
+	},
+
+	// Custom Image
+	CaptureTemplateInstance: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/custom-image/capture-template", vpcId)
 	},
 }

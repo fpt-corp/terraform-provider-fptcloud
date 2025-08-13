@@ -274,14 +274,14 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		},
 	},
 	"reset_password": {
-		Type:         schema.TypeBool,
-		Optional:     true,
-		Description:  "The reset password of the instance",
+		Type:        schema.TypeBool,
+		Optional:    true,
+		Description: "The reset password of the instance",
 	},
 	"block_deletion": {
-		Type:         schema.TypeBool,
-		Optional:     true,
-		Description:  "The block deletion of the instance",
+		Type:        schema.TypeBool,
+		Optional:    true,
+		Description: "The block deletion of the instance",
 	},
 	"resize_config": {
 		Type:        schema.TypeList,
