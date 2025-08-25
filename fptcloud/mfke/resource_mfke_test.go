@@ -171,11 +171,11 @@ func TestManagedKubernetesEngine_GPUWorkerPool(t *testing.T) {
 
 	t.Run("TestGPUValidationRules", func(t *testing.T) {
 		// Test validation rules cho GPU
-		// max_client chỉ được validate khi có vgpu_id (GPU pool)
-		assert.NoError(t, validateMaxClient(1, false), "max_client = 1 should be valid for non-GPU pools")
-		assert.NoError(t, validateMaxClient(2, false), "max_client = 2 should be valid for non-GPU pools")
-		assert.NoError(t, validateMaxClient(48, false), "max_client = 48 should be valid for non-GPU pools")
-		assert.NoError(t, validateMaxClient(49, false), "max_client = 49 should be valid for non-GPU pools")
+		// max_client chỉ được validate khi có vgpu_id (GPU pool) và gpu_sharing_client = "timeSlicing"
+		assert.NoError(t, validateMaxClient(1, false, ""), "max_client = 1 should be valid for non-GPU pools")
+		assert.NoError(t, validateMaxClient(2, false, ""), "max_client = 2 should be valid for non-GPU pools")
+		assert.NoError(t, validateMaxClient(48, false, ""), "max_client = 48 should be valid for non-GPU pools")
+		assert.NoError(t, validateMaxClient(49, false, ""), "max_client = 49 should be valid for non-GPU pools")
 
 		assert.NoError(t, validateGpuSharingClient("", false), "empty gpu_sharing_client should be valid for non-GPU pools")
 		assert.NoError(t, validateGpuSharingClient("timeSlicing", false), "timeSlicing should be valid for non-GPU pools")
@@ -189,10 +189,15 @@ func TestManagedKubernetesEngine_GPUWorkerPool(t *testing.T) {
 		assert.NoError(t, validateGpuDriverVersion("custom", false), "custom should be valid for non-GPU pools")
 
 		// Test GPU pool validations (hasVGpuID = true)
-		assert.NoError(t, validateMaxClient(2, true), "max_client = 2 should be valid for GPU pools")
-		assert.NoError(t, validateMaxClient(48, true), "max_client = 48 should be valid for GPU pools")
-		assert.Error(t, validateMaxClient(1, true), "max_client = 1 should be invalid for GPU pools")
-		assert.Error(t, validateMaxClient(49, true), "max_client = 49 should be invalid for GPU pools")
+		// Test with gpu_sharing_client = "timeSlicing" (should validate max_client)
+		assert.NoError(t, validateMaxClient(2, true, "timeSlicing"), "max_client = 2 should be valid for GPU pools with timeSlicing")
+		assert.NoError(t, validateMaxClient(48, true, "timeSlicing"), "max_client = 48 should be valid for GPU pools with timeSlicing")
+		assert.Error(t, validateMaxClient(1, true, "timeSlicing"), "max_client = 1 should be invalid for GPU pools with timeSlicing")
+		assert.Error(t, validateMaxClient(49, true, "timeSlicing"), "max_client = 49 should be invalid for GPU pools with timeSlicing")
+
+		// Test with gpu_sharing_client = "" (should NOT validate max_client)
+		assert.NoError(t, validateMaxClient(1, true, ""), "max_client = 1 should be valid for GPU pools with empty gpu_sharing_client")
+		assert.NoError(t, validateMaxClient(49, true, ""), "max_client = 49 should be valid for GPU pools with empty gpu_sharing_client")
 
 		assert.NoError(t, validateGpuSharingClient("", true), "empty gpu_sharing_client should be valid for GPU pools")
 		assert.NoError(t, validateGpuSharingClient("timeSlicing", true), "timeSlicing should be valid for GPU pools")
@@ -461,13 +466,13 @@ func countWorkerPools(config string) int {
 }
 
 // Validation helper functions
-func validateMaxClient(value int64, hasVGpuID bool) error {
-	if hasVGpuID {
+func validateMaxClient(value int64, hasVGpuID bool, gpuSharingClient string) error {
+	if hasVGpuID && gpuSharingClient == "timeSlicing" {
 		if value < 2 || value > 48 {
-			return fmt.Errorf("Invalid max_client: %d must be between 2 and 48 for GPU pools", value)
+			return fmt.Errorf("Invalid max_client: %d must be between 2 and 48 for GPU pools with gpu_sharing_client = 'timeSlicing'", value)
 		}
 	}
-	// For non-GPU pools, any value is valid
+	// For non-GPU pools or GPU pools with gpu_sharing_client != "timeSlicing", any value is valid
 	return nil
 }
 

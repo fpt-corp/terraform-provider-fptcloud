@@ -144,6 +144,19 @@ func SetDefaults(state *managedKubernetesEngine) {
 		if pool.IsEnableAutoRepair.IsNull() || pool.IsEnableAutoRepair.IsUnknown() {
 			pool.IsEnableAutoRepair = types.BoolValue(true)
 		}
+		if pool.WorkerBase.IsNull() || pool.WorkerBase.IsUnknown() {
+			pool.WorkerBase = types.BoolValue(false)
+		}
+		// if !pool.VGpuID.IsNull() && !pool.VGpuID.IsUnknown() || pool.VGpuID.ValueString() != "" {
+		// 	if pool.GpuSharingClient.IsNull() || pool.GpuSharingClient.IsUnknown() || pool.GpuSharingClient.ValueString() == "" {
+		// 		pool.MaxClient = types.Int64Value(2)
+		// 	}
+		// }
+
+		// Set default for GpuSharingClient
+		if pool.GpuSharingClient.IsNull() || pool.GpuSharingClient.IsUnknown() || pool.GpuSharingClient.ValueString() == "" {
+			pool.GpuSharingClient = types.StringValue("")
+		}
 	}
 
 	if state.IsRunning.IsNull() || state.IsRunning.IsUnknown() {
