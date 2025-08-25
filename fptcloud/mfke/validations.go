@@ -617,6 +617,24 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 
 	// Validate taints configuration for worker pools during update
 	for _, pool := range plan.Pools {
+		// Validate scale_max >= scale_min
+		if pool.ScaleMax.ValueInt64() < pool.ScaleMin.ValueInt64() {
+			response.Diagnostics.AddError(
+				"Invalid scale_max",
+				fmt.Sprintf("scale_max must be greater than or equal to scale_min for pool '%s'", pool.WorkerPoolID.ValueString()),
+			)
+			return false
+		}
+
+		// Validate worker_disk_size >= 40GB
+		if pool.WorkerDiskSize.ValueInt64() < 40 {
+			response.Diagnostics.AddError(
+				"Invalid worker_disk_size",
+				fmt.Sprintf("worker_disk_size must be greater than or equal to 40GB for pool '%s'", pool.WorkerPoolID.ValueString()),
+			)
+			return false
+		}
+
 		if pool.WorkerBase.ValueBool() && len(pool.Taints) > 0 {
 			response.Diagnostics.AddError(
 				"Invalid taints configuration",
