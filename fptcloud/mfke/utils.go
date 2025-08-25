@@ -303,6 +303,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			WorkerPoolID:           &name,
 			VGpuID:                 item.VGpuID.ValueString(),
 			MaxClient:              item.MaxClient.ValueInt64(),
+			GpuSharingClient:       item.GpuSharingClient.ValueString(),
 			GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
 			DriverInstallationType: item.DriverInstallationType.ValueString(),
 			IsCreate:               true,
@@ -827,9 +828,21 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
 			GpuDriverVersion:       types.StringValue(worker.Machine.Image.GpuDriverVersion),
 			WorkerBase:             types.BoolValue(worker.IsWorkerBase()),
+		}
+
+		// For GPU pools, read values from addons configuration
+		if worker.ProviderConfig.VGpuID != "" {
 			// Read MaxClient from addons configuration
-			MaxClient:        types.Int64Value(r.MaxClientFromAddons(&data.Spec, worker.Name)),
-			GpuSharingClient: types.StringValue(r.GpuSharingClientFromAddons(&data.Spec, worker.Name)),
+			maxClientFromAPI := r.MaxClientFromAddons(&data.Spec, worker.Name)
+			item.MaxClient = types.Int64Value(maxClientFromAPI)
+
+			// Read GpuSharingClient from addons configuration
+			gpuSharingClientFromAPI := r.GpuSharingClientFromAddons(&data.Spec, worker.Name)
+			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
+		} else {
+			// Non-GPU pools: set default values
+			item.MaxClient = types.Int64Value(0)
+			item.GpuSharingClient = types.StringValue("")
 		}
 
 		if len(worker.Labels) > 0 {

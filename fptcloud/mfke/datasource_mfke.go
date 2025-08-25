@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
@@ -187,16 +188,33 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 		}
 
 		item := &managedKubernetesEnginePool{
-			WorkerPoolID:       types.StringValue(w.Name),
-			StorageProfile:     types.StringValue(w.Volume.Type),
-			WorkerType:         types.StringValue(flavorId),
-			WorkerDiskSize:     types.Int64Value(int64(parseNumber(w.Volume.Size))),
-			ScaleMin:           types.Int64Value(int64(w.Minimum)),
-			ScaleMax:           types.Int64Value(int64(w.Maximum)),
-			NetworkID:          types.StringValue(networkId),
-			IsEnableAutoRepair: types.BoolValue(autoRepair),
-			//DriverInstallationType: types.String{},
-			//GpuDriverVersion:       types.StringValue(gpuDriverVersion),
+			WorkerPoolID:           types.StringValue(w.Name),
+			StorageProfile:         types.StringValue(w.Volume.Type),
+			WorkerType:             types.StringValue(flavorId),
+			WorkerDiskSize:         types.Int64Value(int64(parseNumber(w.Volume.Size))),
+			ScaleMin:               types.Int64Value(int64(w.Minimum)),
+			ScaleMax:               types.Int64Value(int64(w.Maximum)),
+			NetworkID:              types.StringValue(networkId),
+			IsEnableAutoRepair:     types.BoolValue(autoRepair),
+			VGpuID:                 types.StringValue(w.ProviderConfig.VGpuID),
+			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
+			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
+			WorkerBase:             types.BoolValue(w.IsWorkerBase()),
+		}
+
+		// For GPU pools, read values from addons configuration
+		if w.ProviderConfig.VGpuID != "" {
+			// Read MaxClient from addons configuration
+			maxClientFromAPI := d.MaxClientFromAddons(&data.Spec, w.Name)
+			item.MaxClient = types.Int64Value(maxClientFromAPI)
+
+			// Read GpuSharingClient from addons configuration
+			gpuSharingClientFromAPI := d.GpuSharingClientFromAddons(&data.Spec, w.Name)
+			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
+		} else {
+			// Non-GPU pools: set default values
+			item.MaxClient = types.Int64Value(0)
+			item.GpuSharingClient = types.StringValue("")
 		}
 
 		pool = append(pool, item)
@@ -216,6 +234,45 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	// state.NetworkNodePrefix
 
 	return &response, nil
+}
+
+// MaxClient reads the maxClient value from the addons configuration
+// The maxClient is stored in spec.addons.gpuOperator.timeSliceConfig.maxClient
+// Format: ["pool-name:value"] e.g. ["gpu-test:2"]
+func (d *datasourceManagedKubernetesEngine) MaxClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) int64 {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return 0
+	}
+
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		// Parse format "pool-name:value" e.g. "gpu-test:2"
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			parts := strings.Split(maxClientStr, ":")
+			if len(parts) == 2 {
+				if value, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+					return value
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func (d *datasourceManagedKubernetesEngine) GpuSharingClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) string {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return ""
+	}
+
+	// Check if this pool has TimeSliceConfig (maxClient configuration)
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			// If pool has TimeSliceConfig, it means gpu_sharing_client = "timeSlicing"
+			return "timeSlicing"
+		}
+	}
+
+	// If no TimeSliceConfig found for this pool, gpu_sharing_client = "" (empty)
+	return ""
 }
 
 func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {

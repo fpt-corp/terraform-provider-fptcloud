@@ -147,15 +147,25 @@ func SetDefaults(state *managedKubernetesEngine) {
 		if pool.WorkerBase.IsNull() || pool.WorkerBase.IsUnknown() {
 			pool.WorkerBase = types.BoolValue(false)
 		}
-		// if !pool.VGpuID.IsNull() && !pool.VGpuID.IsUnknown() || pool.VGpuID.ValueString() != "" {
-		// 	if pool.GpuSharingClient.IsNull() || pool.GpuSharingClient.IsUnknown() || pool.GpuSharingClient.ValueString() == "" {
-		// 		pool.MaxClient = types.Int64Value(2)
-		// 	}
-		// }
 
-		// Set default for GpuSharingClient
-		if pool.GpuSharingClient.IsNull() || pool.GpuSharingClient.IsUnknown() || pool.GpuSharingClient.ValueString() == "" {
+		// Handle GPU-related fields - only set defaults if they are truly null/unknown
+		// Don't override values that are explicitly set
+		if pool.GpuSharingClient.IsNull() || pool.GpuSharingClient.IsUnknown() {
 			pool.GpuSharingClient = types.StringValue("")
+		}
+
+		// Handle MaxClient for GPU pools
+		if pool.MaxClient.IsNull() || pool.MaxClient.IsUnknown() {
+			pool.MaxClient = types.Int64Value(0)
+		}
+
+		// Handle other GPU-related defaults
+		if pool.DriverInstallationType.IsNull() || pool.DriverInstallationType.IsUnknown() || pool.DriverInstallationType.ValueString() == "" {
+			pool.DriverInstallationType = types.StringValue("")
+		}
+
+		if pool.GpuDriverVersion.IsNull() || pool.GpuDriverVersion.IsUnknown() || pool.GpuDriverVersion.ValueString() == "" {
+			pool.GpuDriverVersion = types.StringValue("")
 		}
 	}
 
