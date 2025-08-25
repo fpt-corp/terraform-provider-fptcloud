@@ -233,7 +233,41 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 				if key == "" && val == "" {
 					continue
 				}
+
+				// Skip system-generated keys when sending request
+				if isSystemGeneratedKey(key) {
+					continue
+				}
+
 				kvs = append(kvs, map[string]string{key: val})
+			}
+		}
+
+		// Automatically add required system-generated keys for GPU pools
+		if item.VGpuID.ValueString() != "" {
+			// Check which required GPU labels are already present
+			hasMigConfig := false
+			hasWorkerType := false
+			migConfigValue := "all-1g.6gb" // default value
+
+			for _, kv := range item.Kv {
+				if kv.Name.ValueString() == "nvidia.com/mig.config" {
+					hasMigConfig = true
+					migConfigValue = kv.Value.ValueString() // use user-specified value
+				}
+				if kv.Name.ValueString() == "worker.fptcloud/type" {
+					hasWorkerType = true
+				}
+			}
+
+			// Add nvidia.com/mig.config if not present, or use user-specified value
+			if !hasMigConfig {
+				kvs = append(kvs, map[string]string{"nvidia.com/mig.config": migConfigValue})
+			}
+
+			// Add worker.fptcloud/type if not present
+			if !hasWorkerType {
+				kvs = append(kvs, map[string]string{"worker.fptcloud/type": "gpu"})
 			}
 		}
 
@@ -410,6 +444,12 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 			if key == "" && val == "" {
 				continue
 			}
+
+			// Skip system-generated keys when sending request
+			if isSystemGeneratedKey(key) {
+				continue
+			}
+
 			kvs = append(kvs, map[string]string{key: val})
 		}
 	}
@@ -705,6 +745,10 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 				f.MaxClient.ValueInt64(), t.MaxClient.ValueInt64(), pool.WorkerPoolID.ValueString())
 		}
 
+		// Skip KV comparison for system-generated labels (like nvidia.com/device-plugin.config)
+		userDefinedKvMap := filterUserDefinedKV(kvMap(f))
+		userDefinedTvMap := filterUserDefinedKV(kvMap(t))
+
 		if f.ScaleMin != t.ScaleMin ||
 			f.ScaleMax != t.ScaleMax ||
 			f.WorkerBase != t.WorkerBase ||
@@ -712,7 +756,7 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 			f.Tags.ValueString() != t.Tags.ValueString() ||
 			f.MaxClient != t.MaxClient ||
 			f.GpuSharingClient.ValueString() != t.GpuSharingClient.ValueString() ||
-			!reflect.DeepEqual(kvMap(f), kvMap(t)) ||
+			!reflect.DeepEqual(userDefinedKvMap, userDefinedTvMap) ||
 			!reflect.DeepEqual(taintMap(f), taintMap(t)) {
 			return true
 		}
@@ -785,29 +829,36 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			WorkerBase:             types.BoolValue(worker.IsWorkerBase()),
 			// Read MaxClient from addons configuration
 			MaxClient:        types.Int64Value(r.MaxClientFromAddons(&data.Spec, worker.Name)),
-			GpuSharingClient: types.StringValue("timeSlicing"), // Default to timeSlicing when GPU is enabled
+			GpuSharingClient: types.StringValue(r.GpuSharingClientFromAddons(&data.Spec, worker.Name)),
 		}
 
 		if len(worker.Labels) > 0 {
-			kvs := make([]KV, 0)
+			// Convert labels to map for filtering
+			labelMap := make(map[string]string)
 			for _, l := range worker.Labels {
 				switch m := l.(type) {
 				case map[string]interface{}:
 					for k, v := range m {
 						vs := fmt.Sprint(v)
-						kvs = append(kvs, KV{
-							Name:  types.StringValue(k),
-							Value: types.StringValue(vs),
-						})
+						labelMap[k] = vs
 					}
 				case map[string]string:
 					for k, v := range m {
-						kvs = append(kvs, KV{
-							Name:  types.StringValue(k),
-							Value: types.StringValue(v),
-						})
+						labelMap[k] = v
 					}
 				}
+			}
+
+			// Filter out system-generated labels
+			userDefinedLabels := filterUserDefinedKV(labelMap)
+
+			// Convert back to KV slice
+			kvs := make([]KV, 0)
+			for k, v := range userDefinedLabels {
+				kvs = append(kvs, KV{
+					Name:  types.StringValue(k),
+					Value: types.StringValue(v),
+				})
 			}
 			item.Kv = sortKVByKey(kvs)
 		} else {
@@ -1074,6 +1125,23 @@ func (r *resourceManagedKubernetesEngine) MaxClientFromAddons(spec *managedKuber
 	return 0
 }
 
+func (r *resourceManagedKubernetesEngine) GpuSharingClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) string {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return ""
+	}
+
+	// Check if this pool has TimeSliceConfig (maxClient configuration)
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			// If pool has TimeSliceConfig, it means gpu_sharing_client = "timeSlicing"
+			return "timeSlicing"
+		}
+	}
+
+	// If no TimeSliceConfig found for this pool, gpu_sharing_client = "" (empty)
+	return ""
+}
+
 func (w *managedKubernetesEngineDataWorker) IsWorkerBase() bool {
 	return w.SystemComponents.Allow
 }
@@ -1128,6 +1196,34 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 	tflog.Info(ctx, "Successfully updated hibernation schedules.")
 
 	return nil
+}
+
+// isSystemGeneratedKey checks if a key is system-generated
+func isSystemGeneratedKey(key string) bool {
+	systemKeys := []string{
+		"nvidia.com/device-plugin.config", // System auto-generates this for GPU pools
+		// Add more system-generated keys here if needed
+	}
+
+	for _, systemKey := range systemKeys {
+		if key == systemKey {
+			return true
+		}
+	}
+	return false
+}
+
+// System-generated keys like "nvidia.com/device-plugin.config" should be ignored
+func filterUserDefinedKV(kvMap map[string]string) map[string]string {
+	userDefined := make(map[string]string)
+
+	for k, v := range kvMap {
+		if !isSystemGeneratedKey(k) {
+			userDefined[k] = v
+		}
+	}
+
+	return userDefined
 }
 
 // sortKVByKey sorts KV blocks by key name to ensure consistent ordering
