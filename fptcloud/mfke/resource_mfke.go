@@ -103,15 +103,15 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 					},
 				},
 			},
-			"pools": schema.ListNestedBlock{
+			"pools": schema.SetNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: poolAttributes,
 					Blocks: map[string]schema.Block{
 						"kv": schema.ListNestedBlock{
 							NestedObject: schema.NestedBlockObject{
 								Attributes: map[string]schema.Attribute{
-									"name":  schema.StringAttribute{Optional: true, Computed: true, Description: descriptions["name"]},
-									"value": schema.StringAttribute{Optional: true, Computed: true, Description: descriptions["kv"]},
+									"name":  schema.StringAttribute{Required: true, Description: descriptions["name"]},
+									"value": schema.StringAttribute{Required: true, Description: descriptions["kv"]},
 								},
 							},
 						},
