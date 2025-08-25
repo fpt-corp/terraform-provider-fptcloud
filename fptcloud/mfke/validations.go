@@ -92,7 +92,13 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 			// Validate max_client only when gpu_sharing_client = "timeSlicing"
 			if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
 				// Only validate max_client if gpu_sharing_client is "timeSlicing"
-				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() && pool.GpuSharingClient.ValueString() == "timeSlicing" {
+				gpuSharingClientValue := ""
+				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
+					gpuSharingClientValue = pool.GpuSharingClient.ValueString()
+				}
+
+				// If gpu_sharing_client = "" (empty), skip validation
+				if gpuSharingClientValue == "timeSlicing" {
 					maxClient := pool.MaxClient.ValueInt64()
 					if maxClient < 2 || maxClient > 48 {
 						d := diag2.NewErrorDiagnostic("Invalid max_client", fmt.Sprintf("max_client must be between 2 and 48 for pool '%s' when gpu_sharing_client = 'timeSlicing', got: %d", name, maxClient))
@@ -672,6 +678,7 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 				fmt.Printf("DEBUG: Pool '%s' - gpu_sharing_client: '%s', max_client: %d\n",
 					pool.WorkerPoolID.ValueString(), gpuSharingClientValue, pool.MaxClient.ValueInt64())
 
+				// If gpu_sharing_client = "" (empty), skip validation
 				if gpuSharingClientValue == "timeSlicing" {
 					maxClient := pool.MaxClient.ValueInt64()
 					if maxClient < 2 || maxClient > 48 {
