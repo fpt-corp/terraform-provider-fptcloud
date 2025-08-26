@@ -19,6 +19,7 @@ import (
 	fptcloud_storage "terraform-provider-fptcloud/fptcloud/storage"
 	fptcloud_storage_policy "terraform-provider-fptcloud/fptcloud/storage-policy"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	fptcloud_vgpu "terraform-provider-fptcloud/fptcloud/vgpu"
 	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -92,6 +93,7 @@ func Provider() *schema.Provider {
 			"fptcloud_object_storage_sub_user_detail":       fptcloud_object_storage.DataSourceSubUserDetail(),
 			"fptcloud_s3_service_enable":                    fptcloud_object_storage.DataSourceS3ServiceEnableResponse(),
 			"fptcloud_object_storage_bucket_acl":            fptcloud_object_storage.DataSourceBucketAcl(),
+			"fptcloud_vgpu":                                 fptcloud_vgpu.DataSourceVGpu(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),

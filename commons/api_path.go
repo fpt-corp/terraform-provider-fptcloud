@@ -67,6 +67,9 @@ var ApiPath = struct {
 	ManagedFKEUpdateClusterAutoscaler func(vpcId string, platform string, clusterId string) string
 	GetFKEOSVersion                   func(vpcId string, platform string) string
 
+	// GPU
+	GetGPUInfo func(vpcId string) string
+
 	// Object Storage
 	// Common
 	CheckS3ServiceEnable func(vpcId string) string
@@ -310,6 +313,9 @@ var ApiPath = struct {
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-cluster-auto-scaling/shoots/%s",
 			vpcId, platform, clusterId,
 		)
+	},
+	GetGPUInfo: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vgpu/list?vpc_id=%s", vpcId)
 	},
 
 	// Object Storage
