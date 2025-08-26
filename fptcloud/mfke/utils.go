@@ -615,6 +615,15 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 	}
 
+	// Handle cluster endpoint CIDR changes
+	if !to.ClusterEndpointAccess.Equal(from.ClusterEndpointAccess) {
+		err := r.updateClusterEndpointCIDR(ctx, to, from)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error updating cluster endpoint CIDR", err.Error())
+			return &d
+		}
+	}
+
 	editGroup := r.DiffPool(ctx, from, to)
 	if editGroup {
 		d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
@@ -953,22 +962,70 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			defaultMap,
 		)
 	}
-	// Default cluster_endpoint_access if missing
-	if state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
-		defaultAccessMap := map[string]attr.Value{
-			"type": types.StringValue("public"),
-			"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
-				types.StringValue("0.0.0.0/0"),
-			}),
-		}
-		state.ClusterEndpointAccess, _ = types.ObjectValue(
-			map[string]attr.Type{
-				"type":       types.StringType,
-				"allow_cidr": types.ListType{ElemType: types.StringType},
-			},
-			defaultAccessMap,
-		)
+	// Parse cluster_endpoint_access from extensions or use defaults
+	accessMap := map[string]attr.Value{
+		"type": types.StringValue("public"),
+		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("0.0.0.0/0"),
+		}),
 	}
+
+	// Parse extensions field to get cluster endpoint access configuration
+	if len(data.Spec.Extensions) > 0 {
+		for _, extension := range data.Spec.Extensions {
+			if extension.ProviderConfig != nil {
+				var cidrValues []attr.Value
+
+				// Handle ACL extension type (public clusters)
+				if extension.Type == "acl" {
+					if rule, ok := extension.ProviderConfig["rule"].(map[string]interface{}); ok {
+						// Extract allow_cidr values from the ACL rule
+						if cidrs, exists := rule["cidrs"].([]interface{}); exists {
+							for _, cidr := range cidrs {
+								if cidrStr, ok := cidr.(string); ok {
+									cidrValues = append(cidrValues, types.StringValue(cidrStr))
+								}
+							}
+						}
+					}
+				}
+
+				// Handle private-network extension type (private/mixed clusters)
+				if extension.Type == "private-network" {
+					// Determine cluster type based on privateCluster flag
+					if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
+						if privateCluster {
+							accessMap["type"] = types.StringValue("private")
+						} else {
+							accessMap["type"] = types.StringValue("mixed")
+						}
+					}
+
+					// Extract allow_cidr values from allowCIDRs field
+					if allowCIDRs, exists := extension.ProviderConfig["allowCIDRs"].([]interface{}); exists {
+						for _, cidr := range allowCIDRs {
+							if cidrStr, ok := cidr.(string); ok {
+								cidrValues = append(cidrValues, types.StringValue(cidrStr))
+							}
+						}
+					}
+				}
+
+				// Update allow_cidr if we found any CIDR values
+				if len(cidrValues) > 0 {
+					accessMap["allow_cidr"] = types.ListValueMust(types.StringType, cidrValues)
+				}
+			}
+		}
+	}
+
+	state.ClusterEndpointAccess, _ = types.ObjectValue(
+		map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+		accessMap,
+	)
 
 	// Default auto_upgrade_expression if missing
 	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
@@ -1207,6 +1264,48 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 	tflog.Info(ctx, "Hibernation schedules API response: "+string(resp))
 
 	tflog.Info(ctx, "Successfully updated hibernation schedules.")
+
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
+	ctx context.Context,
+	plan *managedKubernetesEngine,
+	state *managedKubernetesEngine,
+) error {
+	vpcId := state.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		return fmt.Errorf("error getting platform: %v", err)
+	}
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKEUpdateEndpointCIDR(vpcId, platform, state.Id.ValueString())
+
+	// Lấy type từ state
+	endpointAccess := state.ClusterEndpointAccess.Attributes()
+	endpointType := endpointAccess["type"].(types.String).ValueString()
+
+	// Convert allow_cidr (types.List -> []string)
+	allowCidrsList := plan.ClusterEndpointAccess.Attributes()["allow_cidr"].(types.List)
+	var allowCidrs []string
+	for _, e := range allowCidrsList.Elements() {
+		if s, ok := e.(types.String); ok && !s.IsNull() {
+			allowCidrs = append(allowCidrs, s.ValueString())
+		}
+	}
+
+	requestBody := map[string]interface{}{
+		"type":      endpointType, // lấy từ state
+		"allowCidr": allowCidrs,   // đúng key name theo API
+	}
+
+	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	if err != nil {
+		return fmt.Errorf("error calling update cluster endpoint CIDR API: %v", err)
+	}
+
+	tflog.Info(ctx, "Cluster endpoint CIDR API response: "+string(resp))
+	tflog.Info(ctx, "Successfully updated cluster endpoint CIDR.")
 
 	return nil
 }
