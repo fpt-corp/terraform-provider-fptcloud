@@ -3,6 +3,7 @@ package fptcloud_mfke
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -455,10 +456,12 @@ func simulateClusterDeletion(clusterName string) bool {
 }
 
 func countWorkerPools(config string) int {
-	// Đếm số lượng "pools {" trong config - sửa logic đếm
+	// Đếm số lượng "pools {" trong config (có thể có spaces trước)
 	count := 0
-	for i := 0; i < len(config)-6; i++ {
-		if config[i:i+6] == "pools {" {
+	lines := strings.Split(config, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "pools {" {
 			count++
 		}
 	}
