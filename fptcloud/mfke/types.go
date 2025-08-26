@@ -219,6 +219,7 @@ type managedKubernetesEngineDataSpec struct {
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
 	} `json:"provider"`
 
+	Extensions  []ExtensionSpec  `json:"extensions,omitempty"`
 	Hibernate   *HibernateSpec   `json:"hibernation"`
 	AutoUpgrade *AutoUpgradeSpec `json:"autoUpgrade,omitempty"`
 	Addons      *AddonsSpec      `json:"addons,omitempty"`
@@ -365,4 +366,17 @@ type HibernationSchedulesRequest struct {
 type AutoUpgradeSpec struct {
 	TimeUpgrade []string `json:"timeUpgrade"`
 	TimeZone    string   `json:"timeZone"`
+}
+
+// ExtensionSpec represents the extensions configuration in the API response
+type ExtensionSpec struct {
+	Type           string                 `json:"type"`
+	ProviderConfig map[string]interface{} `json:"providerConfig,omitempty"`
+}
+
+// ACLRule represents the ACL rule configuration in the extensions
+type ACLRule struct {
+	Action string   `json:"action"`
+	Cidrs  []string `json:"cidrs"`
+	Type   string   `json:"type"`
 }

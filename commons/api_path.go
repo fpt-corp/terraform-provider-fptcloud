@@ -63,6 +63,7 @@ var ApiPath = struct {
 	ManagedFKEHibernationSchedules func(vpcId string, platform string, clusterId string) string
 	ManagedFKEAutoUpgradeVersion   func(vpcId string, platform string, clusterId string) string
 	ManagedFKEConfigWorker         func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateEndpointCIDR   func(vpcId string, platform string, clusterId string) string
 	GetFKEOSVersion                func(vpcId string, platform string) string
 
 	// Object Storage
@@ -293,6 +294,12 @@ var ApiPath = struct {
 	ManagedFKEConfigWorker: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/configure-worker-cluster/shoots/%s/0",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEUpdateEndpointCIDR: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/edit-private-cluster-ip/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},
