@@ -109,25 +109,81 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
 ### With Auto Upgrade Version
 
 ```hcl
-resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
+resource "fptcloud_managed_kubernetes_engine_v1" "example_with_auto_upgrade" {
   vpc_id       = "your-vpc-id"
-  cluster_name = "example-cluster-with-hibernation"
+  cluster_name = "example-cluster-with-auto-upgrade"
   network_id   = "your-network-id"
   k8s_version  = "1.28.0"
 
-  # Enable auto upgrade verion configuration
-
+  # Enable auto upgrade version configuration
   is_enable_auto_upgrade = true
   auto_upgrade_expression = [ "0 0 * * *" ]
   auto_upgrade_timezone = "Asia/Saigon"
 
-  # Disable auto upgrade verion configuration
-
-  is_enable_auto_upgrade = false
-
   pools {
     name             = "worker-pool-1"
     storage_profile  = "your-storage-profile"
+    worker_type      = "your-worker-type"
+    worker_disk_size = 40
+    scale_min        = 1
+    scale_max        = 3
+    worker_base      = true
+  }
+}
+```
+
+### With Cluster Autoscaler
+
+```hcl
+resource "fptcloud_managed_kubernetes_engine_v1" "example_with_autoscaler" {
+  vpc_id       = "your-vpc-id"
+  cluster_name = "example-cluster-with-autoscaler"
+  network_id   = "your-network-id"
+  k8s_version  = "1.31.4"
+
+  # Cluster autoscaler configuration
+  cluster_autoscaler = {
+    is_enable_auto_scaling           = true
+    scale_down_delay_after_add       = 7200  # 2 hours
+    scale_down_delay_after_delete    = 0     # No delay
+    scale_down_delay_after_failure   = 7200  # 2 hours
+    scale_down_unneeded_time         = 500   # 500 seconds
+    scale_down_utilization_threshold = 0.5   # 50%
+    scan_interval                    = 60    # 1 minute
+    expander                         = "least-waste"
+  }
+
+  pools {
+    name             = "worker-pool-1"
+    storage_profile  = "Premium-SSD"
+    worker_type      = "your-worker-type"
+    worker_disk_size = 40
+    scale_min        = 1
+    scale_max        = 5
+    worker_base      = true
+  }
+}
+```
+
+### With Cluster Endpoint Access
+
+```hcl
+resource "fptcloud_managed_kubernetes_engine_v1" "example_with_endpoint_access" {
+  vpc_id       = "your-vpc-id"
+  cluster_name = "example-cluster-endpoint"
+  network_id   = "your-network-id"
+  k8s_version  = "1.31.4"
+  purpose      = "private"
+
+  # Cluster endpoint access configuration
+  cluster_endpoint_access = {
+    type       = "private"
+    allow_cidr = ["10.0.0.0/16", "172.16.0.0/16"]
+  }
+
+  pools {
+    name             = "worker-pool-1"
+    storage_profile  = "Premium-SSD"
     worker_type      = "your-worker-type"
     worker_disk_size = 40
     scale_min        = 1
@@ -187,29 +243,40 @@ The following arguments are supported:
 
 ### Required Arguments
 
-* `vpc_id` - (Required) VPC ID
-* `cluster_name` - (Required) Cluster name
-* `network_id` - (Required) Subnet ID
+* `vpc_id` - (Required) VPC ID where the cluster will be created
+* `cluster_name` - (Required) Name of the Kubernetes cluster
+* `network_id` - (Required) Subnet ID for worker nodes
 
 ### Optional Arguments
 
-* `k8s_version` - (Optional) Kubernetes version
-* `purpose` - (Optional) Cluster purpose
-* `pod_network` - (Optional) Pod network (subnet ID)
-* `pod_prefix` - (Optional) Pod network (prefix)
-* `service_network` - (Optional) Service network (subnet ID)
-* `service_prefix` - (Optional) Service prefix (prefix)
-* `k8s_max_pod` - (Optional) Max pods per node
-* `network_type` - (Optional) Network type
-* `network_overlay` - (Optional) Whether to encapsulate pod traffic between different subnets or same subnet
-* `edge_gateway_id` - (Optional) Edge gateway ID, in the format of urn:vcloud:gateway:<uuid>
-* `internal_subnet_lb` - (Optional) Internal subnet for load balancer
+#### Cluster Configuration
+* `k8s_version` - (Optional) Kubernetes version. Default: `"1.31.4"`
+* `purpose` - (Optional) Cluster purpose. Must be `"public"` or `"private"`. Default: `"public"`
+* `network_type` - (Optional) Container network interface type. Must be `"calico"` or `"cilium"`. Default: `"calico"`
+* `network_overlay` - (Optional) Network overlay mode. Must be `"Always"` or `"CrossSubnet"`. Default: `"CrossSubnet"`
+* `is_running` - (Optional) Whether the cluster is running (for hibernation control). Default: `true`
+
+#### Network Configuration
+* `pod_network` - (Optional) Pod network CIDR. Default: `"100.96.0.0"`
+* `pod_prefix` - (Optional) Pod network prefix length. Default: `"11"`
+* `service_network` - (Optional) Service network CIDR. Default: `"100.64.0.0"`
+* `service_prefix` - (Optional) Service network prefix length. Default: `"13"`
+* `k8s_max_pod` - (Optional) Maximum number of pods per node. Default: `110`
+
+#### Edge Gateway Configuration (for private clusters)
+* `edge_gateway_id` - (Optional) Edge gateway ID in format `urn:vcloud:gateway:<uuid>`
 * `edge_gateway_name` - (Optional) Edge gateway name
-* `is_enable_auto_upgrade` - (Optional) Whether to enable auto-upgrade
-* `auto_upgrade_expression` - (Optional) Auto-upgrade cron expressions
-* `auto_upgrade_timezone` - (Optional) Timezone for auto-upgrade
-* `is_running` - (Optional) Whether the cluster is running
+* `internal_subnet_lb` - (Optional) Internal subnet for load balancer
+
+#### Auto Upgrade Configuration
+* `is_enable_auto_upgrade` - (Optional) Enable automatic Kubernetes version upgrades. Default: `false`
+* `auto_upgrade_expression` - (Optional) Cron expressions for auto-upgrade schedule. Default: `[]`
+* `auto_upgrade_timezone` - (Optional) Timezone for auto-upgrade schedule. Default: `"Asia/Saigon"`
+
+#### Advanced Configuration
 * `hibernation_schedules` - (Optional) List of hibernation schedules for the cluster
+* `cluster_autoscaler` - (Optional) Cluster autoscaler configuration block
+* `cluster_endpoint_access` - (Optional) Cluster endpoint access configuration
 
 ### Hibernation Schedules Block
 
@@ -223,25 +290,47 @@ The `hibernation_schedules` block supports the following:
 
 The `cluster_autoscaler` block supports the following:
 
-* `is_enable_auto_scaling` - (Optional) Enable cluster autoscaling
-* `scale_down_delay_after_add` - (Optional) Delay after adding a node before scale down (seconds)
-* `scale_down_delay_after_delete` - (Optional) Delay after deleting a node before scale down (seconds)
-* `scale_down_delay_after_failure` - (Optional) Delay after scale down failure (seconds)
-* `scale_down_unneeded_time` - (Optional) Time a node should be unneeded before scale down (seconds)
-* `scale_down_utilization_threshold` - (Optional) Utilization threshold for scale down
-* `scan_interval` - (Optional) Interval between autoscaler scans (seconds)
-* `expander` - (Optional) Autoscaler expander strategy
+* `is_enable_auto_scaling` - (Optional) Enable cluster autoscaling. Default: `true`
+* `scale_down_delay_after_add` - (Optional) Delay in seconds after adding a node before considering it for scale down. Default: `3600` (1 hour)
+* `scale_down_delay_after_delete` - (Optional) Delay in seconds after deleting a node before considering scale down again. Default: `0`
+* `scale_down_delay_after_failure` - (Optional) Delay in seconds after scale down failure before retrying. Default: `180` (3 minutes)
+* `scale_down_unneeded_time` - (Optional) Time in seconds a node should be unneeded before being eligible for scale down. Default: `1800` (30 minutes)
+* `scale_down_utilization_threshold` - (Optional) Node utilization threshold below which a node is considered for scale down (0.0-1.0). Default: `0.5` (50%)
+* `scan_interval` - (Optional) Interval in seconds between autoscaler scans to evaluate scaling decisions. Default: `10`
+* `expander` - (Optional) Autoscaler expander strategy. Must be one of: `"random"`, `"least-waste"`, `"most-pods"`, `"priority"`. Default: `"least-waste"`
+
+**Example:**
+```hcl
+cluster_autoscaler = {
+  is_enable_auto_scaling           = true
+  scale_down_delay_after_add       = 7200  # Wait 2 hours after adding nodes
+  scale_down_delay_after_delete    = 0     # No delay after deletion
+  scale_down_delay_after_failure   = 300   # Wait 5 minutes after failure
+  scale_down_unneeded_time         = 600   # Node must be unneeded for 10 minutes
+  scale_down_utilization_threshold = 0.6   # Scale down when utilization < 60%
+  scan_interval                    = 30    # Check every 30 seconds
+  expander                         = "least-waste"
+}
+```
 
 ### Cluster Endpoint Access Block
 
 The `cluster_endpoint_access` block supports the following:
 
-* `type` - (Required) Type of cluster endpoint access (public, private, or mixed)
-* `allow_cidr` - (Optional) Allowed CIDR blocks for cluster endpoint access
+* `type` - (Optional) Type of cluster endpoint access. Must be one of: `"public"`, `"private"`, `"mixed"`. Default: `"public"`
+* `allow_cidr` - (Optional) List of CIDR blocks allowed to access the cluster endpoint. Default: `["0.0.0.0/0"]`
+
+**Example:**
+```hcl
+cluster_endpoint_access = {
+  type       = "private"
+  allow_cidr = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+}
+```
 
 ### Pools Block
 
-The `pools` block supports the following:
+The `pools` block supports the following arguments. At least one pool is required:
 
 #### GPU Configuration
 The following GPU-related fields are available for all worker pools, but are only validated when `vgpu_id` is specified:
@@ -278,24 +367,103 @@ kv {
 
 #### Basic Configuration
 
-* `name` - (Required) Pool name
-* `storage_profile` - (Required) Pool storage profile
-* `worker_type` - (Required) Worker flavor ID
-* `worker_disk_size` - (Required) Worker disk size
-* `scale_min` - (Required) Minimum number of nodes for autoscaling
-* `scale_max` - (Required) Maximum number of nodes for autoscaling
-* `worker_base` - (Required) Whether this is the base worker pool
-* `network_name` - (Optional) Subnet name
-* `network_id` - (Optional) Subnet ID
-* `container_runtime` - (Optional) Container runtime
+**Required Arguments:**
+* `name` - (Required) Pool name. Cannot be `"worker-new"` (reserved name)
+* `storage_profile` - (Required) Storage profile for worker nodes (e.g., `"Premium-SSD"`, `"Standard-SSD"`)
+* `worker_type` - (Required) Worker node flavor ID
+* `worker_disk_size` - (Required) Worker disk size in GB. Minimum: `40`
+* `scale_min` - (Required) Minimum number of nodes for autoscaling. Must be ≥ 1
+* `scale_max` - (Required) Maximum number of nodes for autoscaling. Must be ≥ `scale_min`
+
+**Optional Arguments:**
+* `worker_base` - (Optional) Whether this is the base worker pool (required for cluster operation). Default: `false`
+* `network_name` - (Optional) Subnet name. Computed from `network_id` if not specified
+* `network_id` - (Optional) Subnet ID. Uses cluster's `network_id` if not specified
+* `container_runtime` - (Optional) Container runtime. Default: `"containerd"`
+* `is_enable_auto_repair` - (Optional) Enable automatic node repair. Default: `true`
 * `tags` - (Optional) Tags for the worker pool
-* `kv` - (Optional) Label for the pool
-* `vgpu_id` - (Optional) Virtual GPU ID
-* `max_client` - (Optional) Maximum number of clients. Must be between 2 and 48 when `vgpu_id` is set (GPU pools)
-* `gpu_sharing_client` - (Optional) GPU sharing client. Must be one of: `""` (empty string) or `"timeSlicing"` when `vgpu_id` is set (GPU pools)
-* `driver_installation_type` - (Optional) Driver installation type. Must be `"pre-install"` when `vgpu_id` is set (GPU pools)
-* `gpu_driver_version` - (Optional) GPU driver version. Must be one of: `"default"` or `"latest"` when `vgpu_id` is set (GPU pools)
-* `is_enable_auto_repair` - (Optional) Whether to enable auto-repair
+
+**GPU Configuration (Optional):**
+* `vgpu_id` - (Optional) Virtual GPU ID for GPU-enabled worker nodes
+* `max_client` - (Optional) Maximum GPU sharing clients (2-48). Only validated when `vgpu_id` is set. Default: `0`
+* `gpu_sharing_client` - (Optional) GPU sharing strategy: `""` or `"timeSlicing"`. Only validated when `vgpu_id` is set. Default: `""`
+* `driver_installation_type` - (Optional) Driver installation method: `"pre-install"`. Only validated when `vgpu_id` is set. Default: `""`
+* `gpu_driver_version` - (Optional) GPU driver version: `"default"` or `"latest"`. Only validated when `vgpu_id` is set. Default: `""`
+
+**Labels and Taints:**
+* `kv` - (Optional) Key-value labels for the pool (block, can be repeated)
+  - `name` - (Required) Label key
+  - `value` - (Required) Label value
+* `taints` - (Optional) Kubernetes taints for the pool (block, can be repeated)
+  - `key` - (Required) Taint key
+  - `value` - (Required) Taint value
+  - `effect` - (Required) Taint effect: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"`
+
+## Complete Field Reference
+
+| Field | Context | Type | Required | Default | Description |
+|-------|---------|------|----------|---------|-------------|
+| **Top-Level Fields** | | | | | |
+| `vpc_id` | cluster | string | ✅ | - | VPC ID where cluster will be created |
+| `cluster_name` | cluster | string | ✅ | - | Name of the Kubernetes cluster |
+| `network_id` | cluster | string | ✅ | - | Subnet ID for worker nodes |
+| `k8s_version` | cluster | string | ❌ | `"1.31.4"` | Kubernetes version |
+| `purpose` | cluster | string | ❌ | `"public"` | Cluster purpose (`"public"` or `"private"`) |
+| `network_type` | cluster | string | ❌ | `"calico"` | CNI type (`"calico"` or `"cilium"`) |
+| `network_overlay` | cluster | string | ❌ | `"CrossSubnet"` | Overlay mode (`"Always"` or `"CrossSubnet"`) |
+| `pod_network` | cluster | string | ❌ | `"100.96.0.0"` | Pod network CIDR |
+| `pod_prefix` | cluster | string | ❌ | `"11"` | Pod network prefix length |
+| `service_network` | cluster | string | ❌ | `"100.64.0.0"` | Service network CIDR |
+| `service_prefix` | cluster | string | ❌ | `"13"` | Service network prefix length |
+| `k8s_max_pod` | cluster | number | ❌ | `110` | Maximum pods per node |
+| `is_enable_auto_upgrade` | cluster | bool | ❌ | `false` | Enable auto Kubernetes upgrades |
+| `auto_upgrade_expression` | cluster | list(string) | ❌ | `[]` | Cron expressions for auto-upgrade |
+| `auto_upgrade_timezone` | cluster | string | ❌ | `"Asia/Saigon"` | Timezone for auto-upgrade |
+| `is_running` | cluster | bool | ❌ | `true` | Whether cluster is running |
+| `edge_gateway_id` | cluster | string | ❌ | `""` | Edge gateway ID for private clusters |
+| `edge_gateway_name` | cluster | string | ❌ | `""` | Edge gateway name for private clusters |
+| `internal_subnet_lb` | cluster | string | ❌ | `""` | Internal subnet for load balancer |
+| **Pool Fields** | | | | | |
+| `name` | pools | string | ✅ | - | Pool name (cannot be `"worker-new"`) |
+| `storage_profile` | pools | string | ✅ | - | Storage profile for nodes |
+| `worker_type` | pools | string | ✅ | - | Worker node flavor ID |
+| `worker_disk_size` | pools | number | ✅ | - | Disk size in GB (minimum 40) |
+| `scale_min` | pools | number | ✅ | - | Minimum nodes (≥ 1) |
+| `scale_max` | pools | number | ✅ | - | Maximum nodes (≥ scale_min) |
+| `worker_base` | pools | bool | ❌ | `false` | Whether this is the base pool |
+| `network_id` | pools | string | ❌ | cluster's network_id | Subnet ID for this pool |
+| `network_name` | pools | string | ❌ | computed | Subnet name |
+| `container_runtime` | pools | string | ❌ | `"containerd"` | Container runtime |
+| `is_enable_auto_repair` | pools | bool | ❌ | `true` | Enable auto node repair |
+| `tags` | pools | string | ❌ | `""` | Tags for the pool |
+| `vgpu_id` | pools | string | ❌ | `""` | Virtual GPU ID |
+| `max_client` | pools | number | ❌ | `0` | Max GPU clients (2-48, GPU only) |
+| `gpu_sharing_client` | pools | string | ❌ | `""` | GPU sharing (`""` or `"timeSlicing"`) |
+| `driver_installation_type` | pools | string | ❌ | `""` | Driver install method (`"pre-install"`) |
+| `gpu_driver_version` | pools | string | ❌ | `""` | GPU driver (`"default"` or `"latest"`) |
+| **Pool KV Labels** | | | | | |
+| `name` | pools.kv | string | ✅ | - | Label key |
+| `value` | pools.kv | string | ✅ | - | Label value |
+| **Pool Taints** | | | | | |
+| `key` | pools.taints | string | ✅ | - | Taint key |
+| `value` | pools.taints | string | ✅ | - | Taint value |
+| `effect` | pools.taints | string | ✅ | - | Taint effect (`"NoSchedule"`, `"PreferNoSchedule"`, `"NoExecute"`) |
+| **Cluster Autoscaler Fields** | | | | | |
+| `is_enable_auto_scaling` | cluster_autoscaler | bool | ❌ | `true` | Enable cluster autoscaling |
+| `scale_down_delay_after_add` | cluster_autoscaler | number | ❌ | `3600` | Delay after adding node (seconds) |
+| `scale_down_delay_after_delete` | cluster_autoscaler | number | ❌ | `0` | Delay after deleting node (seconds) |
+| `scale_down_delay_after_failure` | cluster_autoscaler | number | ❌ | `180` | Delay after failure (seconds) |
+| `scale_down_unneeded_time` | cluster_autoscaler | number | ❌ | `1800` | Unneeded time before scale down (seconds) |
+| `scale_down_utilization_threshold` | cluster_autoscaler | number | ❌ | `0.5` | Utilization threshold (0.0-1.0) |
+| `scan_interval` | cluster_autoscaler | number | ❌ | `10` | Scan interval (seconds) |
+| `expander` | cluster_autoscaler | string | ❌ | `"least-waste"` | Expander strategy |
+| **Cluster Endpoint Access Fields** | | | | | |
+| `type` | cluster_endpoint_access | string | ❌ | `"public"` | Access type (`"public"`, `"private"`, `"mixed"`) |
+| `allow_cidr` | cluster_endpoint_access | list(string) | ❌ | `["0.0.0.0/0"]` | Allowed CIDR blocks |
+| **Hibernation Schedules Fields** | | | | | |
+| `start` | hibernation_schedules | string | ✅ | - | Cron expression for hibernation start |
+| `end` | hibernation_schedules | string | ✅ | - | Cron expression for hibernation end |
+| `location` | hibernation_schedules | string | ✅ | - | Timezone (e.g., `"Asia/Bangkok"`) |
 
 ## Attributes Reference
 
@@ -346,7 +514,9 @@ The following fields are only validated when `vgpu_id` is set (indicating a GPU 
 - **Version downgrades**: Not allowed
 
 ### Cluster Autoscaler Validation
-- **Expander strategies**: Must be one of: `"Random"`, `"Least-waste"`, `"Most-pods"`, `"Priority"`
+- **Expander strategies**: Must be one of: `"random"`, `"least-waste"`, `"most-pods"`, `"priority"` (case-insensitive)
+- **Utilization threshold**: Must be between 0.0 and 1.0
+- **Time values**: All time-based fields accept values in seconds (must be non-negative integers)
 
 ### Cluster Endpoint Access Validation
 - **Access types**: Must be one of: `"public"`, `"private"`, or `"mixed"`
@@ -354,13 +524,26 @@ The following fields are only validated when `vgpu_id` is set (indicating a GPU 
 
 ## Notes
 
+### Cluster Autoscaler
+- **Default behavior**: If `cluster_autoscaler` block is not specified, the cluster will use default autoscaler settings
+- **Runtime updates**: Cluster autoscaler settings can be modified after cluster creation
+- **Performance impact**: Very low `scan_interval` values may impact cluster performance
+- **Best practices**: 
+  - Use `scale_down_delay_after_add` to prevent rapid scale-up/scale-down cycles
+  - Set appropriate `scale_down_unneeded_time` based on your workload patterns
+  - Monitor `scale_down_utilization_threshold` to balance cost and performance
+
+### Hibernation Schedules
 - Hibernation schedules use cron expressions for the `start` and `end` fields
 - The `location` field should be a valid timezone identifier (e.g., "Asia/Bangkok", "UTC", "America/New_York")
 - When hibernation schedules are configured, the cluster will automatically hibernate and wake up according to the specified schedule
 - Hibernation schedules can be updated after cluster creation
 - The cluster must be in a running state to apply hibernation schedules
+
+### General
 - Validation errors will be displayed during `terraform plan` and `terraform apply` operations
 - GPU-related fields are available for all pools but are only validated when `vgpu_id` is specified
+- At least one worker pool with `worker_base = true` is required for cluster operation
 
 ## Error Handling
 
