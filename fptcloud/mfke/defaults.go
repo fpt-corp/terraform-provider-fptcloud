@@ -111,7 +111,7 @@ func SetDefaults(state *managedKubernetesEngine) {
 			"scale_down_unneeded_time":         types.Int64Value(1800),
 			"scale_down_utilization_threshold": types.Float64Value(0.5),
 			"scan_interval":                    types.Int64Value(10),
-			"expander":                         types.StringValue("Least-waste"),
+			"expander":                         types.StringValue("least-waste"),
 		}
 		state.ClusterAutoscaler, _ = types.ObjectValue(
 			map[string]attr.Type{
@@ -256,7 +256,7 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 				"scale_down_unneeded_time":         types.Int64Value(1800),
 				"scale_down_utilization_threshold": types.Float64Value(0.5),
 				"scan_interval":                    types.Int64Value(10),
-				"expander":                         types.StringValue("Least-waste"),
+				"expander":                         types.StringValue("least-waste"),
 			}
 			plan.ClusterAutoscaler, _ = types.ObjectValue(
 				map[string]attr.Type{

@@ -13,6 +13,7 @@ import (
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	"time"
 	"unicode"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -417,6 +418,24 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		to.AutoUpgradeTimezone = from.AutoUpgradeTimezone.ValueString()
 	}
 
+	// Map cluster_autoscaler to JSON
+	if !from.ClusterAutoscaler.IsNull() && !from.ClusterAutoscaler.IsUnknown() {
+		autoscalerAttrs := from.ClusterAutoscaler.Attributes()
+
+		clusterAutoscaler := map[string]interface{}{
+			"isEnableAutoScaling":           autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool(),
+			"scaleDownDelayAfterAdd":        autoscalerAttrs["scale_down_delay_after_add"].(types.Int64).ValueInt64(),
+			"scaleDownDelayAfterDelete":     autoscalerAttrs["scale_down_delay_after_delete"].(types.Int64).ValueInt64(),
+			"scaleDownDelayAfterFailure":    autoscalerAttrs["scale_down_delay_after_failure"].(types.Int64).ValueInt64(),
+			"scaleDownUnneededTime":         autoscalerAttrs["scale_down_unneeded_time"].(types.Int64).ValueInt64(),
+			"scaleDownUtilizationThreshold": autoscalerAttrs["scale_down_utilization_threshold"].(types.Float64).ValueFloat64(),
+			"scanInterval":                  autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64(),
+			"expander":                      strings.ToLower(autoscalerAttrs["expander"].(types.String).ValueString()),
+		}
+
+		to.ClusterAutoscaler = clusterAutoscaler
+	}
+
 	to.TypeCreate = "create"
 
 	return nil
@@ -624,6 +643,15 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 	}
 
+	if !to.ClusterAutoscaler.Equal(from.ClusterAutoscaler) {
+		err := r.updateClusterAutoscaler(ctx, to, from)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error updating cluster autoscaler", err.Error())
+			return &d
+		}
+	}
+
+	// Worker pool changes
 	editGroup := r.DiffPool(ctx, from, to)
 	if editGroup {
 		d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
@@ -936,33 +964,67 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
 
-	// Default cluster_autoscaler if missing
-	if state.ClusterAutoscaler.IsNull() || state.ClusterAutoscaler.IsUnknown() {
-		defaultMap := map[string]attr.Value{
-			"is_enable_auto_scaling":           types.BoolValue(true),
-			"scale_down_delay_after_add":       types.Int64Value(3600),
-			"scale_down_delay_after_delete":    types.Int64Value(0),
-			"scale_down_delay_after_failure":   types.Int64Value(180),
-			"scale_down_unneeded_time":         types.Int64Value(1800),
-			"scale_down_utilization_threshold": types.Float64Value(0.5),
-			"scan_interval":                    types.Int64Value(10),
-			"expander":                         types.StringValue("Least-waste"),
-		}
-		state.ClusterAutoscaler, _ = types.ObjectValue(
-			map[string]attr.Type{
-				"is_enable_auto_scaling":           types.BoolType,
-				"scale_down_delay_after_add":       types.Int64Type,
-				"scale_down_delay_after_delete":    types.Int64Type,
-				"scale_down_delay_after_failure":   types.Int64Type,
-				"scale_down_unneeded_time":         types.Int64Type,
-				"scale_down_utilization_threshold": types.Float64Type,
-				"scan_interval":                    types.Int64Type,
-				"expander":                         types.StringType,
-			},
-			defaultMap,
-		)
+	// Parse cluster_autoscaler from API response
+	autoscalerMap := map[string]attr.Value{
+		"is_enable_auto_scaling":           types.BoolValue(true),
+		"scale_down_delay_after_add":       types.Int64Value(3600),
+		"scale_down_delay_after_delete":    types.Int64Value(0),
+		"scale_down_delay_after_failure":   types.Int64Value(180),
+		"scale_down_unneeded_time":         types.Int64Value(1800),
+		"scale_down_utilization_threshold": types.Float64Value(0.5),
+		"scan_interval":                    types.Int64Value(10),
+		"expander":                         types.StringValue("least-waste"),
 	}
-	// Parse cluster_endpoint_access from extensions or use defaults
+
+	// Parse actual values from API response
+	if data.Spec.Kubernetes.ClusterAutoscaler.Expander != "" {
+		autoscalerMap["expander"] = types.StringValue(data.Spec.Kubernetes.ClusterAutoscaler.Expander)
+	}
+	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUtilizationThreshold > 0 {
+		autoscalerMap["scale_down_utilization_threshold"] = types.Float64Value(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUtilizationThreshold)
+	}
+
+	// Parse duration strings to seconds
+	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterAdd != "" {
+		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterAdd); err == nil {
+			autoscalerMap["scale_down_delay_after_add"] = types.Int64Value(int64(duration.Seconds()))
+		}
+	}
+	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterDelete != "" {
+		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterDelete); err == nil {
+			autoscalerMap["scale_down_delay_after_delete"] = types.Int64Value(int64(duration.Seconds()))
+		}
+	}
+	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterFailure != "" {
+		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterFailure); err == nil {
+			autoscalerMap["scale_down_delay_after_failure"] = types.Int64Value(int64(duration.Seconds()))
+		}
+	}
+	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUnneededTime != "" {
+		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUnneededTime); err == nil {
+			autoscalerMap["scale_down_unneeded_time"] = types.Int64Value(int64(duration.Seconds()))
+		}
+	}
+	if data.Spec.Kubernetes.ClusterAutoscaler.ScanInterval != "" {
+		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScanInterval); err == nil {
+			autoscalerMap["scan_interval"] = types.Int64Value(int64(duration.Seconds()))
+		}
+	}
+
+	state.ClusterAutoscaler, _ = types.ObjectValue(
+		map[string]attr.Type{
+			"is_enable_auto_scaling":           types.BoolType,
+			"scale_down_delay_after_add":       types.Int64Type,
+			"scale_down_delay_after_delete":    types.Int64Type,
+			"scale_down_delay_after_failure":   types.Int64Type,
+			"scale_down_unneeded_time":         types.Int64Type,
+			"scale_down_utilization_threshold": types.Float64Type,
+			"scan_interval":                    types.Int64Type,
+			"expander":                         types.StringType,
+		},
+		autoscalerMap,
+	)
+	// Parse cluster_endpoint_access from extensions and metadata labels
 	accessMap := map[string]attr.Value{
 		"type": types.StringValue("public"),
 		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
@@ -970,7 +1032,26 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		}),
 	}
 
-	// Parse extensions field to get cluster endpoint access configuration
+	// Determine cluster type from metadata labels
+	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
+		accessMap["type"] = types.StringValue("public")
+	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
+		// For private-network, need to check privateCluster flag in extensions
+		for _, extension := range data.Spec.Extensions {
+			if extension.Type == "private-network" && extension.ProviderConfig != nil {
+				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
+					if privateCluster {
+						accessMap["type"] = types.StringValue("private")
+					} else {
+						accessMap["type"] = types.StringValue("mixed")
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Parse extensions field to get CIDR configuration
 	if len(data.Spec.Extensions) > 0 {
 		for _, extension := range data.Spec.Extensions {
 			if extension.ProviderConfig != nil {
@@ -992,15 +1073,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 
 				// Handle private-network extension type (private/mixed clusters)
 				if extension.Type == "private-network" {
-					// Determine cluster type based on privateCluster flag
-					if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
-						if privateCluster {
-							accessMap["type"] = types.StringValue("private")
-						} else {
-							accessMap["type"] = types.StringValue("mixed")
-						}
-					}
-
 					// Extract allow_cidr values from allowCIDRs field
 					if allowCIDRs, exists := extension.ProviderConfig["allowCIDRs"].([]interface{}); exists {
 						for _, cidr := range allowCIDRs {
@@ -1306,6 +1378,46 @@ func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
 
 	tflog.Info(ctx, "Cluster endpoint CIDR API response: "+string(resp))
 	tflog.Info(ctx, "Successfully updated cluster endpoint CIDR.")
+
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) error {
+	vpcId := state.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		return fmt.Errorf("error getting platform: %v", err)
+	}
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKEUpdateClusterAutoscaler(vpcId, platform, state.Id.ValueString())
+
+	// Get cluster autoscaler attributes from plan
+	autoscalerAttrs := plan.ClusterAutoscaler.Attributes()
+
+	requestBody := map[string]interface{}{
+		"isEnableAutoScaling":           autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool(),
+		"scaleDownDelayAfterAdd":        autoscalerAttrs["scale_down_delay_after_add"].(types.Int64).ValueInt64(),
+		"scaleDownDelayAfterDelete":     autoscalerAttrs["scale_down_delay_after_delete"].(types.Int64).ValueInt64(),
+		"scaleDownDelayAfterFailure":    autoscalerAttrs["scale_down_delay_after_failure"].(types.Int64).ValueInt64(),
+		"scaleDownUnneededTime":         autoscalerAttrs["scale_down_unneeded_time"].(types.Int64).ValueInt64(),
+		"scaleDownUtilizationThreshold": autoscalerAttrs["scale_down_utilization_threshold"].(types.Float64).ValueFloat64(),
+		"scanInterval":                  autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64(),
+		"expander":                      strings.ToLower(autoscalerAttrs["expander"].(types.String).ValueString()),
+	}
+
+	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	if err != nil {
+		return fmt.Errorf("error calling update cluster autoscaler API: %v", err)
+	}
+
+	tflog.Info(ctx, "Cluster autoscaler API response: "+string(resp))
+
+	// Check for API errors in response
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return fmt.Errorf("API returned error: %s", diagErr.Summary())
+	}
+
+	tflog.Info(ctx, "Successfully updated cluster autoscaler.")
 
 	return nil
 }
