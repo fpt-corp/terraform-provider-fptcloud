@@ -55,16 +55,17 @@ var ApiPath = struct {
 	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
 	DedicatedFKEManagement     func(vpcId string, clusterId string) string
 
-	ManagedFKEList                 func(vpcId string, page int, pageSize int, infraType string) string
-	ManagedFKEGet                  func(vpcId string, platform string, clusterId string) string
-	ManagedFKEDelete               func(vpcId string, platform string, clusterName string) string
-	ManagedFKECreate               func(vpcId string, platform string) string
-	ManagedFKEHibernate            func(vpcId string, platform string, clusterId string, isWakeup bool) string
-	ManagedFKEHibernationSchedules func(vpcId string, platform string, clusterId string) string
-	ManagedFKEAutoUpgradeVersion   func(vpcId string, platform string, clusterId string) string
-	ManagedFKEConfigWorker         func(vpcId string, platform string, clusterId string) string
-	ManagedFKEUpdateEndpointCIDR   func(vpcId string, platform string, clusterId string) string
-	GetFKEOSVersion                func(vpcId string, platform string) string
+	ManagedFKEList                    func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedFKEGet                     func(vpcId string, platform string, clusterId string) string
+	ManagedFKEDelete                  func(vpcId string, platform string, clusterName string) string
+	ManagedFKECreate                  func(vpcId string, platform string) string
+	ManagedFKEHibernate               func(vpcId string, platform string, clusterId string, isWakeup bool) string
+	ManagedFKEHibernationSchedules    func(vpcId string, platform string, clusterId string) string
+	ManagedFKEAutoUpgradeVersion      func(vpcId string, platform string, clusterId string) string
+	ManagedFKEConfigWorker            func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateEndpointCIDR      func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateClusterAutoscaler func(vpcId string, platform string, clusterId string) string
+	GetFKEOSVersion                   func(vpcId string, platform string) string
 
 	// Object Storage
 	// Common
@@ -300,6 +301,13 @@ var ApiPath = struct {
 	ManagedFKEUpdateEndpointCIDR: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/edit-private-cluster-ip/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+
+	ManagedFKEUpdateClusterAutoscaler: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-cluster-auto-scaling/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},

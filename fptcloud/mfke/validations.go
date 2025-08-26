@@ -335,7 +335,7 @@ func validatePurposeUpdate(planPurpose, statePurpose types.String) diag2.Diagnos
 }
 
 func validateExpander(expander string) *diag2.ErrorDiagnostic {
-	allowed := []string{"Random", "Least-waste", "Most-pods", "Priority"}
+	allowed := []string{"random", "least-waste", "most-pods", "priority"}
 	for _, v := range allowed {
 		if expander == v {
 			return nil
