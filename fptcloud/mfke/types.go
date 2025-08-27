@@ -70,7 +70,7 @@ type managedKubernetesEnginePool struct {
 	ScaleMax               types.Int64  `tfsdk:"scale_max"`
 	NetworkID              types.String `tfsdk:"network_id"`
 	NetworkName            types.String `tfsdk:"network_name"`
-	Tags                   types.String `tfsdk:"tags"`
+	Tags                   types.List   `tfsdk:"tags"`
 	Kv                     []KV         `tfsdk:"kv"`
 	Taints                 []Taint      `tfsdk:"taints"`
 	VGpuID                 types.String `tfsdk:"vgpu_id"`

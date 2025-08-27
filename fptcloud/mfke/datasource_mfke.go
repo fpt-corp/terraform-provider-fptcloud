@@ -200,6 +200,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
 			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
 			WorkerBase:             types.BoolValue(w.IsWorkerBase()),
+			Tags:                   tagsStringToList(w.Tags()),
 		}
 
 		// For GPU pools, read values from addons configuration
@@ -383,7 +384,7 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 		"name", "storage_profile", "worker_type", "network_id",
 	}
 	// Optional string fields
-	optionalStrings := []string{"tags", "gpu_sharing_client", "driver_installation_type", "container_runtime", "gpu_driver_version", "network_name", "vgpu_id"}
+	optionalStrings := []string{"gpu_sharing_client", "driver_installation_type", "container_runtime", "gpu_driver_version", "network_name", "vgpu_id"}
 	// Required int fields
 	requiredInts := []string{"worker_disk_size", "scale_min", "scale_max"}
 	// Optional int fields
@@ -392,6 +393,8 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 	requiredBools := []string{"auto_scale", "is_enable_auto_repair"}
 	// Optional bool fields
 	optionalBools := []string{"is_enable_auto_repair"}
+	// Optional list fields
+	optionalLists := []string{"tags"}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
@@ -426,6 +429,13 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 	for _, attribute := range optionalBools {
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
 			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		poolLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:    true,
+			ElementType: types.StringType,
 			Description: descriptions[attribute],
 		}
 	}

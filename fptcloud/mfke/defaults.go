@@ -299,11 +299,11 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 				plan.Pools[i].NetworkName = types.StringValue("")
 			}
 		}
-		if plan.Pools[i].Tags.IsNull() || plan.Pools[i].Tags.IsUnknown() || plan.Pools[i].Tags.ValueString() == "" {
+		if plan.Pools[i].Tags.IsNull() || plan.Pools[i].Tags.IsUnknown() {
 			if i < len(state.Pools) && state.Pools[i] != nil {
 				plan.Pools[i].Tags = state.Pools[i].Tags
 			} else {
-				plan.Pools[i].Tags = types.StringValue("")
+				plan.Pools[i].Tags = types.ListValueMust(types.StringType, []attr.Value{})
 			}
 		}
 

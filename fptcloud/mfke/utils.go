@@ -149,7 +149,7 @@ func PoolFields() map[string]schema.Attribute {
 		"name", "storage_profile", "worker_type",
 	}
 	// Optional string fields
-	optionalStrings := []string{"tags", "gpu_sharing_client", "driver_installation_type", "network_name", "network_id", "container_runtime", "gpu_driver_version", "vgpu_id"}
+	optionalStrings := []string{"gpu_sharing_client", "driver_installation_type", "network_name", "network_id", "container_runtime", "gpu_driver_version", "vgpu_id"}
 	// Required int fields
 	requiredInts := []string{"worker_disk_size", "scale_min", "scale_max"}
 	// Optional int fields
@@ -158,6 +158,8 @@ func PoolFields() map[string]schema.Attribute {
 	requiredBools := []string{}
 	// Optional bool fields
 	optionalBools := []string{"worker_base", "is_enable_auto_repair"}
+	// Optional list fields
+	optionalLists := []string{"tags"}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
@@ -196,6 +198,14 @@ func PoolFields() map[string]schema.Attribute {
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
 			Optional:    true,
 			Computed:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		poolLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:    true,
+			Computed:    true,
+			ElementType: types.StringType,
 			Description: descriptions[attribute],
 		}
 	}
@@ -307,6 +317,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			GpuSharingClient:       item.GpuSharingClient.ValueString(),
 			GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
 			DriverInstallationType: item.DriverInstallationType.ValueString(),
+			Tags:                   listToTagsString(item.Tags),
 			IsCreate:               true,
 			IsScale:                false,
 			IsOthers:               false,
@@ -509,7 +520,7 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 		VGpuID:                 item.VGpuID.ValueString(),
 		DriverInstallationType: item.DriverInstallationType.ValueString(),
 		GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
-		Tags:                   item.Tags.ValueString(),
+		Tags:                   listToTagsString(item.Tags),
 		GpuSharingClient:       item.GpuSharingClient.ValueString(),
 		ContainerRuntime:       item.ContainerRuntime.ValueString(),
 		Kv:                     kvs,
@@ -791,7 +802,7 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 			f.ScaleMax != t.ScaleMax ||
 			f.WorkerBase != t.WorkerBase ||
 			f.IsEnableAutoRepair != t.IsEnableAutoRepair ||
-			f.Tags.ValueString() != t.Tags.ValueString() ||
+			!f.Tags.Equal(t.Tags) ||
 			f.MaxClient != t.MaxClient ||
 			f.GpuSharingClient.ValueString() != t.GpuSharingClient.ValueString() ||
 			!reflect.DeepEqual(userDefinedKvMap, userDefinedTvMap) ||
@@ -860,7 +871,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			// NetworkName:            types.StringValue(networkName),
 			IsEnableAutoRepair:     types.BoolValue(autoRepair),
 			ContainerRuntime:       types.StringValue(worker.Cri.Name),
-			Tags:                   types.StringValue(worker.Tags()),
+			Tags:                   tagsStringToList(worker.Tags()),
 			VGpuID:                 types.StringValue(worker.ProviderConfig.VGpuID),
 			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
 			GpuDriverVersion:       types.StringValue(worker.Machine.Image.GpuDriverVersion),
@@ -1230,6 +1241,39 @@ func parseNumber(s string) int {
 // errorCallingApi
 func errorCallingApi(s string) string {
 	return fmt.Sprintf("Error calling path: %s", s)
+}
+
+// Helper function to convert types.List to string with \n separator
+func listToTagsString(tagsList types.List) string {
+	if tagsList.IsNull() || tagsList.IsUnknown() {
+		return ""
+	}
+
+	var tags []string
+	for _, element := range tagsList.Elements() {
+		if stringVal, ok := element.(types.String); ok {
+			tags = append(tags, stringVal.ValueString())
+		}
+	}
+
+	return strings.Join(tags, "\n")
+}
+
+// Helper function to convert string with \n separator to types.List
+func tagsStringToList(tagsString string) types.List {
+	if tagsString == "" {
+		return types.ListValueMust(types.StringType, []attr.Value{})
+	}
+
+	tags := strings.Split(tagsString, "\n")
+	var elements []attr.Value
+	for _, tag := range tags {
+		if strings.TrimSpace(tag) != "" {
+			elements = append(elements, types.StringValue(strings.TrimSpace(tag)))
+		}
+	}
+
+	return types.ListValueMust(types.StringType, elements)
 }
 
 func (w *managedKubernetesEngineDataWorker) AutoRepair() bool {
