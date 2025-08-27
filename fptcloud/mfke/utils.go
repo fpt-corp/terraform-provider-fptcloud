@@ -991,9 +991,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	if data.Spec.Kubernetes.ClusterAutoscaler.Expander != "" {
 		autoscalerMap["expander"] = types.StringValue(data.Spec.Kubernetes.ClusterAutoscaler.Expander)
 	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUtilizationThreshold > 0 {
-		autoscalerMap["scale_down_utilization_threshold"] = types.Float64Value(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUtilizationThreshold)
-	}
+	autoscalerMap["scale_down_utilization_threshold"] = types.Float64Value(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUtilizationThreshold)
 
 	// Parse duration strings to seconds
 	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterAdd != "" {

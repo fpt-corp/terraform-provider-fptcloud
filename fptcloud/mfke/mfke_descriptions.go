@@ -46,7 +46,7 @@ var descriptions = map[string]string{
 	"scale_down_delay_after_failure":   "Delay after scale down failure (seconds, optional)",
 	"scale_down_unneeded_time":         "Time a node should be unneeded before scale down (seconds, optional)",
 	"scale_down_utilization_threshold": "Utilization threshold for scale down (optional)",
-	"scan_interval":                    "Interval between autoscaler scans (seconds, optional)",
+	"scan_interval":                    "Interval between autoscaler scans (seconds, must be 1-3600, optional)",
 	"expander":                         "Autoscaler expander strategy (optional)",
 	// cluster_endpoint_access subfields
 	"cluster_endpoint_access_type":       "Type of cluster endpoint access (public, private, or mixed)",
