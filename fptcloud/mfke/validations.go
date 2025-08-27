@@ -345,6 +345,28 @@ func validateExpander(expander string) *diag2.ErrorDiagnostic {
 	return &d
 }
 
+func validateIsEnableAutoScaling(isEnable bool) *diag2.ErrorDiagnostic {
+	if !isEnable {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid is_enable_auto_scaling value",
+			"is_enable_auto_scaling must be true. Auto scaling cannot be disabled.",
+		)
+		return &d
+	}
+	return nil
+}
+
+func validateScanInterval(scanInterval int64) *diag2.ErrorDiagnostic {
+	if scanInterval < 1 || scanInterval > 3600 {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid scan_interval value",
+			fmt.Sprintf("scan_interval must be in range from 1 to 3600 seconds, got: %d", scanInterval),
+		)
+		return &d
+	}
+	return nil
+}
+
 func validateClusterEndpointAccess(accessType string) *diag2.ErrorDiagnostic {
 	allowed := []string{"public", "private", "mixed"}
 	for _, v := range allowed {
@@ -403,11 +425,25 @@ func ValidateCreate(state *managedKubernetesEngine, response *resource.CreateRes
 			return false
 		}
 	}
-	// Validate cluster_autoscaler expander
+	// Validate cluster_autoscaler expander, is_enable_auto_scaling, and scan_interval
 	if !state.ClusterAutoscaler.IsNull() && !state.ClusterAutoscaler.IsUnknown() {
 		autoscalerAttrs := state.ClusterAutoscaler.Attributes()
 		expander := autoscalerAttrs["expander"].(types.String).ValueString()
 		if diag := validateExpander(expander); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+
+		// Validate is_enable_auto_scaling must be true
+		isEnableAutoScaling := autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool()
+		if diag := validateIsEnableAutoScaling(isEnableAutoScaling); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+
+		// Validate scan_interval range
+		scanInterval := autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64()
+		if diag := validateScanInterval(scanInterval); diag != nil {
 			response.Diagnostics.Append(diag)
 			return false
 		}
@@ -435,6 +471,18 @@ func validateClusterAutoscalerUpdate(plan *managedKubernetesEngine) diag2.Diagno
 		autoscalerAttrs := plan.ClusterAutoscaler.Attributes()
 		expander := autoscalerAttrs["expander"].(types.String).ValueString()
 		if diag := validateExpander(expander); diag != nil {
+			return diag
+		}
+
+		// Validate is_enable_auto_scaling must be true
+		isEnableAutoScaling := autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool()
+		if diag := validateIsEnableAutoScaling(isEnableAutoScaling); diag != nil {
+			return diag
+		}
+
+		// Validate scan_interval range
+		scanInterval := autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64()
+		if diag := validateScanInterval(scanInterval); diag != nil {
 			return diag
 		}
 	}
