@@ -25,7 +25,7 @@ var descriptions = map[string]string{
 	"auto_scale":            "Whether to enable autoscaling",
 	"is_enable_auto_repair": "Whether to enable auto-repair",
 	// New/optional fields
-	"tags":                     "Tags for the worker pool (optional)",
+	"tags":                     "List of tag IDs for the worker pool (optional)",
 	"kv":                       "Label for the pool (optional)",
 	"vgpu_id":                  "Virtual GPU ID (optional)",
 	"max_client":               "Maximum number of clients (optional)",

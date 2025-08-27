@@ -381,7 +381,7 @@ kv {
 * `network_id` - (Optional) Subnet ID. Uses cluster's `network_id` if not specified
 * `container_runtime` - (Optional) Container runtime. Default: `"containerd"`
 * `is_enable_auto_repair` - (Optional) Enable automatic node repair. Default: `true`
-* `tags` - (Optional) Tags for the worker pool
+* `tags` - (Optional) List of tag IDs for the worker pool
 
 **GPU Configuration (Optional):**
 * `vgpu_id` - (Optional) Virtual GPU ID for GPU-enabled worker nodes
@@ -435,7 +435,7 @@ kv {
 | `network_name` | pools | string | ❌ | computed | Subnet name |
 | `container_runtime` | pools | string | ❌ | `"containerd"` | Container runtime |
 | `is_enable_auto_repair` | pools | bool | ❌ | `true` | Enable auto node repair |
-| `tags` | pools | string | ❌ | `""` | Tags for the pool |
+| `tags` | pools | list(string) | ❌ | `[]` | List of tag IDs for the pool |
 | `vgpu_id` | pools | string | ❌ | `""` | Virtual GPU ID |
 | `max_client` | pools | number | ❌ | `0` | Max GPU clients (2-48, GPU only) |
 | `gpu_sharing_client` | pools | string | ❌ | `""` | GPU sharing (`""` or `"timeSlicing"`) |
