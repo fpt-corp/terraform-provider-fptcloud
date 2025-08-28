@@ -1,3 +1,7 @@
+## [0.3.16] - 2025-08-28
+
+- Update docs for resource Managed Kubernetes Engine
+
 ## [0.3.15] - 2025-08-28
 
 - Update docs for resource Managed Kubernetes Engine
