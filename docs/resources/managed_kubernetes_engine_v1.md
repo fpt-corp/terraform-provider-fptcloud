@@ -6,7 +6,7 @@ description: |-
   Manage managed FKE clusters.
 ---
 
-# fptcloud_managed_kubernetes_engine_v1
+# fptcloud_managed_kubernetes_engine_v1 (Resource)
 
 Manage managed FKE clusters.
 
@@ -36,6 +36,14 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example" {
 ### GPU Worker Pool
 
 ```hcl
+data "fptcloud_vgpu" "vgpu" {
+  vpc_id = data.fptcloud_vpc.vpc.id
+  filter {
+    key = "name"
+    values = ["nvidia_a30"]
+  }
+}
+
 resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
   vpc_id       = "your-vpc-id"
   cluster_name = "gpu-cluster"
@@ -52,7 +60,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
     worker_base           = false
     
     # GPU Configuration
-    vgpu_id               = "your-vgpu-id"
+    vgpu_id               = data.fptcloud_vgpu.vgpu.vgpus[0].id
     max_client            = 2
     gpu_sharing_client    = "timeSlicing"
     driver_installation_type = "pre-install"
@@ -130,40 +138,6 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_auto_upgrade" {
     worker_base      = true
   }
 }
-```
-
-### With Cluster Autoscaler
-
-```hcl
-resource "fptcloud_managed_kubernetes_engine_v1" "example_with_autoscaler" {
-  vpc_id       = "your-vpc-id"
-  cluster_name = "example-cluster-with-autoscaler"
-  network_id   = "your-network-id"
-  k8s_version  = "1.31.4"
-
-  # Cluster autoscaler configuration
-  cluster_autoscaler = {
-    is_enable_auto_scaling           = true
-    scale_down_delay_after_add       = 7200  # 2 hours
-    scale_down_delay_after_delete    = 0     # No delay
-    scale_down_delay_after_failure   = 7200  # 2 hours
-    scale_down_unneeded_time         = 500   # 500 seconds
-    scale_down_utilization_threshold = 0.5   # 50%
-    scan_interval                    = 60    # 1 minute
-    expander                         = "least-waste"
-  }
-
-  pools {
-    name             = "worker-pool-1"
-    storage_profile  = "Premium-SSD"
-    worker_type      = "your-worker-type"
-    worker_disk_size = 40
-    scale_min        = 1
-    scale_max        = 5
-    worker_base      = true
-  }
-}
-```
 
 ### With Cluster Endpoint Access
 
@@ -177,7 +151,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_endpoint_access" 
 
   # Cluster endpoint access configuration
   cluster_endpoint_access = {
-    type       = "private"
+    type       = "private" 
     allow_cidr = ["10.0.0.0/16", "172.16.0.0/16"]
   }
 
@@ -194,8 +168,6 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_endpoint_access" 
 ```
 
 ### KV Labels and Taints Examples
-
-#### KV Labels Example
 ```hcl
 pools {
   # ... other pool configuration ...
@@ -209,15 +181,8 @@ pools {
     name  = "zone"
     value = "us-east-1a"
   }
-  kv {
-    name  = "instance-type"
-    value = "compute-optimized"
-  }
 }
-```
 
-#### Taints Example
-```hcl
 pools {
   # ... other pool configuration ...
   
@@ -237,7 +202,7 @@ pools {
 }
 ```
 
-## Argument Reference
+## Schema
 
 The following arguments are supported:
 
@@ -299,20 +264,6 @@ The `cluster_autoscaler` block supports the following:
 * `scan_interval` - (Optional) Interval in seconds between autoscaler scans to evaluate scaling decisions. Default: `10`
 * `expander` - (Optional) Autoscaler expander strategy. Must be one of: `"random"`, `"least-waste"`, `"most-pods"`, `"priority"`. Default: `"least-waste"`
 
-**Example:**
-```hcl
-cluster_autoscaler = {
-  is_enable_auto_scaling           = true
-  scale_down_delay_after_add       = 7200  # Wait 2 hours after adding nodes
-  scale_down_delay_after_delete    = 0     # No delay after deletion
-  scale_down_delay_after_failure   = 300   # Wait 5 minutes after failure
-  scale_down_unneeded_time         = 600   # Node must be unneeded for 10 minutes
-  scale_down_utilization_threshold = 0.6   # Scale down when utilization < 60%
-  scan_interval                    = 30    # Check every 30 seconds
-  expander                         = "least-waste"
-}
-```
-
 ### Cluster Endpoint Access Block
 
 The `cluster_endpoint_access` block supports the following:
@@ -320,54 +271,14 @@ The `cluster_endpoint_access` block supports the following:
 * `type` - (Optional) Type of cluster endpoint access. Must be one of: `"public"`, `"private"`, `"mixed"`. Default: `"public"`
 * `allow_cidr` - (Optional) List of CIDR blocks allowed to access the cluster endpoint. Default: `["0.0.0.0/0"]`
 
-**Example:**
-```hcl
-cluster_endpoint_access = {
-  type       = "private"
-  allow_cidr = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
-}
-```
 
 ### Pools Block
 
 The `pools` block supports the following arguments. At least one pool is required:
 
-#### GPU Configuration
-The following GPU-related fields are available for all worker pools, but are only validated when `vgpu_id` is specified:
-
-- **`vgpu_id`**: Virtual GPU ID for GPU-enabled worker nodes
-- **`max_client`**: Maximum number of clients that can share the GPU (2-48)
-- **`gpu_sharing_client`**: GPU sharing strategy (`""` or `"timeSlicing"`)
-- **`driver_installation_type`**: Driver installation method (must be `"pre-install"`)
-- **`gpu_driver_version`**: GPU driver version (`"default"` or `"latest"`)
-
-**Note**: All GPU-related fields are only validated when `vgpu_id` is specified. For non-GPU pools, these fields can have any value and are not validated.
-
-#### GPU Requirements
-When creating a GPU-enabled worker pool, the following KV labels are **mandatory**:
-
-1. **`nvidia.com/mig.config`**: Specifies the MIG (Multi-Instance GPU) configuration
-   - **`"all-1g.6gb"`**: 1GB memory per GPU instance
-   - **`"all-2g.12gb"`**: 2GB memory per GPU instance  
-   - **`"all-4g.24gb"`**: 4GB memory per GPU instance
-
-2. **`worker.fptcloud/type`**: Must be set to `"gpu"` to identify GPU worker nodes
-
-**Example of required GPU KV labels:**
-```hcl
-kv {
-  name  = "nvidia.com/mig.config"
-  value = "all-1g.6gb"  # Choose based on your workload requirements
-}
-kv {
-  name  = "worker.fptcloud/type"
-  value = "gpu"
-}
-```
-
 #### Basic Configuration
 
-**Required Arguments:**
+**Required:**
 * `name` - (Required) Pool name. Cannot be `"worker-new"` (reserved name)
 * `storage_profile` - (Required) Storage profile for worker nodes (e.g., `"Premium-SSD"`, `"Standard-SSD"`)
 * `worker_type` - (Required) Worker node flavor ID
@@ -375,7 +286,7 @@ kv {
 * `scale_min` - (Required) Minimum number of nodes for autoscaling. Must be ≥ 1
 * `scale_max` - (Required) Maximum number of nodes for autoscaling. Must be ≥ `scale_min`
 
-**Optional Arguments:**
+**Optional:**
 * `worker_base` - (Optional) Whether this is the base worker pool (required for cluster operation). Default: `false`
 * `network_name` - (Optional) Subnet name. Computed from `network_id` if not specified
 * `network_id` - (Optional) Subnet ID. Uses cluster's `network_id` if not specified
@@ -398,6 +309,29 @@ kv {
   - `key` - (Required) Taint key
   - `value` - (Required) Taint value
   - `effect` - (Required) Taint effect: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"`
+  
+#### GPU Configuration
+The following GPU-related fields are available for all worker pools, but are only validated when `vgpu_id` is specified:
+
+- **`vgpu_id`**: Virtual GPU ID for GPU-enabled worker nodes
+- **`max_client`**: Maximum number of clients that can share the GPU (2-48)
+- **`gpu_sharing_client`**: GPU sharing strategy (`""` or `"timeSlicing"`)
+- **`driver_installation_type`**: Driver installation method (must be `"pre-install"`)
+- **`gpu_driver_version`**: GPU driver version (`"default"` or `"latest"`)
+
+**Note**: All GPU-related fields are only validated when `vgpu_id` is specified. For non-GPU pools, these fields can have any value and are not validated.
+
+#### GPU Requirements
+When creating a GPU-enabled worker pool, the following KV labels are **mandatory**:
+
+1. **`nvidia.com/mig.config`**: Specifies the MIG (Multi-Instance GPU) configuration
+   - **`"all-1g.6gb"`**: 1GB memory per GPU instance
+   - **`"all-2g.12gb"`**: 2GB memory per GPU instance  
+   - **`"all-4g.24gb"`**: 4GB memory per GPU instance
+   - ...
+
+2. **`worker.fptcloud/type`**: Must be set to `"gpu"` to identify GPU worker nodes
+
 
 ## Complete Field Reference
 

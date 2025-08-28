@@ -144,8 +144,13 @@ func SetDefaults(state *managedKubernetesEngine) {
 		if pool.IsEnableAutoRepair.IsNull() || pool.IsEnableAutoRepair.IsUnknown() {
 			pool.IsEnableAutoRepair = types.BoolValue(true)
 		}
+		// Set worker_base: first pool defaults to true, others default to false
 		if pool.WorkerBase.IsNull() || pool.WorkerBase.IsUnknown() {
-			pool.WorkerBase = types.BoolValue(false)
+			if i == 0 {
+				pool.WorkerBase = types.BoolValue(true) // First pool is worker_base by default
+			} else {
+				pool.WorkerBase = types.BoolValue(false)
+			}
 		}
 
 		// Handle GPU-related fields - only set defaults if they are truly null/unknown
