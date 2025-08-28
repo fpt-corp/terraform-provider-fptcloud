@@ -135,20 +135,8 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 		}
 	}
 
-	// Check: if more than one pool, at least one must have worker_base = true
-	if len(pools) > 1 {
-		hasBase := false
-		for _, pool := range pools {
-			if pool.WorkerBase.ValueBool() {
-				hasBase = true
-				break
-			}
-		}
-		if !hasBase {
-			d := diag2.NewErrorDiagnostic("Missing worker_base", "When you define more than one worker group, at least one must have worker_base = true.")
-			return &d
-		}
-	}
+	// Skip worker_base validation during create - it will be set automatically
+	// The first pool will automatically have worker_base = true
 
 	return nil
 }
