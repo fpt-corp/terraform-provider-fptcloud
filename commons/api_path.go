@@ -55,12 +55,20 @@ var ApiPath = struct {
 	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
 	DedicatedFKEManagement     func(vpcId string, clusterId string) string
 
-	ManagedFKEList      func(vpcId string, page int, pageSize int, infraType string) string
-	ManagedFKEGet       func(vpcId string, platform string, clusterId string) string
-	ManagedFKEDelete    func(vpcId string, platform string, clusterName string) string
-	ManagedFKECreate    func(vpcId string, platform string) string
-	ManagedFKEHibernate func(vpcId, platform, clusterId string, isWakeup bool) string
-	GetFKEOSVersion     func(vpcId string, platform string) string
+	ManagedFKEList                    func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedFKEGet                     func(vpcId string, platform string, clusterId string) string
+	ManagedFKEDelete                  func(vpcId string, platform string, clusterName string) string
+	ManagedFKECreate                  func(vpcId string, platform string) string
+	ManagedFKEHibernate               func(vpcId string, platform string, clusterId string, isWakeup bool) string
+	ManagedFKEHibernationSchedules    func(vpcId string, platform string, clusterId string) string
+	ManagedFKEAutoUpgradeVersion      func(vpcId string, platform string, clusterId string) string
+	ManagedFKEConfigWorker            func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateEndpointCIDR      func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateClusterAutoscaler func(vpcId string, platform string, clusterId string) string
+	GetFKEOSVersion                   func(vpcId string, platform string) string
+
+	// GPU
+	GetGPUInfo func(vpcId string) string
 
 	// Object Storage
 	// Common
@@ -262,7 +270,7 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
-	ManagedFKEHibernate: func(vpcId, platform, clusterId string, isWakeup bool) string {
+	ManagedFKEHibernate: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
 		action := "hibernate"
 		if isWakeup {
 			action = "wakeup"
@@ -273,8 +281,41 @@ var ApiPath = struct {
 			vpcId, platform, clusterId, action,
 		)
 	},
-	GetFKEOSVersion: func(vpcId string, platform string) string {
-		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get_k8s_versions", vpcId, platform)
+	ManagedFKEHibernationSchedules: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/schedules",
+			vpcId, platform, clusterId,
+		)
+	},
+
+	ManagedFKEAutoUpgradeVersion: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-auto-upgrade-version/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+
+	ManagedFKEConfigWorker: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/configure-worker-cluster/shoots/%s/0",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEUpdateEndpointCIDR: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/edit-private-cluster-ip/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+
+	ManagedFKEUpdateClusterAutoscaler: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-cluster-auto-scaling/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	GetGPUInfo: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vgpu/list?vpc_id=%s", vpcId)
 	},
 
 	// Object Storage

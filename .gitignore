@@ -37,3 +37,6 @@ go.work
 .bin/*
 .bin
 .bin/
+
+# main.tf file to test
+main.tf
