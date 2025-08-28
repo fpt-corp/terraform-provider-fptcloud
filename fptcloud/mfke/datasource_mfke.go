@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"terraform-provider-fptcloud/commons"
+	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"strings"
-	"terraform-provider-fptcloud/commons"
-	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
-	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 )
 
 var (
@@ -68,7 +70,7 @@ func (d *datasourceManagedKubernetesEngine) Schema(ctx context.Context, request 
 	}
 
 	response.Schema = schema.Schema{
-		Description: "Manage managed FKE clusters.",
+		Description: "Retrieve information about a managed FKE cluster.",
 		Attributes:  topLevelAttributes,
 	}
 
@@ -137,14 +139,16 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	data := response.Data
 
 	state.Id = types.StringValue(data.Metadata.Name)
-	//state.ClusterName = types.StringValue(d.getClusterName(data.Metadata.Name))
 	state.VpcId = types.StringValue(vpcId)
 	// keep clusterName
 	//state.NetworkID
 	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
 
-	cloudPurpose := strings.Split(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "-")
-	state.Purpose = types.StringValue(cloudPurpose[0])
+	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
+		state.Purpose = types.StringValue("public")
+	} else {
+		state.Purpose = types.StringValue("private")
+	}
 
 	poolNames, err := validatePoolNames(state.Pools)
 	if err != nil {
@@ -176,32 +180,45 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 
 		autoRepair := w.AutoRepair()
 
-		networkId, networkName, e := getNetworkInfoByPlatform(ctx, d.subnetClient, vpcId, platform, w, &data)
+		// Only use networkId and error from getNetworkInfoByPlatform
+		networkId, _, e := getNetworkInfoByPlatform(ctx, d.subnetClient, vpcId, platform, w, &data)
 
 		if e != nil {
 			return nil, e
 		}
 
-		item := managedKubernetesEnginePool{
-			WorkerPoolID:       types.StringValue(w.Name),
-			StorageProfile:     types.StringValue(w.Volume.Type),
-			WorkerType:         types.StringValue(flavorId),
-			WorkerDiskSize:     types.Int64Value(int64(parseNumber(w.Volume.Size))),
-			AutoScale:          types.BoolValue(w.Maximum != w.Minimum),
-			ScaleMin:           types.Int64Value(int64(w.Minimum)),
-			ScaleMax:           types.Int64Value(int64(w.Maximum)),
-			NetworkName:        types.StringValue(w.ProviderConfig.NetworkName),
-			NetworkID:          types.StringValue(networkId),
-			IsEnableAutoRepair: types.BoolValue(autoRepair),
-			//DriverInstallationType: types.String{},
-			//GpuDriverVersion:       types.StringValue(gpuDriverVersion),
+		item := &managedKubernetesEnginePool{
+			WorkerPoolID:           types.StringValue(w.Name),
+			StorageProfile:         types.StringValue(w.Volume.Type),
+			WorkerType:             types.StringValue(flavorId),
+			WorkerDiskSize:         types.Int64Value(int64(parseNumber(w.Volume.Size))),
+			ScaleMin:               types.Int64Value(int64(w.Minimum)),
+			ScaleMax:               types.Int64Value(int64(w.Maximum)),
+			NetworkID:              types.StringValue(networkId),
+			IsEnableAutoRepair:     types.BoolValue(autoRepair),
+			VGpuID:                 types.StringValue(w.ProviderConfig.VGpuID),
+			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
+			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
+			WorkerBase:             types.BoolValue(w.IsWorkerBase()),
+			Tags:                   tagsStringToList(w.Tags()),
 		}
 
-		if strings.ToLower(platform) == "osp" {
-			item.NetworkName = types.StringValue(networkName)
+		// For GPU pools, read values from addons configuration
+		if w.ProviderConfig.VGpuID != "" {
+			// Read MaxClient from addons configuration
+			maxClientFromAPI := d.MaxClientFromAddons(&data.Spec, w.Name)
+			item.MaxClient = types.Int64Value(maxClientFromAPI)
+
+			// Read GpuSharingClient from addons configuration
+			gpuSharingClientFromAPI := d.GpuSharingClientFromAddons(&data.Spec, w.Name)
+			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
+		} else {
+			// Non-GPU pools: set default values
+			item.MaxClient = types.Int64Value(0)
+			item.GpuSharingClient = types.StringValue("")
 		}
 
-		pool = append(pool, &item)
+		pool = append(pool, item)
 	}
 
 	state.Pools = pool
@@ -216,86 +233,217 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 	// state.NetworkNodePrefix
-	state.RangeIPLbStart = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.LbIPRangeStart)
-	state.RangeIPLbEnd = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.LbIPRangeEnd)
-
-	state.LoadBalancerType = types.StringValue(data.Spec.LoadBalancerType)
 
 	return &response, nil
 }
 
-func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {
-	topLevelAttributes := map[string]schema.Attribute{}
-	requiredStrings := []string{
-		"vpc_id", "cluster_name", "k8s_version", "purpose",
-		"pod_network", "pod_prefix", "service_network", "service_prefix",
-		"range_ip_lb_start", "range_ip_lb_end", "load_balancer_type",
+// MaxClient reads the maxClient value from the addons configuration
+// The maxClient is stored in spec.addons.gpuOperator.timeSliceConfig.maxClient
+// Format: ["pool-name:value"] e.g. ["gpu-test:2"]
+func (d *datasourceManagedKubernetesEngine) MaxClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) int64 {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return 0
 	}
 
-	requiredInts := []string{"k8s_max_pod", "network_node_prefix"}
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		// Parse format "pool-name:value" e.g. "gpu-test:2"
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			parts := strings.Split(maxClientStr, ":")
+			if len(parts) == 2 {
+				if value, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+					return value
+				}
+			}
+		}
+	}
+	return 0
+}
 
-	for _, attribute := range requiredStrings {
-		topLevelAttributes[attribute] = schema.StringAttribute{
-			Computed: true,
+func (d *datasourceManagedKubernetesEngine) GpuSharingClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) string {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return ""
+	}
+
+	// Check if this pool has TimeSliceConfig (maxClient configuration)
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			// If pool has TimeSliceConfig, it means gpu_sharing_client = "timeSlicing"
+			return "timeSlicing"
 		}
 	}
 
+	// If no TimeSliceConfig found for this pool, gpu_sharing_client = "" (empty)
+	return ""
+}
+
+func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {
+	topLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
+	requiredStrings := []string{
+		"vpc_id", "cluster_name", "k8s_version", "purpose",
+		"pod_network", "pod_prefix", "service_network", "service_prefix",
+		"network_id", "network_overlay",
+	}
+	// Optional string fields
+	optionalStrings := []string{
+		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone", "network_node_prefix",
+	}
+	// Required int fields
+	requiredInts := []string{}
+	// Optional int fields
+	optionalInts := []string{"k8s_max_pod"}
+	// Optional bool fields
+	optionalBools := []string{"is_enable_auto_upgrade", "is_running"}
+	// Optional list fields
+	optionalLists := []string{"auto_upgrade_expression"}
+
+	for _, attribute := range requiredStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
 	for _, attribute := range requiredInts {
 		topLevelAttributes[attribute] = schema.Int64Attribute{
-			Computed: true,
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalInts {
+		topLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalBools {
+		topLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		topLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:    true,
+			ElementType: types.StringType,
+			Description: descriptions[attribute],
 		}
 	}
 
 	topLevelAttributes["k8s_version"] = schema.StringAttribute{
-		Computed: true,
+		Required:    true,
+		Description: descriptions["k8s_version"],
 	}
-	topLevelAttributes["network_node_prefix"] = schema.Int64Attribute{
-		Computed: true,
+
+	// Flatten cluster_autoscaler into individual attributes
+	topLevelAttributes["is_enable_auto_scaling"] = schema.BoolAttribute{
+		Optional:    true,
+		Description: descriptions["is_enable_auto_scaling"],
+	}
+	topLevelAttributes["scale_down_delay_after_add"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_delay_after_add"],
+	}
+	topLevelAttributes["scale_down_delay_after_delete"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_delay_after_delete"],
+	}
+	topLevelAttributes["scale_down_delay_after_failure"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_delay_after_failure"],
+	}
+	topLevelAttributes["scale_down_unneeded_time"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_unneeded_time"],
+	}
+	topLevelAttributes["scale_down_utilization_threshold"] = schema.Float64Attribute{
+		Optional:    true,
+		Description: descriptions["scale_down_utilization_threshold"],
+	}
+	topLevelAttributes["scan_interval"] = schema.Int64Attribute{
+		Optional:    true,
+		Description: descriptions["scan_interval"],
+	}
+	topLevelAttributes["expander"] = schema.StringAttribute{
+		Optional:    true,
+		Description: descriptions["expander"],
 	}
 
 	return topLevelAttributes
 }
+
 func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attribute {
 	poolLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
 	requiredStrings := []string{
-		"name",
-		"storage_profile", "worker_type",
-		"network_name", "network_id",
-		//"driver_installation_type", "gpu_driver_version",
+		"name", "storage_profile", "worker_type", "network_id",
 	}
-	requiredInts := []string{
-		"worker_disk_size", "scale_min", "scale_max",
-	}
-
-	requiredBool := []string{
-		"auto_scale", "is_enable_auto_repair",
-	}
+	// Optional string fields
+	optionalStrings := []string{"gpu_sharing_client", "driver_installation_type", "container_runtime", "gpu_driver_version", "network_name", "vgpu_id"}
+	// Required int fields
+	requiredInts := []string{"worker_disk_size", "scale_min", "scale_max"}
+	// Optional int fields
+	optionalInts := []string{"max_client"}
+	// Required bool fields
+	requiredBools := []string{"auto_scale", "is_enable_auto_repair"}
+	// Optional bool fields
+	optionalBools := []string{"is_enable_auto_repair"}
+	// Optional list fields
+	optionalLists := []string{"tags"}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
-			Computed: true,
+			Required:    true,
+			Description: descriptions[attribute],
 		}
 	}
-
+	for _, attribute := range optionalStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
 	for _, attribute := range requiredInts {
 		poolLevelAttributes[attribute] = schema.Int64Attribute{
-			Computed: true,
+			Required:    true,
+			Description: descriptions[attribute],
 		}
 	}
-
-	for _, attribute := range requiredBool {
+	for _, attribute := range optionalInts {
+		poolLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredBools {
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
-			Computed: true,
+			Required:    true,
+			Description: descriptions[attribute],
 		}
 	}
-
-	poolLevelAttributes["scale_min"] = schema.Int64Attribute{
-		Computed: true,
+	for _, attribute := range optionalBools {
+		poolLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
 	}
-
-	poolLevelAttributes["scale_max"] = schema.Int64Attribute{
-		Computed: true,
+	for _, attribute := range optionalLists {
+		poolLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:    true,
+			ElementType: types.StringType,
+			Description: descriptions[attribute],
+		}
 	}
-
+	// kv: list of map[string]string
+	poolLevelAttributes["kv"] = schema.ListAttribute{
+		Optional:    true,
+		ElementType: types.MapType{ElemType: types.StringType},
+		Description: descriptions["kv"],
+	}
 	return poolLevelAttributes
 }

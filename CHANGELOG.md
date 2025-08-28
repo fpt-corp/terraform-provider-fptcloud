@@ -1,3 +1,10 @@
+## [0.3.14] - 2025-08-28
+
+- Refactor CRUD for Managed Kubernetes Engine
+- Update docs for Managed Kubernetes Engine
+- Create VGPU datasource (fptcloud_vgpu)
+- Create docs for VGPU datasource
+
 ## [0.3.13] - 2025-06-16
 
 ### Resource

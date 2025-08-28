@@ -3,12 +3,12 @@
 page_title: "fptcloud_managed_kubernetes_engine_v1 Data Source - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Manage managed FKE clusters.
+  Retrieve information about a managed FKE cluster.
 ---
 
 # fptcloud_managed_kubernetes_engine_v1 (Data Source)
 
-Manage managed FKE clusters.
+Retrieve information about a managed FKE cluster.
 
 
 
@@ -18,36 +18,62 @@ Manage managed FKE clusters.
 ### Required
 
 - `cluster_name` (String)
+- `k8s_version` (String) Kubernetes version
+- `network_id` (String) Subnet ID
+- `network_overlay` (String) Whether to encapsulate pod traffic between different subnets or same subnet
+- `pod_network` (String) Pod network (subnet ID)
+- `pod_prefix` (String) Pod network (prefix)
+- `purpose` (String) Cluster purpose
+- `service_network` (String) Service network (subnet ID)
+- `service_prefix` (String) Service prefix (prefix)
 - `vpc_id` (String)
+
+### Optional
+
+- `auto_upgrade_expression` (List of String) Auto-upgrade cron expressions (optional)
+- `auto_upgrade_timezone` (String) Timezone for auto-upgrade (optional)
+- `edge_gateway_name` (String) Edge gateway name (optional)
+- `expander` (String) Autoscaler expander strategy (optional)
+- `internal_subnet_lb` (String) Internal subnet for load balancer (optional)
+- `is_enable_auto_scaling` (Boolean) Enable cluster autoscaling (optional)
+- `is_enable_auto_upgrade` (Boolean) Whether to enable auto-upgrade (optional)
+- `k8s_max_pod` (Number) Max pods per node
+- `network_node_prefix` (String)
+- `pools` (Block List) (see [below for nested schema](#nestedblock--pools))
+- `scale_down_delay_after_add` (Number) Delay after adding a node before scale down (seconds, optional)
+- `scale_down_delay_after_delete` (Number) Delay after deleting a node before scale down (seconds, optional)
+- `scale_down_delay_after_failure` (Number) Delay after scale down failure (seconds, optional)
+- `scale_down_unneeded_time` (Number) Time a node should be unneeded before scale down (seconds, optional)
+- `scale_down_utilization_threshold` (Number) Utilization threshold for scale down (optional)
+- `scan_interval` (Number) Interval between autoscaler scans (seconds, optional)
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `k8s_max_pod` (Number)
-- `k8s_version` (String)
-- `load_balancer_type` (String)
-- `network_node_prefix` (Number)
-- `pod_network` (String)
-- `pod_prefix` (String)
-- `pools` (Block List) (see [below for nested schema](#nestedblock--pools))
-- `purpose` (String)
-- `range_ip_lb_end` (String)
-- `range_ip_lb_start` (String)
-- `service_network` (String)
-- `service_prefix` (String)
 
 <a id="nestedblock--pools"></a>
 ### Nested Schema for `pools`
 
-Read-Only:
+Required:
 
-- `auto_scale` (Boolean)
-- `is_enable_auto_repair` (Boolean)
-- `name` (String)
-- `network_id` (String)
-- `network_name` (String)
-- `scale_max` (Number)
-- `scale_min` (Number)
-- `storage_profile` (String)
-- `worker_disk_size` (Number)
-- `worker_type` (String)
+- `auto_scale` (Boolean) Whether to enable autoscaling
+- `name` (String) Pool name
+- `network_id` (String) Subnet ID
+- `scale_max` (Number) Maximum number of nodes for autoscaling
+- `scale_min` (Number) Minimum number of nodes for autoscaling
+- `storage_profile` (String) Pool storage profile
+- `worker_disk_size` (Number) Worker disk size
+- `worker_type` (String) Worker flavor ID
+
+Optional:
+
+- `container_runtime` (String)
+- `driver_installation_type` (String) Driver installation type (optional)
+- `gpu_driver_version` (String)
+- `gpu_sharing_client` (String) GPU sharing client (optional)
+- `is_enable_auto_repair` (Boolean) Whether to enable auto-repair
+- `kv` (List of Map of String) Label for the pool (optional)
+- `max_client` (Number) Maximum number of clients (optional)
+- `network_name` (String) Subnet name
+- `tags` (String) Tags for the worker pool (optional)
+- `vgpu_id` (String) Virtual GPU ID (optional)
