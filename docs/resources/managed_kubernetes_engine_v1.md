@@ -28,7 +28,6 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example" {
     worker_disk_size = 40
     scale_min        = 1
     scale_max        = 3
-    worker_base      = true
   }
 }
 ```
@@ -57,7 +56,6 @@ resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
     worker_disk_size      = 40
     scale_min             = 1
     scale_max             = 3
-    worker_base           = false
     
     # GPU Configuration
     vgpu_id               = data.fptcloud_vgpu.vgpu.vgpus[0].id
@@ -109,7 +107,6 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
     worker_disk_size = 40
     scale_min        = 1
     scale_max        = 3
-    worker_base      = true
   }
 }
 ```
@@ -135,9 +132,9 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_auto_upgrade" {
     worker_disk_size = 40
     scale_min        = 1
     scale_max        = 3
-    worker_base      = true
   }
 }
+```
 
 ### With Cluster Endpoint Access
 
@@ -162,7 +159,6 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_endpoint_access" 
     worker_disk_size = 40
     scale_min        = 1
     scale_max        = 3
-    worker_base      = true
   }
 }
 ```
@@ -321,97 +317,9 @@ The following GPU-related fields are available for all worker pools, but are onl
 
 **Note**: All GPU-related fields are only validated when `vgpu_id` is specified. For non-GPU pools, these fields can have any value and are not validated.
 
-#### GPU Requirements
-When creating a GPU-enabled worker pool, the following KV labels are **mandatory**:
-
-1. **`nvidia.com/mig.config`**: Specifies the MIG (Multi-Instance GPU) configuration
-   - **`"all-1g.6gb"`**: 1GB memory per GPU instance
-   - **`"all-2g.12gb"`**: 2GB memory per GPU instance  
-   - **`"all-4g.24gb"`**: 4GB memory per GPU instance
-   - ...
-
-2. **`worker.fptcloud/type`**: Must be set to `"gpu"` to identify GPU worker nodes
-
-
-## Complete Field Reference
-
-| Field | Context | Type | Required | Default | Description |
-|-------|---------|------|----------|---------|-------------|
-| **Top-Level Fields** | | | | | |
-| `vpc_id` | cluster | string | ✅ | - | VPC ID where cluster will be created |
-| `cluster_name` | cluster | string | ✅ | - | Name of the Kubernetes cluster |
-| `network_id` | cluster | string | ✅ | - | Subnet ID for worker nodes |
-| `k8s_version` | cluster | string | ❌ | `"1.31.4"` | Kubernetes version |
-| `purpose` | cluster | string | ❌ | `"public"` | Cluster purpose (`"public"` or `"private"`) |
-| `network_type` | cluster | string | ❌ | `"calico"` | CNI type (`"calico"` or `"cilium"`) |
-| `network_overlay` | cluster | string | ❌ | `"CrossSubnet"` | Overlay mode (`"Always"` or `"CrossSubnet"`) |
-| `pod_network` | cluster | string | ❌ | `"100.96.0.0"` | Pod network CIDR |
-| `pod_prefix` | cluster | string | ❌ | `"11"` | Pod network prefix length |
-| `service_network` | cluster | string | ❌ | `"100.64.0.0"` | Service network CIDR |
-| `service_prefix` | cluster | string | ❌ | `"13"` | Service network prefix length |
-| `k8s_max_pod` | cluster | number | ❌ | `110` | Maximum pods per node |
-| `is_enable_auto_upgrade` | cluster | bool | ❌ | `false` | Enable auto Kubernetes upgrades |
-| `auto_upgrade_expression` | cluster | list(string) | ❌ | `[]` | Cron expressions for auto-upgrade |
-| `auto_upgrade_timezone` | cluster | string | ❌ | `"Asia/Saigon"` | Timezone for auto-upgrade |
-| `is_running` | cluster | bool | ❌ | `true` | Whether cluster is running |
-| `edge_gateway_id` | cluster | string | ❌ | `""` | Edge gateway ID for private clusters |
-| `edge_gateway_name` | cluster | string | ❌ | `""` | Edge gateway name for private clusters |
-| `internal_subnet_lb` | cluster | string | ❌ | `""` | Internal subnet for load balancer |
-| **Pool Fields** | | | | | |
-| `name` | pools | string | ✅ | - | Pool name (cannot be `"worker-new"`) |
-| `storage_profile` | pools | string | ✅ | - | Storage profile for nodes |
-| `worker_type` | pools | string | ✅ | - | Worker node flavor ID |
-| `worker_disk_size` | pools | number | ✅ | - | Disk size in GB (minimum 40) |
-| `scale_min` | pools | number | ✅ | - | Minimum nodes (≥ 1) |
-| `scale_max` | pools | number | ✅ | - | Maximum nodes (≥ scale_min) |
-| `worker_base` | pools | bool | ❌ | `false` | Whether this is the base pool |
-| `network_id` | pools | string | ❌ | cluster's network_id | Subnet ID for this pool |
-| `network_name` | pools | string | ❌ | computed | Subnet name |
-| `container_runtime` | pools | string | ❌ | `"containerd"` | Container runtime |
-| `is_enable_auto_repair` | pools | bool | ❌ | `true` | Enable auto node repair |
-| `tags` | pools | list(string) | ❌ | `[]` | List of tag IDs for the pool |
-| `vgpu_id` | pools | string | ❌ | `""` | Virtual GPU ID |
-| `max_client` | pools | number | ❌ | `0` | Max GPU clients (2-48, GPU only) |
-| `gpu_sharing_client` | pools | string | ❌ | `""` | GPU sharing (`""` or `"timeSlicing"`) |
-| `driver_installation_type` | pools | string | ❌ | `""` | Driver install method (`"pre-install"`) |
-| `gpu_driver_version` | pools | string | ❌ | `""` | GPU driver (`"default"` or `"latest"`) |
-| **Pool KV Labels** | | | | | |
-| `name` | pools.kv | string | ✅ | - | Label key |
-| `value` | pools.kv | string | ✅ | - | Label value |
-| **Pool Taints** | | | | | |
-| `key` | pools.taints | string | ✅ | - | Taint key |
-| `value` | pools.taints | string | ✅ | - | Taint value |
-| `effect` | pools.taints | string | ✅ | - | Taint effect (`"NoSchedule"`, `"PreferNoSchedule"`, `"NoExecute"`) |
-| **Cluster Autoscaler Fields** | | | | | |
-| `is_enable_auto_scaling` | cluster_autoscaler | bool | ❌ | `true` | Enable cluster autoscaling |
-| `scale_down_delay_after_add` | cluster_autoscaler | number | ❌ | `3600` | Delay after adding node (seconds) |
-| `scale_down_delay_after_delete` | cluster_autoscaler | number | ❌ | `0` | Delay after deleting node (seconds) |
-| `scale_down_delay_after_failure` | cluster_autoscaler | number | ❌ | `180` | Delay after failure (seconds) |
-| `scale_down_unneeded_time` | cluster_autoscaler | number | ❌ | `1800` | Unneeded time before scale down (seconds) |
-| `scale_down_utilization_threshold` | cluster_autoscaler | number | ❌ | `0.5` | Utilization threshold (0.0-1.0) |
-| `scan_interval` | cluster_autoscaler | number | ❌ | `10` | Scan interval (seconds) |
-| `expander` | cluster_autoscaler | string | ❌ | `"least-waste"` | Expander strategy |
-| **Cluster Endpoint Access Fields** | | | | | |
-| `type` | cluster_endpoint_access | string | ❌ | `"public"` | Access type (`"public"`, `"private"`, `"mixed"`) |
-| `allow_cidr` | cluster_endpoint_access | list(string) | ❌ | `["0.0.0.0/0"]` | Allowed CIDR blocks |
-| **Hibernation Schedules Fields** | | | | | |
-| `start` | hibernation_schedules | string | ✅ | - | Cron expression for hibernation start |
-| `end` | hibernation_schedules | string | ✅ | - | Cron expression for hibernation end |
-| `location` | hibernation_schedules | string | ✅ | - | Timezone (e.g., `"Asia/Bangkok"`) |
-
-## Attributes Reference
-
-In addition to all arguments above, the following attributes are exported:
-
+### Read-Only Arguments
 * `id` - The ID of the cluster
 
-## Import
-
-Managed Kubernetes Engine clusters can be imported using the format `vpcId/clusterId`:
-
-```bash
-terraform import fptcloud_managed_kubernetes_engine_v1.example vpc-123/cluster-456
-```
 
 ## Validation Rules
 
@@ -430,7 +338,6 @@ The following fields are only validated when `vgpu_id` is set (indicating a GPU 
 - **`worker_disk_size`**: Must be at least 40GB
 - **`scale_max`**: Must be greater than or equal to `scale_min`
 - **`worker_base`**: If set to `true`, taints are not allowed
-- **Pool names**: Cannot use reserved name `"worker-new"`
 - **Duplicate names**: Pool names must be unique within a cluster
 
 ### Taint Validation
@@ -444,40 +351,15 @@ The following fields are only validated when `vgpu_id` is set (indicating a GPU 
 
 ### Kubernetes Version Validation
 - **Supported versions**: `1.32.5`, `1.31.4`, `1.30.8`, `1.29.8`, `1.28.13`
-- **Version upgrades**: Can only upgrade by one minor version at a time
-- **Version downgrades**: Not allowed
 
 ### Cluster Autoscaler Validation
 - **Expander strategies**: Must be one of: `"random"`, `"least-waste"`, `"most-pods"`, `"priority"` (case-insensitive)
 - **Utilization threshold**: Must be between 0.0 and 1.0
-- **Time values**: All time-based fields accept values in seconds (must be non-negative integers)
+- **Scan Interval**: Must be between 1 and 3600
 
 ### Cluster Endpoint Access Validation
 - **Access types**: Must be one of: `"public"`, `"private"`, or `"mixed"`
 - **CIDR format**: Must be valid CIDR notation (e.g., `"10.0.0.0/8"`)
-
-## Notes
-
-### Cluster Autoscaler
-- **Default behavior**: If `cluster_autoscaler` block is not specified, the cluster will use default autoscaler settings
-- **Runtime updates**: Cluster autoscaler settings can be modified after cluster creation
-- **Performance impact**: Very low `scan_interval` values may impact cluster performance
-- **Best practices**: 
-  - Use `scale_down_delay_after_add` to prevent rapid scale-up/scale-down cycles
-  - Set appropriate `scale_down_unneeded_time` based on your workload patterns
-  - Monitor `scale_down_utilization_threshold` to balance cost and performance
-
-### Hibernation Schedules
-- Hibernation schedules use cron expressions for the `start` and `end` fields
-- The `location` field should be a valid timezone identifier (e.g., "Asia/Bangkok", "UTC", "America/New_York")
-- When hibernation schedules are configured, the cluster will automatically hibernate and wake up according to the specified schedule
-- Hibernation schedules can be updated after cluster creation
-- The cluster must be in a running state to apply hibernation schedules
-
-### General
-- Validation errors will be displayed during `terraform plan` and `terraform apply` operations
-- GPU-related fields are available for all pools but are only validated when `vgpu_id` is specified
-- At least one worker pool with `worker_base = true` is required for cluster operation
 
 ## Error Handling
 
@@ -493,15 +375,3 @@ Error: Invalid max_client
 Error: Invalid gpu_sharing_client
   gpu_sharing_client 'invalid' in pool 'gpu-test' is not allowed. Must be one of: , timeSlicing
 ```
-
-### Common Validation Issues
-1. **GPU Configuration**: Ensure all GPU fields are properly set when `vgpu_id` is specified
-2. **Version Constraints**: Check Kubernetes version compatibility and upgrade restrictions
-3. **Network Configuration**: Verify network overlay and type settings match your requirements
-4. **Pool Naming**: Avoid reserved names and ensure uniqueness across pools
-
-### Troubleshooting
-- Run `terraform plan` to identify validation issues before applying changes
-- Check the error messages for specific field requirements
-- Ensure all required fields are properly configured
-- Verify that immutable fields are not being modified during updates
