@@ -224,8 +224,8 @@ The following arguments are supported:
 * `service_prefix` - (Optional) Service network prefix length. Default: `"13"`
 * `k8s_max_pod` - (Optional) Maximum number of pods per node. Default: `110`
 
-#### Edge Gateway Configuration (for private clusters)
-* `edge_gateway_id` - (Optional) Edge gateway ID in format `urn:vcloud:gateway:<uuid>`
+#### Edge Gateway Configuration (for VMW operation clusters)
+* `edge_gateway_id` - (Require) Edge gateway ID in format `urn:vcloud:gateway:<uuid>`
 * `edge_gateway_name` - (Optional) Edge gateway name
 * `internal_subnet_lb` - (Optional) Internal subnet for load balancer
 
