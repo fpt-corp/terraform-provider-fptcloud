@@ -455,7 +455,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 }
 
 // remapPools
-func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string) *managedKubernetesEnginePoolJson {
+func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string, clusterNetworkID string, clusterNetworkName string) *managedKubernetesEnginePoolJson {
 
 	var workerPoolID *string
 	if name == "" || name == "worker-new" || item.WorkerPoolID.IsNull() || item.WorkerPoolID.IsUnknown() {
@@ -509,6 +509,16 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 		}
 	}
 
+	// Handle network ID and name for VMW platform
+	networkID := item.NetworkID.ValueString()
+	networkName := item.NetworkName.ValueString()
+
+	// If network ID is empty (common for VMW platform), use cluster's network ID and name
+	if networkID == "" {
+		networkID = clusterNetworkID
+		networkName = clusterNetworkName
+	}
+
 	newItem := &managedKubernetesEnginePoolJson{
 		WorkerPoolID:           workerPoolID,
 		StorageProfile:         item.StorageProfile.ValueString(),
@@ -517,8 +527,8 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 		ScaleMin:               item.ScaleMin.ValueInt64(),
 		ScaleMax:               item.ScaleMax.ValueInt64(),
 		MaxClient:              item.MaxClient.ValueInt64(),
-		NetworkID:              item.NetworkID.ValueString(),
-		NetworkName:            item.NetworkName.ValueString(),
+		NetworkID:              networkID,
+		NetworkName:            networkName,
 		VGpuID:                 item.VGpuID.ValueString(),
 		DriverInstallationType: item.DriverInstallationType.ValueString(),
 		GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
@@ -673,9 +683,33 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			return &di
 		}
 
+		vpcId := from.VpcId.ValueString()
+		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+			return &d
+		}
+
+		platform = strings.ToLower(platform)
+
+		// Get cluster's network name for VMW platform
+		clusterNetworkName := ""
+		if strings.ToLower(platform) == "vmw" {
+			// For VMW platform, try to get network name from subnet service
+			subnets, err := r.subnetClient.ListSubnet(vpcId)
+			if err == nil {
+				for _, subnet := range *subnets {
+					if subnet.NetworkID == from.NetworkID.ValueString() {
+						clusterNetworkName = subnet.Name
+						break
+					}
+				}
+			}
+		}
+
 		pools := []*managedKubernetesEnginePoolJson{}
 		for _, pool := range to.Pools {
-			item := r.remapPools(pool, pool.WorkerPoolID.ValueString())
+			item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
 			pools = append(pools, item)
 		}
 
@@ -685,15 +719,6 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			Pools:             pools,
 			TypeConfigure:     "configure",
 		}
-
-		vpcId := from.VpcId.ValueString()
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-			return &d
-		}
-
-		platform = strings.ToLower(platform)
 		path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
 
 		res, err := r.mfkeClient.sendPatch(path, platform, body)
@@ -957,10 +982,8 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			item.Taints = []Taint{}
 		}
 
-		if strings.ToLower(platform) == "osp" {
-			item.NetworkID = types.StringValue(networkId)
-			item.NetworkName = types.StringValue(networkName)
-		}
+		item.NetworkID = types.StringValue(networkId)
+		item.NetworkName = types.StringValue(networkName)
 
 		apiPools = append(apiPools, item)
 	}
