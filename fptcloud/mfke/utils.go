@@ -26,7 +26,9 @@ import (
 // getNetworkInfoByPlatform network_id, network name, error
 func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId, platform string, w *managedKubernetesEngineDataWorker, data *managedKubernetesEngineData) (string, string, error) {
 	if strings.ToLower(platform) == "vmw" {
-		return getNetworkByIdOrName(ctx, client, vpcId, w.ProviderConfig.NetworkName, "")
+		// For VMW platform, bypass network lookup and use the network info from API response
+		// The API response doesn't provide network_id, so we'll use empty values
+		return "", w.ProviderConfig.NetworkName, nil
 	} else {
 		return getNetworkByIdOrName(ctx, client, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
 	}

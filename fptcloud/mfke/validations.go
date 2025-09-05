@@ -238,15 +238,16 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 			d := diag2.NewErrorDiagnostic("Edge gateway specification is not supported", "Edge gateway ID must be left empty")
 			return &d
 		}
-	} else {
-		if state.NetworkID.ValueString() != "" {
-			d := diag2.NewErrorDiagnostic(
-				"Global network ID is not supported",
-				"Network ID must be specified per worker group, not globally",
-			)
-			return &d
-		}
 	}
+	// else {
+	// 	if state.NetworkID.ValueString() != "" {
+	// 		d := diag2.NewErrorDiagnostic(
+	// 			"Global network ID is not supported",
+	// 			"Network ID must be specified per worker group, not globally",
+	// 		)
+	// 		return &d
+	// 	}
+	// }
 
 	networkOverlayAllowed := []string{"Always", "CrossSubnet"}
 	if !slices.Contains(networkOverlayAllowed, state.NetworkOverlay.ValueString()) {
@@ -302,7 +303,7 @@ func validatePoolNames(pool []*managedKubernetesEnginePool) ([]string, error) {
 }
 
 func validatePurpose(purpose string) *diag2.ErrorDiagnostic {
-	allowed := []string{"public", "private"}
+	allowed := []string{"public", "private", "firewall"}
 	for _, v := range allowed {
 		if purpose == v {
 			return nil
