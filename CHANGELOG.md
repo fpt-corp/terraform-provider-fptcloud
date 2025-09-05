@@ -1,3 +1,7 @@
+ ## [0.3.17] - 2025-09-05
+
+- Fix: Fix create and update Worker for VMW operation Managed Kubernetes Engine
+
 ## [0.3.16] - 2025-08-28
 
 - Update docs for resource Managed Kubernetes Engine

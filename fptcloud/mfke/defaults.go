@@ -1,13 +1,19 @@
 package fptcloud_mfke
 
 import (
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func SetDefaults(state *managedKubernetesEngine) {
+func SetDefaults(state *managedKubernetesEngine, platform string) {
 	if state.Purpose.IsNull() || state.Purpose.IsUnknown() || state.Purpose.ValueString() == "" {
-		state.Purpose = types.StringValue("public")
+		if strings.ToLower(platform) == "osp" {
+			state.Purpose = types.StringValue("public")
+		} else {
+			state.Purpose = types.StringValue("firewall")
+		}
 	}
 	if state.NetworkType.IsNull() || state.NetworkType.IsUnknown() || state.NetworkType.ValueString() == "" {
 		state.NetworkType = types.StringValue("calico")
