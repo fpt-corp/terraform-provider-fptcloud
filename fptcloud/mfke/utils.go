@@ -62,7 +62,7 @@ func getNetworkByIdOrName(ctx context.Context, client fptcloud_subnet.SubnetServ
 
 		for _, n := range *networks {
 			if n.NetworkID == networkId {
-				return n.NetworkID, n.Name, nil
+				return n.NetworkID, n.NetworkName, nil
 			}
 		}
 
