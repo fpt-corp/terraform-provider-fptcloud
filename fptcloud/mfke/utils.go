@@ -869,6 +869,8 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
 	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
 		state.Purpose = types.StringValue("public")
+	} else if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "firewall") {
+		state.Purpose = types.StringValue("firewall")
 	} else {
 		state.Purpose = types.StringValue("private")
 	}
