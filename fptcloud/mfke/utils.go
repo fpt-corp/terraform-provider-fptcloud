@@ -373,6 +373,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 	to.ServiceNetwork = from.ServiceNetwork.ValueString()
 	to.ServicePrefix = from.ServicePrefix.ValueString()
 	to.K8SMaxPod = from.K8SMaxPod.ValueInt64()
+	to.NetworkType = from.NetworkType.ValueString()
 	to.NetworkOverlay = from.NetworkOverlay.ValueString()
 	to.EdgeGatewayId = from.EdgeGatewayId.ValueString()
 

@@ -104,6 +104,7 @@ type managedKubernetesEngineJson struct {
 	ServiceNetwork        string                             `json:"service_network,omitempty"`
 	ServicePrefix         string                             `json:"service_prefix,omitempty"`
 	K8SMaxPod             int64                              `json:"k8s_max_pod,omitempty"`
+	NetworkType           string                             `json:"network_type,omitempty"`
 	NetworkOverlay        string                             `json:"network_overlay,omitempty"`
 	InternalSubnetLb      interface{}                        `json:"internal_subnet_lb,omitempty"`
 	EdgeGatewayId         string                             `json:"edge_gateway_id,omitempty"`

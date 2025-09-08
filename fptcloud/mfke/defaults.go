@@ -21,6 +21,11 @@ func SetDefaults(state *managedKubernetesEngine, platform string) {
 	if state.NetworkOverlay.IsNull() || state.NetworkOverlay.IsUnknown() || state.NetworkOverlay.ValueString() == "" {
 		state.NetworkOverlay = types.StringValue("CrossSubnet")
 	}
+
+	// If network_type is cilium, set network_overlay to empty string
+	if state.NetworkType.ValueString() == "cilium" {
+		state.NetworkOverlay = types.StringValue("")
+	}
 	if state.IsEnableAutoUpgrade.IsNull() || state.IsEnableAutoUpgrade.IsUnknown() {
 		state.IsEnableAutoUpgrade = types.BoolValue(false)
 	}
@@ -197,6 +202,11 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 	}
 	if plan.NetworkOverlay.IsNull() || plan.NetworkOverlay.IsUnknown() || plan.NetworkOverlay.ValueString() == "" {
 		plan.NetworkOverlay = state.NetworkOverlay
+	}
+
+	// If network_type is cilium, set network_overlay to empty string
+	if plan.NetworkType.ValueString() == "cilium" {
+		plan.NetworkOverlay = types.StringValue("")
 	}
 	if plan.IsEnableAutoUpgrade.IsNull() || plan.IsEnableAutoUpgrade.IsUnknown() {
 		plan.IsEnableAutoUpgrade = state.IsEnableAutoUpgrade
