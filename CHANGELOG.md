@@ -1,4 +1,8 @@
- ## [0.3.17] - 2025-09-05
+## [0.3.19] - 2025-09-08
+
+- Fix: fix bug NetworkName of M-FKE cluster
+
+## [0.3.17] - 2025-09-05
 
 - Fix: Fix create and update Worker for VMW operation Managed Kubernetes Engine
 
