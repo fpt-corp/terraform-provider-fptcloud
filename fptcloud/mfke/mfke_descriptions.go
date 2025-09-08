@@ -10,7 +10,8 @@ var descriptions = map[string]string{
 	"service_network": "Service network (subnet ID)",
 	"service_prefix":  "Service prefix (prefix)",
 
-	"k8s_max_pod": "Max pods per node",
+	"k8s_max_pod":  "Max pods per node",
+	"network_type": "Network type for the cluster (calico or cilium)",
 
 	"name":                  "Pool name",
 	"storage_profile":       "Pool storage profile",
