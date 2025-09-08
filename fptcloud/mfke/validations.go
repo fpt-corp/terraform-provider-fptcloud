@@ -3,7 +3,6 @@ package fptcloud_mfke
 import (
 	"fmt"
 	"net"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -249,13 +248,9 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 	// 	}
 	// }
 
-	networkOverlayAllowed := []string{"Always", "CrossSubnet"}
-	if !slices.Contains(networkOverlayAllowed, state.NetworkOverlay.ValueString()) {
-		d := diag2.NewErrorDiagnostic(
-			"Invalid Network Overlay configuration",
-			fmt.Sprintf("Network overlay allowed values are: %s", strings.Join(networkOverlayAllowed, ", ")),
-		)
-		return &d
+	// Validate network_overlay based on network_type
+	if diag := validateNetworkOverlayWithType(state.NetworkOverlay.ValueString(), state.NetworkType.ValueString()); diag != nil {
+		return diag
 	}
 
 	return nil
@@ -281,6 +276,32 @@ func validateNetworkOverlay(networkOverlay string) *diag2.ErrorDiagnostic {
 	}
 	d := diag2.NewErrorDiagnostic("Invalid network_overlay", "network_overlay must be one of: "+strings.Join(allowed, ", "))
 	return &d
+}
+
+func validateNetworkOverlayWithType(networkOverlay, networkType string) *diag2.ErrorDiagnostic {
+	// If network_type is cilium, only allow empty string for network_overlay
+	if networkType == "cilium" {
+		if networkOverlay == "" {
+			return nil
+		}
+		d := diag2.NewErrorDiagnostic("Invalid network_overlay for cilium", "network_overlay must be empty string for cilium network type")
+		return &d
+	}
+
+	// If network_type is calico, only allow "Always" or "CrossSubnet"
+	if networkType == "calico" {
+		allowed := []string{"Always", "CrossSubnet"}
+		for _, v := range allowed {
+			if networkOverlay == v {
+				return nil
+			}
+		}
+		d := diag2.NewErrorDiagnostic("Invalid network_overlay for calico", "network_overlay must be one of: "+strings.Join(allowed, ", "))
+		return &d
+	}
+
+	// For other network types, use standard validation
+	return validateNetworkOverlay(networkOverlay)
 }
 
 func validatePoolNames(pool []*managedKubernetesEnginePool) ([]string, error) {
@@ -383,8 +404,8 @@ func ValidateCreate(state *managedKubernetesEngine, response *resource.CreateRes
 		response.Diagnostics.Append(diag)
 		return false
 	}
-	// Validate network_overlay
-	if diag := validateNetworkOverlay(state.NetworkOverlay.ValueString()); diag != nil {
+	// Validate network_overlay based on network_type
+	if diag := validateNetworkOverlayWithType(state.NetworkOverlay.ValueString(), state.NetworkType.ValueString()); diag != nil {
 		response.Diagnostics.Append(diag)
 		return false
 	}
