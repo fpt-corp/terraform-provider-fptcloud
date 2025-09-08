@@ -279,15 +279,24 @@ func validateNetworkOverlay(networkOverlay string) *diag2.ErrorDiagnostic {
 }
 
 func validateNetworkOverlayWithType(networkOverlay, networkType string) *diag2.ErrorDiagnostic {
-	// If network_type is cilium, allow empty string for network_overlay
+	// If network_type is cilium, only allow empty string for network_overlay
 	if networkType == "cilium" {
-		allowed := []string{"Always", "CrossSubnet", ""}
+		if networkOverlay == "" {
+			return nil
+		}
+		d := diag2.NewErrorDiagnostic("Invalid network_overlay for cilium", "network_overlay must be empty string for cilium network type")
+		return &d
+	}
+
+	// If network_type is calico, only allow "Always" or "CrossSubnet"
+	if networkType == "calico" {
+		allowed := []string{"Always", "CrossSubnet"}
 		for _, v := range allowed {
 			if networkOverlay == v {
 				return nil
 			}
 		}
-		d := diag2.NewErrorDiagnostic("Invalid network_overlay for cilium", "network_overlay must be one of: "+strings.Join(allowed, ", "))
+		d := diag2.NewErrorDiagnostic("Invalid network_overlay for calico", "network_overlay must be one of: "+strings.Join(allowed, ", "))
 		return &d
 	}
 
