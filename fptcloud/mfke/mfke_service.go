@@ -45,7 +45,7 @@ func (m *MfkeApiClient) sendPost(ctx context.Context, requestURL string, infraTy
 	return m.sendRequestWithHeader(req, infraType)
 }
 
-func (m *MfkeApiClient) sendPatch(requestURL string, infraType string, params interface{}) ([]byte, error) {
+func (m *MfkeApiClient) sendPatch(ctx context.Context, requestURL string, infraType string, params interface{}) ([]byte, error) {
 	u := m.Client.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
@@ -55,6 +55,9 @@ func (m *MfkeApiClient) sendPatch(requestURL string, infraType string, params in
 	if err != nil {
 		return nil, err
 	}
+
+	tflog.Info(ctx, "sendPatch Body JSON: "+string(jsonValue))
+
 	return m.sendRequestWithHeader(req, infraType)
 }
 
