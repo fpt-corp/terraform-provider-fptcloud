@@ -598,7 +598,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		isWakeup := to.IsRunning.ValueBool()
 		path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
 
-		resp, err := r.mfkeClient.sendPatch(path, platform, nil)
+		resp, err := r.mfkeClient.sendPatch(ctx, path, platform, nil)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error calling hibernate API", err.Error())
 			return &d
@@ -648,7 +648,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 
 		path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
 
-		res, err := r.mfkeClient.sendPatch(path, platform, body)
+		res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error calling auto upgrade API", err.Error())
 			return &d
@@ -722,7 +722,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 		path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
 
-		res, err := r.mfkeClient.sendPatch(path, platform, body)
+		res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
 			return &d
@@ -753,7 +753,7 @@ func (r *resourceManagedKubernetesEngine) UpgradeVersion(ctx context.Context, fr
 		cluster,
 		targetVersion,
 	)
-	body, err := r.mfkeClient.sendPatch(path, platform, struct{}{})
+	body, err := r.mfkeClient.sendPatch(ctx, path, platform, struct{}{})
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(
 			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
@@ -1398,7 +1398,7 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEHibernationSchedules(vpcId, platform, state.Id.ValueString())
 
-	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
 		return fmt.Errorf("error calling hibernation schedules API: %v", err)
 	}
@@ -1441,7 +1441,7 @@ func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
 		"allowCidr": allowCidrs,   // đúng key name theo API
 	}
 
-	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
 		return fmt.Errorf("error calling update cluster endpoint CIDR API: %v", err)
 	}
@@ -1475,7 +1475,7 @@ func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Co
 		"expander":                      strings.ToLower(autoscalerAttrs["expander"].(types.String).ValueString()),
 	}
 
-	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
 		return fmt.Errorf("error calling update cluster autoscaler API: %v", err)
 	}
