@@ -676,59 +676,9 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 	}
 
 	// Worker pool changes
-	editGroup := r.DiffPool(ctx, from, to)
-	if editGroup {
-		d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
-		if err != nil {
-			di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
-			return &di
-		}
-
-		vpcId := from.VpcId.ValueString()
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-			return &d
-		}
-
-		platform = strings.ToLower(platform)
-
-		// Get cluster's network name for VMW platform
-		clusterNetworkName := ""
-		if strings.ToLower(platform) == "vmw" {
-			// For VMW platform, try to get network name from subnet service
-			subnets, err := r.subnetClient.ListSubnet(vpcId)
-			if err == nil {
-				for _, subnet := range *subnets {
-					if subnet.NetworkID == from.NetworkID.ValueString() {
-						clusterNetworkName = subnet.Name
-						break
-					}
-				}
-			}
-		}
-
-		pools := []*managedKubernetesEnginePoolJson{}
-		for _, pool := range to.Pools {
-			item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
-			pools = append(pools, item)
-		}
-
-		body := managedKubernetesEngineEditWorker{
-			K8sVersion:        to.K8SVersion.ValueString(),
-			CurrentNetworking: d.Data.Spec.Networking.Nodes,
-			Pools:             pools,
-			TypeConfigure:     "configure",
-		}
-		path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
-
-		res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
-			return &d
-		}
-		if e2 := r.CheckForError(res); e2 != nil {
-			return e2
+	if r.DiffPool(ctx, from, to) {
+		if err := r.updateWorkerPools(ctx, from, to); err != nil {
+			return err
 		}
 	}
 
@@ -1535,4 +1485,65 @@ func sortKVByKey(kvs []KV) []KV {
 	})
 
 	return sorted
+}
+
+func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	// Read current cluster state
+	d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
+	if err != nil {
+		di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
+		return &di
+	}
+
+	vpcId := from.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+
+	// Get cluster's network name for VMW platform
+	clusterNetworkName := ""
+	if strings.ToLower(platform) == "vmw" {
+		// For VMW platform, try to get network name from subnet service
+		subnets, err := r.subnetClient.ListSubnet(vpcId)
+		if err == nil {
+			for _, subnet := range *subnets {
+				if subnet.NetworkID == from.NetworkID.ValueString() {
+					clusterNetworkName = subnet.Name
+					break
+				}
+			}
+		}
+	}
+
+	// Prepare pools data
+	pools := []*managedKubernetesEnginePoolJson{}
+	for _, pool := range to.Pools {
+		item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
+		pools = append(pools, item)
+	}
+
+	// Prepare request body
+	body := managedKubernetesEngineEditWorker{
+		K8sVersion:        to.K8SVersion.ValueString(),
+		CurrentNetworking: d.Data.Spec.Networking.Nodes,
+		Pools:             pools,
+		TypeConfigure:     "configure",
+	}
+
+	// Call API to configure workers
+	path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
+	res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
+		return &d
+	}
+	if e2 := r.CheckForError(res); e2 != nil {
+		return e2
+	}
+
+	return nil
 }
