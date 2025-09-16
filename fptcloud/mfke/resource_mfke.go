@@ -126,6 +126,9 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 						},
 					},
 				},
+				PlanModifiers: []planmodifier.List{
+					listReorderByName(),
+				},
 			},
 		},
 	}
