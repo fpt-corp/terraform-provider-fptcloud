@@ -26,9 +26,38 @@ import (
 // getNetworkInfoByPlatform network_id, network name, error
 func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId, platform string, w *managedKubernetesEngineDataWorker, data *managedKubernetesEngineData) (string, string, error) {
 	if strings.ToLower(platform) == "vmw" {
-		// For VMW platform, bypass network lookup and use the network info from API response
-		// The API response doesn't provide network_id, so we'll use empty values
-		return "", w.ProviderConfig.NetworkName, nil
+		// For VMW platform, try to get network ID from worker's network name
+		networkName := w.ProviderConfig.NetworkName
+		tflog.Info(ctx, fmt.Sprintf("DEBUG: Worker %s - networkName from ProviderConfig: '%s'", w.Name, networkName))
+		if networkName != "" {
+			// Use FindSubnetByName to get both network ID and name
+			subnet, err := client.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{
+				NetworkName: networkName,
+				VpcId:       vpcId,
+			})
+			if err == nil && subnet != nil {
+				return subnet.NetworkID, subnet.NetworkName, nil
+			}
+		}
+
+		// Fallback: try to get network ID from cluster's networking config
+		clusterNetworkID := data.Spec.Networking.Nodes
+		if clusterNetworkID != "" {
+			// Try to find the network name for this network ID
+			networks, err := client.ListSubnet(vpcId)
+			if err == nil {
+				for _, n := range *networks {
+					if n.NetworkID == clusterNetworkID {
+						return n.NetworkID, n.NetworkName, nil
+					}
+				}
+			}
+			// If we can't find the network name, return the network ID and empty name
+			return clusterNetworkID, "", nil
+		}
+
+		// Final fallback to empty values
+		return "", networkName, nil
 	} else {
 		return getNetworkByIdOrName(ctx, client, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
 	}
@@ -342,6 +371,14 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		if item.NetworkName.ValueString() == "" && item.NetworkID.ValueString() == "" {
 			newItem.NetworkName = defaultNetworkName
 			newItem.NetworkID = defaultNetworkID
+		} else if item.NetworkID.ValueString() == "" {
+			// If network_id is empty but network_name is provided, use cluster's network_id
+			newItem.NetworkName = item.NetworkName.ValueString()
+			newItem.NetworkID = defaultNetworkID
+		} else if item.NetworkName.ValueString() == "" {
+			// If network_id is provided but network_name is empty, use cluster's network_name
+			newItem.NetworkName = defaultNetworkName
+			newItem.NetworkID = item.NetworkID.ValueString()
 		} else {
 			if item.NetworkName.ValueString() == "" {
 				_, networkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", item.NetworkID.ValueString())
@@ -826,6 +863,17 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.Purpose = types.StringValue("private")
 	}
 
+	if len(data.Spec.Provider.Workers) > 0 {
+		// Use the first worker to determine cluster network info
+		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
+		if err == nil {
+			state.NetworkID = types.StringValue(clusterNetworkID)
+			tflog.Info(ctx, fmt.Sprintf("DEBUG: Set cluster NetworkID to: '%s'", clusterNetworkID))
+		} else {
+			tflog.Warn(ctx, fmt.Sprintf("DEBUG: Error getting cluster network info: %v", err))
+		}
+	}
+
 	apiPools := make([]*managedKubernetesEnginePool, 0)
 
 	// Sort workers to ensure consistent order: worker_base first, then by name
@@ -963,6 +1011,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.ServicePrefix = types.StringValue(serviceNetwork[1])
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
+	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
 
 	// Parse cluster_autoscaler from API response
 	autoscalerMap := map[string]attr.Value{
