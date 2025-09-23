@@ -213,8 +213,12 @@ type managedKubernetesEngineDataSpec struct {
 	Provider struct {
 		InfrastructureConfig struct {
 			Networks struct {
-				Id      string `json:"id"`
-				Workers string `json:"workers"`
+				Id         string `json:"id"`
+				Workers    string `json:"workers"`
+				GatewayRef struct {
+					Id   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"gatewayRef"`
 			} `json:"networks"`
 		} `json:"infrastructureConfig"`
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`

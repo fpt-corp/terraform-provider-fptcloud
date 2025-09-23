@@ -31,8 +31,18 @@ func (m reorderByNameModifier) PlanModifyList(ctx context.Context, req planmodif
 		return
 	}
 
-	// Sort theo trường "name"
+	// Sort theo worker_base trước, rồi đến name
 	sort.SliceStable(planElems, func(i, j int) bool {
+		// Lấy worker_base
+		workerBaseI := planElems[i].Attributes()["worker_base"].(types.Bool).ValueBool()
+		workerBaseJ := planElems[j].Attributes()["worker_base"].(types.Bool).ValueBool()
+
+		// Sắp xếp theo worker_base trước (true trước)
+		if workerBaseI != workerBaseJ {
+			return workerBaseI
+		}
+
+		// Nếu worker_base giống nhau, sắp xếp theo name
 		nameI := planElems[i].Attributes()["name"].(types.String).ValueString()
 		nameJ := planElems[j].Attributes()["name"].(types.String).ValueString()
 		return nameI < nameJ
