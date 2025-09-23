@@ -828,7 +828,18 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 
 	apiPools := make([]*managedKubernetesEnginePool, 0)
 
-	for _, worker := range data.Spec.Provider.Workers {
+	// Sort workers to ensure consistent order: worker_base first, then by name
+	workers := data.Spec.Provider.Workers
+	sort.Slice(workers, func(i, j int) bool {
+		// First sort by worker_base (true first)
+		if workers[i].IsWorkerBase() != workers[j].IsWorkerBase() {
+			return workers[i].IsWorkerBase()
+		}
+		// Then sort by name
+		return workers[i].Name < workers[j].Name
+	})
+
+	for _, worker := range workers {
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
 		if !ok {
@@ -1085,6 +1096,23 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		},
 		accessMap,
 	)
+
+	// Parse edge gateway information from infrastructure config
+	if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
+		state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
+	} else {
+		state.EdgeGatewayId = types.StringNull()
+	}
+
+	// For edge gateway name, we need to extract it from the gatewayRef if available
+	// The gatewayRef contains both id and name
+	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
+	if gatewayRef.Id != "" {
+		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
+		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
+	} else {
+		state.EdgeGatewayName = types.StringNull()
+	}
 
 	// Default auto_upgrade_expression if missing
 	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
