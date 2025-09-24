@@ -158,6 +158,8 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	}
 
 	workers := map[string]*managedKubernetesEngineDataWorker{}
+
+	// Sort workers to ensure consistent order: worker_base first, then by name
 	for _, worker := range data.Spec.Provider.Workers {
 		workers[worker.Name] = worker
 

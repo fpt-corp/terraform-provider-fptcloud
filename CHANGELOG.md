@@ -1,3 +1,7 @@
+## [0.3.21] - 2025-09-23
+
+- Fix bug: Fix change worker pool VMW M-FKE cluster
+
 ## [0.3.20] - 2025-09-08
 
 - Fix: fix bug network type when create M-FKE cluster
