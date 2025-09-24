@@ -876,18 +876,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 
 	apiPools := make([]*managedKubernetesEnginePool, 0)
 
-	// Sort workers to ensure consistent order: worker_base first, then by name
-	workers := data.Spec.Provider.Workers
-	sort.Slice(workers, func(i, j int) bool {
-		// First sort by worker_base (true first)
-		if workers[i].IsWorkerBase() != workers[j].IsWorkerBase() {
-			return workers[i].IsWorkerBase()
-		}
-		// Then sort by name
-		return workers[i].Name < workers[j].Name
-	})
-
-	for _, worker := range workers {
+	for _, worker := range data.Spec.Provider.Workers {
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
 		if !ok {

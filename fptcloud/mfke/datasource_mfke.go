@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
@@ -161,17 +160,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	workers := map[string]*managedKubernetesEngineDataWorker{}
 
 	// Sort workers to ensure consistent order: worker_base first, then by name
-	workersList := data.Spec.Provider.Workers
-	sort.Slice(workersList, func(i, j int) bool {
-		// First sort by worker_base (true first)
-		if workersList[i].IsWorkerBase() != workersList[j].IsWorkerBase() {
-			return workersList[i].IsWorkerBase()
-		}
-		// Then sort by name
-		return workersList[i].Name < workersList[j].Name
-	})
-
-	for _, worker := range workersList {
+	for _, worker := range data.Spec.Provider.Workers {
 		workers[worker.Name] = worker
 
 		if len(state.Pools) == 0 {
