@@ -26,9 +26,38 @@ import (
 // getNetworkInfoByPlatform network_id, network name, error
 func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId, platform string, w *managedKubernetesEngineDataWorker, data *managedKubernetesEngineData) (string, string, error) {
 	if strings.ToLower(platform) == "vmw" {
-		// For VMW platform, bypass network lookup and use the network info from API response
-		// The API response doesn't provide network_id, so we'll use empty values
-		return "", w.ProviderConfig.NetworkName, nil
+		// For VMW platform, try to get network ID from worker's network name
+		networkName := w.ProviderConfig.NetworkName
+		tflog.Info(ctx, fmt.Sprintf("DEBUG: Worker %s - networkName from ProviderConfig: '%s'", w.Name, networkName))
+		if networkName != "" {
+			// Use FindSubnetByName to get both network ID and name
+			subnet, err := client.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{
+				NetworkName: networkName,
+				VpcId:       vpcId,
+			})
+			if err == nil && subnet != nil {
+				return subnet.NetworkID, subnet.NetworkName, nil
+			}
+		}
+
+		// Fallback: try to get network ID from cluster's networking config
+		clusterNetworkID := data.Spec.Networking.Nodes
+		if clusterNetworkID != "" {
+			// Try to find the network name for this network ID
+			networks, err := client.ListSubnet(vpcId)
+			if err == nil {
+				for _, n := range *networks {
+					if n.NetworkID == clusterNetworkID {
+						return n.NetworkID, n.NetworkName, nil
+					}
+				}
+			}
+			// If we can't find the network name, return the network ID and empty name
+			return clusterNetworkID, "", nil
+		}
+
+		// Final fallback to empty values
+		return "", networkName, nil
 	} else {
 		return getNetworkByIdOrName(ctx, client, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
 	}
@@ -342,6 +371,14 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		if item.NetworkName.ValueString() == "" && item.NetworkID.ValueString() == "" {
 			newItem.NetworkName = defaultNetworkName
 			newItem.NetworkID = defaultNetworkID
+		} else if item.NetworkID.ValueString() == "" {
+			// If network_id is empty but network_name is provided, use cluster's network_id
+			newItem.NetworkName = item.NetworkName.ValueString()
+			newItem.NetworkID = defaultNetworkID
+		} else if item.NetworkName.ValueString() == "" {
+			// If network_id is provided but network_name is empty, use cluster's network_name
+			newItem.NetworkName = defaultNetworkName
+			newItem.NetworkID = item.NetworkID.ValueString()
 		} else {
 			if item.NetworkName.ValueString() == "" {
 				_, networkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", item.NetworkID.ValueString())
@@ -598,7 +635,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		isWakeup := to.IsRunning.ValueBool()
 		path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
 
-		resp, err := r.mfkeClient.sendPatch(path, platform, nil)
+		resp, err := r.mfkeClient.sendPatch(ctx, path, platform, nil)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error calling hibernate API", err.Error())
 			return &d
@@ -648,7 +685,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 
 		path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
 
-		res, err := r.mfkeClient.sendPatch(path, platform, body)
+		res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
 		if err != nil {
 			d := diag2.NewErrorDiagnostic("Error calling auto upgrade API", err.Error())
 			return &d
@@ -676,59 +713,9 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 	}
 
 	// Worker pool changes
-	editGroup := r.DiffPool(ctx, from, to)
-	if editGroup {
-		d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
-		if err != nil {
-			di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
-			return &di
-		}
-
-		vpcId := from.VpcId.ValueString()
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-			return &d
-		}
-
-		platform = strings.ToLower(platform)
-
-		// Get cluster's network name for VMW platform
-		clusterNetworkName := ""
-		if strings.ToLower(platform) == "vmw" {
-			// For VMW platform, try to get network name from subnet service
-			subnets, err := r.subnetClient.ListSubnet(vpcId)
-			if err == nil {
-				for _, subnet := range *subnets {
-					if subnet.NetworkID == from.NetworkID.ValueString() {
-						clusterNetworkName = subnet.Name
-						break
-					}
-				}
-			}
-		}
-
-		pools := []*managedKubernetesEnginePoolJson{}
-		for _, pool := range to.Pools {
-			item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
-			pools = append(pools, item)
-		}
-
-		body := managedKubernetesEngineEditWorker{
-			K8sVersion:        to.K8SVersion.ValueString(),
-			CurrentNetworking: d.Data.Spec.Networking.Nodes,
-			Pools:             pools,
-			TypeConfigure:     "configure",
-		}
-		path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
-
-		res, err := r.mfkeClient.sendPatch(path, platform, body)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
-			return &d
-		}
-		if e2 := r.CheckForError(res); e2 != nil {
-			return e2
+	if r.DiffPool(ctx, from, to) {
+		if err := r.updateWorkerPools(ctx, from, to); err != nil {
+			return err
 		}
 	}
 
@@ -753,7 +740,7 @@ func (r *resourceManagedKubernetesEngine) UpgradeVersion(ctx context.Context, fr
 		cluster,
 		targetVersion,
 	)
-	body, err := r.mfkeClient.sendPatch(path, platform, struct{}{})
+	body, err := r.mfkeClient.sendPatch(ctx, path, platform, struct{}{})
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(
 			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
@@ -874,6 +861,17 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.Purpose = types.StringValue("firewall")
 	} else {
 		state.Purpose = types.StringValue("private")
+	}
+
+	if len(data.Spec.Provider.Workers) > 0 {
+		// Use the first worker to determine cluster network info
+		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
+		if err == nil {
+			state.NetworkID = types.StringValue(clusterNetworkID)
+			tflog.Info(ctx, fmt.Sprintf("DEBUG: Set cluster NetworkID to: '%s'", clusterNetworkID))
+		} else {
+			tflog.Warn(ctx, fmt.Sprintf("DEBUG: Error getting cluster network info: %v", err))
+		}
 	}
 
 	apiPools := make([]*managedKubernetesEnginePool, 0)
@@ -1002,6 +1000,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.ServicePrefix = types.StringValue(serviceNetwork[1])
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
+	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
 
 	// Parse cluster_autoscaler from API response
 	autoscalerMap := map[string]attr.Value{
@@ -1135,6 +1134,23 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		},
 		accessMap,
 	)
+
+	// Parse edge gateway information from infrastructure config
+	if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
+		state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
+	} else {
+		state.EdgeGatewayId = types.StringNull()
+	}
+
+	// For edge gateway name, we need to extract it from the gatewayRef if available
+	// The gatewayRef contains both id and name
+	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
+	if gatewayRef.Id != "" {
+		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
+		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
+	} else {
+		state.EdgeGatewayName = types.StringNull()
+	}
 
 	// Default auto_upgrade_expression if missing
 	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
@@ -1398,7 +1414,7 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEHibernationSchedules(vpcId, platform, state.Id.ValueString())
 
-	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
 		return fmt.Errorf("error calling hibernation schedules API: %v", err)
 	}
@@ -1441,7 +1457,7 @@ func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
 		"allowCidr": allowCidrs,   // đúng key name theo API
 	}
 
-	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
 		return fmt.Errorf("error calling update cluster endpoint CIDR API: %v", err)
 	}
@@ -1475,7 +1491,7 @@ func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Co
 		"expander":                      strings.ToLower(autoscalerAttrs["expander"].(types.String).ValueString()),
 	}
 
-	resp, err := r.mfkeClient.sendPatch(path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
 		return fmt.Errorf("error calling update cluster autoscaler API: %v", err)
 	}
@@ -1535,4 +1551,65 @@ func sortKVByKey(kvs []KV) []KV {
 	})
 
 	return sorted
+}
+
+func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	// Read current cluster state
+	d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
+	if err != nil {
+		di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
+		return &di
+	}
+
+	vpcId := from.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+
+	// Get cluster's network name for VMW platform
+	clusterNetworkName := ""
+	if strings.ToLower(platform) == "vmw" {
+		// For VMW platform, try to get network name from subnet service
+		subnets, err := r.subnetClient.ListSubnet(vpcId)
+		if err == nil {
+			for _, subnet := range *subnets {
+				if subnet.NetworkID == from.NetworkID.ValueString() {
+					clusterNetworkName = subnet.Name
+					break
+				}
+			}
+		}
+	}
+
+	// Prepare pools data
+	pools := []*managedKubernetesEnginePoolJson{}
+	for _, pool := range to.Pools {
+		item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
+		pools = append(pools, item)
+	}
+
+	// Prepare request body
+	body := managedKubernetesEngineEditWorker{
+		K8sVersion:        to.K8SVersion.ValueString(),
+		CurrentNetworking: d.Data.Spec.Networking.Nodes,
+		Pools:             pools,
+		TypeConfigure:     "configure",
+	}
+
+	// Call API to configure workers
+	path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
+	res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
+		return &d
+	}
+	if e2 := r.CheckForError(res); e2 != nil {
+		return e2
+	}
+
+	return nil
 }
