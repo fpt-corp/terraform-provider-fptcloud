@@ -65,7 +65,7 @@ func Provider() *schema.Provider {
 			"timeout": {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TIMEOUT", 5),
+				DefaultFunc: schema.EnvDefaultFunc("FPTCLOUD_TIMEOUT", 15),
 				Description: "Timeout in minutes (optional)",
 			},
 		},
@@ -151,7 +151,7 @@ func providerConfigureContext(_ context.Context, d *schema.ResourceData) (interf
 	if timeout, ok := d.GetOk("timeout"); ok {
 		timeoutValue = timeout.(int)
 	} else {
-		timeoutValue = 5 // Default 5 minutes
+		timeoutValue = 15 // Default 15 minutes
 	}
 
 	client, err = common.NewClientWithURL(tokenValue, apiURL, regionValue, tenantNameValue, timeoutValue)
