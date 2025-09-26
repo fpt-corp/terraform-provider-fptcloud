@@ -1,3 +1,7 @@
+## [0.3.23] - 2025-09-26
+
+- Update the status when attaching an instance
+
 ## [0.3.21] - 2025-09-23
 
 - Fix bug: Fix change worker pool VMW M-FKE cluster
@@ -50,6 +54,7 @@
 ## [0.3.9] - 2025-04-23
 
 ### Resource
+
 - Improved error handling for database
 
 ## [0.3.10] - 2025-06-09
