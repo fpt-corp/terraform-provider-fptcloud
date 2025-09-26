@@ -11,6 +11,7 @@ import (
 	fptcloud_instance "terraform-provider-fptcloud/fptcloud/instance"
 	fptcloud_instance_group "terraform-provider-fptcloud/fptcloud/instance-group"
 	fptcloud_instance_group_policy "terraform-provider-fptcloud/fptcloud/instance-group-policy"
+	fptcloud_load_balancer_v2 "terraform-provider-fptcloud/fptcloud/load_balancer_v2"
 
 	fptcloud_object_storage "terraform-provider-fptcloud/fptcloud/object-storage"
 	fptcloud_security_group "terraform-provider-fptcloud/fptcloud/security-group"
@@ -94,6 +95,18 @@ func Provider() *schema.Provider {
 			"fptcloud_s3_service_enable":                    fptcloud_object_storage.DataSourceS3ServiceEnableResponse(),
 			"fptcloud_object_storage_bucket_acl":            fptcloud_object_storage.DataSourceBucketAcl(),
 			"fptcloud_vgpu":                                 fptcloud_vgpu.DataSourceVGpu(),
+			"fptcloud_load_balancer_v2_lbs":                 fptcloud_load_balancer_v2.DataSourceLoadBalancers(),
+			"fptcloud_load_balancer_v2_lb":                  fptcloud_load_balancer_v2.DataSourceLoadBalancer(),
+			"fptcloud_load_balancer_v2_listeners":           fptcloud_load_balancer_v2.DataSourceListeners(),
+			"fptcloud_load_balancer_v2_listener":            fptcloud_load_balancer_v2.DataSourceListener(),
+			"fptcloud_load_balancer_v2_pools":               fptcloud_load_balancer_v2.DataSourcePools(),
+			"fptcloud_load_balancer_v2_pool":                fptcloud_load_balancer_v2.DataSourcePool(),
+			"fptcloud_load_balancer_v2_certificates":        fptcloud_load_balancer_v2.DataSourceCertificates(),
+			"fptcloud_load_balancer_v2_certificate":         fptcloud_load_balancer_v2.DataSourceCertificate(),
+			"fptcloud_load_balancer_v2_l7_policies":         fptcloud_load_balancer_v2.DataSourceL7Policies(),
+			"fptcloud_load_balancer_v2_l7_policy":           fptcloud_load_balancer_v2.DataSourceL7Policy(),
+			"fptcloud_load_balancer_v2_l7_rules":            fptcloud_load_balancer_v2.DataSourceL7Rules(),
+			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.DataSourceL7Rule(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
@@ -115,6 +128,12 @@ func Provider() *schema.Provider {
 			"fptcloud_object_storage_bucket_acl":            fptcloud_object_storage.ResourceBucketAcl(),
 			"fptcloud_object_storage_sub_user_key":          fptcloud_object_storage.ResourceSubUserKeys(),
 			"fptcloud_object_storage_bucket_lifecycle":      fptcloud_object_storage.ResourceBucketLifeCycle(),
+			"fptcloud_load_balancer_v2_lb":                  fptcloud_load_balancer_v2.ResourceLoadBalancer(),
+			"fptcloud_load_balancer_v2_listener":            fptcloud_load_balancer_v2.ResourceListener(),
+			"fptcloud_load_balancer_v2_pool":                fptcloud_load_balancer_v2.ResourcePool(),
+			"fptcloud_load_balancer_v2_certificate":         fptcloud_load_balancer_v2.ResourceCertificate(),
+			"fptcloud_load_balancer_v2_l7_policy":           fptcloud_load_balancer_v2.ResourceL7Policy(),
+			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.ResourceL7Rule(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
