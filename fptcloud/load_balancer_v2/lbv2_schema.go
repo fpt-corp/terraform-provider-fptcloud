@@ -1577,9 +1577,10 @@ var resourceCertificate = map[string]*schema.Schema{
 		Optional: true,
 	},
 	"private_key": {
-		Type:     schema.TypeString,
-		ForceNew: true,
-		Optional: true,
+		Type:      schema.TypeString,
+		ForceNew:  true,
+		Optional:  true,
+		Sensitive: true,
 	},
 	"cert_chain": {
 		Type:     schema.TypeString,
