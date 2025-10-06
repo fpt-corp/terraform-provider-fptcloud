@@ -75,7 +75,11 @@ func createLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 	payload.Cidr = d.Get("cidr").(string)
 	payload.EgwId = d.Get("egw_id").(string)
 
-	listener := d.Get("listener").(*schema.Set).List()[0].(map[string]interface{})
+	listenerRaw := d.Get("listener").(*schema.Set)
+	if listenerRaw.Len() == 0 {
+		return diag.FromErr(fmt.Errorf("listener is required"))
+	}
+	listener := listenerRaw.List()[0].(map[string]interface{})
 	listenerPayload := DefaultListener{
 		Name:          listener["name"].(string),
 		Protocol:      listener["protocol"].(string),
@@ -84,7 +88,11 @@ func createLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 	}
 	payload.Listener = listenerPayload
 
-	pool := d.Get("pool").(*schema.Set).List()[0].(map[string]interface{})
+	poolRaw := d.Get("pool").(*schema.Set)
+	if poolRaw.Len() == 0 {
+		return diag.FromErr(fmt.Errorf("pool is required"))
+	}
+	pool := poolRaw.List()[0].(map[string]interface{})
 	poolPayload := InputDefaultServerPool{
 		Name:                  pool["name"].(string),
 		Protocol:              pool["protocol"].(string),
@@ -93,7 +101,11 @@ func createLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 		PersistenceCookieName: pool["persistence_cookie_name"].(string),
 	}
 
-	healthMonitor := pool["health_monitor"].(*schema.Set).List()[0].(map[string]interface{})
+	healthMonitorRaw := pool["health_monitor"].(*schema.Set)
+	if healthMonitorRaw.Len() == 0 {
+		return diag.FromErr(fmt.Errorf("health monitor is required"))
+	}
+	healthMonitor := healthMonitorRaw.List()[0].(map[string]interface{})
 	healthMonitorPayload := InputHealthMonitor{
 		Type:           healthMonitor["type"].(string),
 		UrlPath:        healthMonitor["url_path"].(string),
