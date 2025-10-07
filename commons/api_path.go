@@ -113,7 +113,7 @@ var ApiPath = struct {
 	CreateAccessKey func(vpcId, s3ServiceId string) string
 	DeleteAccessKey func(vpcId, s3ServiceId string) string
 
-	//Load Balancer v2
+	//LBv2
 	//Load balancer
 	ListLoadBalancers  func(vpcId string, page int, pageSize int) string
 	GetLoadBalancer    func(vpcId string, loadBalancerId string) string
@@ -142,20 +142,22 @@ var ApiPath = struct {
 	ReadCertificate   func(vpcId string, certificateId string) string
 	CreateCertificate func(vpcId string) string
 	DeleteCertificate func(vpcId string, certificateId string) string
-	//L7 Policy
+	//L7 policy
 	ListL7Policies func(vpcId string, listenerId string) string
 	GetL7Policy    func(vpcId string, listenerId string, policyId string) string
 	ReadL7Policy   func(vpcId string, listenerId string, policyId string) string
 	CreateL7Policy func(vpcId string, listenerId string) string
 	UpdateL7Policy func(vpcId string, listenerId string, policyId string) string
 	DeleteL7Policy func(vpcId string, listenerId string, policyId string) string
-	//L7 Rule
+	//L7 rule
 	ListL7Rules  func(vpcId string, listenerId string, policyId string) string
 	GetL7Rule    func(vpcId string, listenerId string, policyId string, ruleId string) string
 	ReadL7Rule   func(vpcId string, listenerId string, policyId string, ruleId string) string
 	CreateL7Rule func(vpcId string, listenerId string, policyId string) string
 	UpdateL7Rule func(vpcId string, listenerId string, policyId string, ruleId string) string
 	DeleteL7Rule func(vpcId string, listenerId string, policyId string, ruleId string) string
+	//Size
+	ListSizes func(vpcId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -466,7 +468,7 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/user/credentials/delete", vpcId, s3ServiceId)
 	},
 
-	//Load Balancer v2
+	//LBv2
 	//Load balancer
 	ListLoadBalancers: func(vpcId string, page int, pageSize int) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/list?page=%d&page_size=%d", vpcId, page, pageSize)
@@ -547,7 +549,7 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates/%s/delete", vpcId, certificateId)
 	},
 
-	//L7 Policy
+	//L7 policy
 	ListL7Policies: func(vpcId string, listenerId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies", vpcId, listenerId)
 	},
@@ -567,7 +569,7 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/delete", vpcId, listenerId, policyId)
 	},
 
-	//L7 Rule
+	//L7 rule
 	ListL7Rules: func(vpcId string, listenerId string, policyId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules", vpcId, listenerId, policyId)
 	},
@@ -585,5 +587,10 @@ var ApiPath = struct {
 	},
 	DeleteL7Rule: func(vpcId string, listenerId string, policyId string, ruleId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/%s/delete", vpcId, listenerId, policyId, ruleId)
+	},
+
+	//Size
+	ListSizes: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/sizes", vpcId)
 	},
 }

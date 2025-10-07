@@ -43,6 +43,8 @@ type LoadBalancerV2Service interface {
 	CreateL7Rule(vpcId string, listenerId string, policyId string, req L7RuleInput) (L7RuleResponse, error)
 	UpdateL7Rule(vpcId string, listenerId string, policyId string, ruleId string, req L7RuleInput) (L7RuleResponse, error)
 	DeleteL7Rule(vpcId string, listenerId string, policyId string, ruleId string) (L7RuleResponse, error)
+	//Size
+	ListSizes(vpcId string) (SizeListResponse, error)
 }
 
 type LoadBalancerV2ServiceImpl struct {
@@ -469,6 +471,20 @@ func (s *LoadBalancerV2ServiceImpl) DeleteL7Rule(vpcId string, listenerId string
 	err = json.Unmarshal(resp, &result)
 	if err != nil {
 		return L7RuleResponse{}, fmt.Errorf("failed to unmarshal delete L7 rule response: %v", err)
+	}
+	return result, nil
+}
+
+func (s *LoadBalancerV2ServiceImpl) ListSizes(vpcId string) (SizeListResponse, error) {
+	apiPath := common.ApiPath.ListSizes(vpcId)
+	resp, err := s.client.SendGetRequest(apiPath)
+	if err != nil {
+		return SizeListResponse{Total: 0}, fmt.Errorf("list sizes request failed: %v", err)
+	}
+	var result SizeListResponse
+	err = json.Unmarshal(resp, &result)
+	if err != nil {
+		return SizeListResponse{Total: 0}, fmt.Errorf("failed to unmarshal list sizes response: %v", err)
 	}
 	return result, nil
 }
