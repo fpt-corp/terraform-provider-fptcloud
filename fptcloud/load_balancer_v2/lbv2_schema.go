@@ -1915,3 +1915,40 @@ var resourceL7Rule = map[string]*schema.Schema{
 		Optional: true,
 	},
 }
+
+var dataSourceSizes = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:     schema.TypeString,
+		Required: true,
+	},
+	"sizes": {
+		Type:     schema.TypeList,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"id": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+				"name": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+				"vip_amount": {
+					Type:     schema.TypeInt,
+					Computed: true,
+				},
+				"active_connection": {
+					Type:        schema.TypeInt,
+					Description: "The number of client connections processed concurrently",
+					Computed:    true,
+				},
+				"application_throughput": {
+					Type:        schema.TypeInt,
+					Description: "The number of application requests handled per second",
+					Computed:    true,
+				},
+			},
+		},
+	},
+}

@@ -45,7 +45,7 @@ func listCertificates(ctx context.Context, d *schema.ResourceData, m interface{}
 		})
 	}
 	if err := d.Set("certificates", formattedData); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting certifcate list: %v", err))
+		return diag.FromErr(fmt.Errorf("error setting certificate list: %v", err))
 	}
 	d.SetId(vpcId)
 

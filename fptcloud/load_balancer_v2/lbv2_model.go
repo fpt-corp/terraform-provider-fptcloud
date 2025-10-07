@@ -525,3 +525,17 @@ type L7RuleInput struct {
 	Value       string `json:"value"`
 	Invert      bool   `json:"invert"`
 }
+
+// Size
+type Size struct {
+	Id                    string `json:"id"`
+	Name                  string `json:"name"`
+	VipAmount             int    `json:"vip_amount"`
+	ActiveConnection      int    `json:"active_connection"`
+	ApplicationThroughput int    `json:"application_throughput"`
+}
+type SizeListResponse struct {
+	Sizes   []Size `json:"data"`
+	Total   int    `json:"total"`
+	Message string `json:"message"`
+}

@@ -107,6 +107,7 @@ func Provider() *schema.Provider {
 			"fptcloud_load_balancer_v2_l7_policy":           fptcloud_load_balancer_v2.DataSourceL7Policy(),
 			"fptcloud_load_balancer_v2_l7_rules":            fptcloud_load_balancer_v2.DataSourceL7Rules(),
 			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.DataSourceL7Rule(),
+			"fptcloud_load_balancer_v2_sizes":               fptcloud_load_balancer_v2.DataSourceSizes(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
