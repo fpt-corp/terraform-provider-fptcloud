@@ -49,11 +49,21 @@ func readL7Rule(ctx context.Context, d *schema.ResourceData, m interface{}) diag
 		return diag.FromErr(err)
 	}
 	rule := response.L7Rule
-	d.Set("type", rule.Type)
-	d.Set("compare_type", rule.CompareType)
-	d.Set("key", rule.Key)
-	d.Set("value", rule.Value)
-	d.Set("invert", rule.Invert)
+	if err := d.Set("type", rule.Type); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 rule type: %v", err))
+	}
+	if err := d.Set("compare_type", rule.CompareType); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 rule compare type: %v", err))
+	}
+	if err := d.Set("key", rule.Key); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 rule key: %v", err))
+	}
+	if err := d.Set("value", rule.Value); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 rule value: %v", err))
+	}
+	if err := d.Set("invert", rule.Invert); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 rule invert: %v", err))
+	}
 	return nil
 }
 
