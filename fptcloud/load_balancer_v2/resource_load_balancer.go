@@ -48,14 +48,30 @@ func readLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}
 		return diag.FromErr(err)
 	}
 	loadBalancer := response.LoadBalancer
-	d.Set("name", loadBalancer.Name)
-	d.Set("description", loadBalancer.Description)
-	d.Set("size", loadBalancer.Size.Name)
-	d.Set("floating_ip", loadBalancer.PublicIp.IpAddress)
-	d.Set("network_id", loadBalancer.Network.Id)
-	d.Set("vip_address", loadBalancer.PrivateIp)
-	d.Set("cidr", loadBalancer.Cidr)
-	d.Set("egw_id", loadBalancer.EgwId)
+	if err := d.Set("name", loadBalancer.Name); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting name: %s", err))
+	}
+	if err := d.Set("description", loadBalancer.Description); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting description: %s", err))
+	}
+	if err := d.Set("size", loadBalancer.Size.Name); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting size: %s", err))
+	}
+	if err := d.Set("floating_ip", loadBalancer.PublicIp.IpAddress); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting floating ip: %s", err))
+	}
+	if err := d.Set("network_id", loadBalancer.Network.Id); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting network id: %s", err))
+	}
+	if err := d.Set("vip_address", loadBalancer.PrivateIp); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting vip address: %s", err))
+	}
+	if err := d.Set("cidr", loadBalancer.Cidr); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting cidr: %s", err))
+	}
+	if err := d.Set("egw_id", loadBalancer.EgwId); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting egw id: %s", err))
+	}
 	return nil
 }
 

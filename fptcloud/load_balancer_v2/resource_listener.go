@@ -52,31 +52,68 @@ func readListener(ctx context.Context, d *schema.ResourceData, m interface{}) di
 	for _, v := range listener.SniCertificates {
 		sniCertificateIds = append(sniCertificateIds, v.Id)
 	}
-	d.Set("name", listener.Name)
-	d.Set("description", listener.Description)
-	d.Set("protocol", listener.Protocol)
-	d.Set("protocol_port", listener.Port)
-	d.Set("provisioning_status", listener.ProvisioningStatus)
-	d.Set("insert_headers", []interface{}{
-		map[string]interface{}{
-			"x_forwarded_for":   listener.InsertHeaders.XForwardedFor,
-			"x_forwarded_port":  listener.InsertHeaders.XForwardedPort,
-			"x_forwarded_proto": listener.InsertHeaders.XForwardedProto,
-		},
-	})
-	d.Set("default_pool_id", listener.DefaultPool.Id)
-	d.Set("certificate_id", listener.Certificate.Id)
-	d.Set("sni_certificate_ids", sniCertificateIds)
-	d.Set("hsts_max_age", listener.HstsMaxAge)
-	d.Set("hsts_include_subdomains", listener.HstsIncludeSubdomains)
-	d.Set("hsts_preload", listener.HstsPreload)
-	d.Set("connection_limit", listener.ConnectionLimit)
-	d.Set("client_data_timeout", listener.ClientDataTimeout)
-	d.Set("member_connection_timeout", listener.MemberConnectTimeout)
-	d.Set("member_data_timeout", listener.MemberDataTimeout)
-	d.Set("tcp_inspect_timeout", listener.TcpInspectTimeout)
-	d.Set("alpn_protocols", listener.AlpnProtocols)
-	d.Set("allowed_cidrs", listener.AllowedCidrs)
+	insertHeaders := map[string]interface{}{
+		"x_forwarded_for":   listener.InsertHeaders.XForwardedFor,
+		"x_forwarded_port":  listener.InsertHeaders.XForwardedPort,
+		"x_forwarded_proto": listener.InsertHeaders.XForwardedProto,
+	}
+	if err := d.Set("name", listener.Name); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting name: %v", err))
+	}
+	if err := d.Set("description", listener.Description); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting description: %v", err))
+	}
+	if err := d.Set("protocol", listener.Protocol); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting protocol: %v", err))
+	}
+	if err := d.Set("protocol_port", listener.Port); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting protocol port: %v", err))
+	}
+	if err := d.Set("provisioning_status", listener.ProvisioningStatus); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting provisioning status: %v", err))
+	}
+	if err := d.Set("insert_headers", []interface{}{insertHeaders}); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting insert headers: %v", err))
+	}
+	if err := d.Set("default_pool_id", listener.DefaultPool.Id); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting default pool id: %v", err))
+	}
+	if err := d.Set("certificate_id", listener.Certificate.Id); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting certificate id: %v", err))
+	}
+	if err := d.Set("sni_certificate_ids", sniCertificateIds); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting sni certificate ids: %v", err))
+	}
+	if err := d.Set("hsts_max_age", listener.HstsMaxAge); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting hsts max age: %v", err))
+	}
+	if err := d.Set("hsts_include_subdomains", listener.HstsIncludeSubdomains); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting hsts include subdomains: %v", err))
+	}
+	if err := d.Set("hsts_preload", listener.HstsPreload); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting hsts preload: %v", err))
+	}
+	if err := d.Set("connection_limit", listener.ConnectionLimit); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting connection limit: %v", err))
+	}
+	if err := d.Set("client_data_timeout", listener.ClientDataTimeout); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting client data timeout: %v", err))
+	}
+	if err := d.Set("member_connection_timeout", listener.MemberConnectTimeout); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting member connection timeout: %v", err))
+	}
+	if err := d.Set("member_data_timeout", listener.MemberDataTimeout); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting member data timeout: %v", err))
+	}
+	if err := d.Set("tcp_inspect_timeout", listener.TcpInspectTimeout); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting tcp inspect timeout: %v", err))
+	}
+	if err := d.Set("alpn_protocols", listener.AlpnProtocols); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting alpn protocols: %v", err))
+	}
+	if err := d.Set("allowed_cidrs", listener.AllowedCidrs); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting allowed cidrs: %v", err))
+	}
 	return nil
 }
 

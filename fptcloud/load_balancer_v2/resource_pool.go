@@ -48,24 +48,16 @@ func readPool(ctx context.Context, d *schema.ResourceData, m interface{}) diag.D
 		return diag.FromErr(err)
 	}
 	pool := response.Pool
-	d.Set("name", pool.Name)
-	d.Set("load_balancer_id", pool.LoadBalancerId)
-	d.Set("protocol", pool.Protocol)
-	d.Set("description", pool.Description)
-	d.Set("algorithm", pool.Algorithm)
-	healthMonitor := []interface{}{
-		map[string]interface{}{
-			"type":             pool.HealthMonitor.Type,
-			"delay":            strconv.Itoa(pool.HealthMonitor.Delay),
-			"max_retries":      strconv.Itoa(pool.HealthMonitor.MaxRetries),
-			"max_retries_down": strconv.Itoa(pool.HealthMonitor.MaxRetriesDown),
-			"timeout":          strconv.Itoa(pool.HealthMonitor.Timeout),
-			"http_method":      pool.HealthMonitor.HttpMethod,
-			"url_path":         pool.HealthMonitor.UrlPath,
-			"expected_codes":   pool.HealthMonitor.ExpectedCodes,
-		},
+	healthMonitor := map[string]interface{}{
+		"type":             pool.HealthMonitor.Type,
+		"delay":            strconv.Itoa(pool.HealthMonitor.Delay),
+		"max_retries":      strconv.Itoa(pool.HealthMonitor.MaxRetries),
+		"max_retries_down": strconv.Itoa(pool.HealthMonitor.MaxRetriesDown),
+		"timeout":          strconv.Itoa(pool.HealthMonitor.Timeout),
+		"http_method":      pool.HealthMonitor.HttpMethod,
+		"url_path":         pool.HealthMonitor.UrlPath,
+		"expected_codes":   pool.HealthMonitor.ExpectedCodes,
 	}
-	d.Set("health_monitor", healthMonitor)
 	var members []interface{}
 	for _, v := range pool.Members {
 		port, _ := strconv.Atoi(v.Port)
@@ -80,11 +72,39 @@ func readPool(ctx context.Context, d *schema.ResourceData, m interface{}) diag.D
 			"is_external":   v.IsExternal,
 		})
 	}
-	d.Set("pool_members", members)
-	d.Set("persistence_type", pool.PersistenceType)
-	d.Set("persistence_cookie_name", pool.PersistenceCookieName)
-	d.Set("alpn_protocols", pool.AlpnProtocols)
-	d.Set("tls_enabled", pool.TlsEnabled)
+	if err := d.Set("name", pool.Name); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting name: %v", err))
+	}
+	if err := d.Set("load_balancer_id", pool.LoadBalancerId); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting load balancer id: %v", err))
+	}
+	if err := d.Set("protocol", pool.Protocol); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting protocol: %v", err))
+	}
+	if err := d.Set("description", pool.Description); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting description: %v", err))
+	}
+	if err := d.Set("algorithm", pool.Algorithm); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting algorithm: %v", err))
+	}
+	if err := d.Set("health_monitor", []interface{}{healthMonitor}); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting health monitor: %v", err))
+	}
+	if err := d.Set("pool_members", members); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting pool members: %v", err))
+	}
+	if err := d.Set("persistence_type", pool.PersistenceType); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting persistence type: %v", err))
+	}
+	if err := d.Set("persistence_cookie_name", pool.PersistenceCookieName); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting persistence cookie name: %v", err))
+	}
+	if err := d.Set("alpn_protocols", pool.AlpnProtocols); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting alpn protocols: %v", err))
+	}
+	if err := d.Set("tls_enabled", pool.TlsEnabled); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting tls_enabled: %v", err))
+	}
 	return nil
 }
 

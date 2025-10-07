@@ -58,16 +58,36 @@ func readL7Policy(ctx context.Context, d *schema.ResourceData, m interface{}) di
 		return diag.FromErr(fmt.Errorf("invalid position value: %s", pos))
 	}
 
-	d.Set("name", policy.Name)
-	d.Set("action", policy.Action)
-	d.Set("provisioning_status", policy.ProvisioningStatus)
-	d.Set("redirect_url", policy.RedirectUrl)
-	d.Set("redirect_prefix", policy.RedirectPrefix)
-	d.Set("redirect_http_code", policy.RedirectHttpCode)
-	d.Set("redirect_pool", policy.RedirectPool.Id)
-	d.Set("position", position)
-	d.Set("created_at", policy.CreatedAt)
-	d.Set("updated_at", policy.UpdatedAt)
+	if err := d.Set("name", policy.Name); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy name: %v", err))
+	}
+	if err := d.Set("action", policy.Action); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy action: %v", err))
+	}
+	if err := d.Set("provisioning_status", policy.ProvisioningStatus); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy provisioning status: %v", err))
+	}
+	if err := d.Set("redirect_url", policy.RedirectUrl); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy redirect url: %v", err))
+	}
+	if err := d.Set("redirect_prefix", policy.RedirectPrefix); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy redirect prefix: %v", err))
+	}
+	if err := d.Set("redirect_http_code", policy.RedirectHttpCode); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy redirect http code: %v", err))
+	}
+	if err := d.Set("redirect_pool", policy.RedirectPool.Id); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy redirect pool: %v", err))
+	}
+	if err := d.Set("position", position); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy position: %v", err))
+	}
+	if err := d.Set("created_at", policy.CreatedAt); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy create date: %v", err))
+	}
+	if err := d.Set("updated_at", policy.UpdatedAt); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting l7 policy update date: %v", err))
+	}
 	return nil
 }
 

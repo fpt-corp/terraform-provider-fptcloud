@@ -47,7 +47,9 @@ func readCertificate(ctx context.Context, d *schema.ResourceData, m interface{})
 		return diag.FromErr(err)
 	}
 	certificate := response.Certificate
-	d.Set("name", certificate.Name)
+	if err := d.Set("name", certificate.Name); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting certificate name: %v", err))
+	}
 	return nil
 }
 
