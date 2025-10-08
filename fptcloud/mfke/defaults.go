@@ -249,52 +249,47 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 		plan.IsRunning = state.IsRunning
 	}
 
-	// cluster_endpoint_access: if not in state, fill default
-	if state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
-		defaultAccess, _ := types.ObjectValue(map[string]attr.Type{
-			"type":       types.StringType,
-			"allow_cidr": types.ListType{ElemType: types.StringType},
-		}, map[string]attr.Value{
-			"type": types.StringValue("public"),
-			"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
-				types.StringValue("0.0.0.0/0"),
-			}),
-		})
-		plan.ClusterEndpointAccess = defaultAccess
-	} else {
-		if plan.ClusterEndpointAccess.IsNull() || plan.ClusterEndpointAccess.IsUnknown() {
-			plan.ClusterEndpointAccess = state.ClusterEndpointAccess
-		}
+	// cluster_endpoint_access: always set default when not provided in plan
+	if plan.ClusterEndpointAccess.IsNull() || plan.ClusterEndpointAccess.IsUnknown() {
+		plan.ClusterEndpointAccess = state.ClusterEndpointAccess
 	}
-	// cluster_autoscaler: if not in state, fill default
-	if state.ClusterAutoscaler.IsNull() || state.ClusterAutoscaler.IsUnknown() {
-		if plan.ClusterAutoscaler.IsNull() || plan.ClusterAutoscaler.IsUnknown() {
-			defaultMap := map[string]attr.Value{
-				"is_enable_auto_scaling":           types.BoolValue(true),
-				"scale_down_delay_after_add":       types.Int64Value(3600),
-				"scale_down_delay_after_delete":    types.Int64Value(0),
-				"scale_down_delay_after_failure":   types.Int64Value(180),
-				"scale_down_unneeded_time":         types.Int64Value(1800),
-				"scale_down_utilization_threshold": types.Float64Value(0.5),
-				"scan_interval":                    types.Int64Value(10),
-				"expander":                         types.StringValue("least-waste"),
-			}
-			plan.ClusterAutoscaler, _ = types.ObjectValue(
-				map[string]attr.Type{
-					"is_enable_auto_scaling":           types.BoolType,
-					"scale_down_delay_after_add":       types.Int64Type,
-					"scale_down_delay_after_delete":    types.Int64Type,
-					"scale_down_delay_after_failure":   types.Int64Type,
-					"scale_down_unneeded_time":         types.Int64Type,
-					"scale_down_utilization_threshold": types.Float64Type,
-					"scan_interval":                    types.Int64Type,
-					"expander":                         types.StringType,
-				},
-				defaultMap,
-			)
+	// cluster_autoscaler: always set default when not provided in plan
+	if plan.ClusterAutoscaler.IsNull() || plan.ClusterAutoscaler.IsUnknown() {
+		defaultMap := map[string]attr.Value{
+			"is_enable_auto_scaling":           types.BoolValue(true),
+			"scale_down_delay_after_add":       types.Int64Value(3600),
+			"scale_down_delay_after_delete":    types.Int64Value(0),
+			"scale_down_delay_after_failure":   types.Int64Value(180),
+			"scale_down_unneeded_time":         types.Int64Value(1800),
+			"scale_down_utilization_threshold": types.Float64Value(0.5),
+			"scan_interval":                    types.Int64Value(10),
+			"expander":                         types.StringValue("least-waste"),
 		}
-	} else if plan.ClusterAutoscaler.IsNull() || plan.ClusterAutoscaler.IsUnknown() {
-		plan.ClusterAutoscaler = state.ClusterAutoscaler
+		plan.ClusterAutoscaler, _ = types.ObjectValue(
+			map[string]attr.Type{
+				"is_enable_auto_scaling":           types.BoolType,
+				"scale_down_delay_after_add":       types.Int64Type,
+				"scale_down_delay_after_delete":    types.Int64Type,
+				"scale_down_delay_after_failure":   types.Int64Type,
+				"scale_down_unneeded_time":         types.Int64Type,
+				"scale_down_utilization_threshold": types.Float64Type,
+				"scan_interval":                    types.Int64Type,
+				"expander":                         types.StringType,
+			},
+			defaultMap,
+		)
+	}
+
+	// For hibernation_schedules, if not provided in config, keep it as null
+	// This allows users to explicitly remove schedules by not specifying them
+	if plan.HibernationSchedules.IsNull() || plan.HibernationSchedules.IsUnknown() {
+		plan.HibernationSchedules = types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		})
 	}
 	// Pools: default optional fields in each pool
 	for i := range plan.Pools {

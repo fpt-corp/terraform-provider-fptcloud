@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -116,7 +117,6 @@ func TopFields() map[string]schema.Attribute {
 	optionalInts := []string{"k8s_max_pod"}
 	// Optional bool fields
 	optionalBools := []string{"is_enable_auto_upgrade"}
-	// Special handling for is_running - it should be user-configurable for hibernation/wake-up
 	// Optional list fields
 	optionalLists := []string{"auto_upgrade_expression"}
 
@@ -155,12 +155,6 @@ func TopFields() map[string]schema.Attribute {
 			Description: descriptions[attribute],
 		}
 	}
-	// Special handling for is_running - make it computed to avoid inconsistent state
-	topLevelAttributes["is_running"] = schema.BoolAttribute{
-		Optional:    true,
-		Computed:    true,
-		Description: descriptions["is_running"],
-	}
 	for _, attribute := range optionalLists {
 		topLevelAttributes[attribute] = schema.ListAttribute{
 			Optional:    true,
@@ -168,6 +162,52 @@ func TopFields() map[string]schema.Attribute {
 			ElementType: types.StringType,
 			Description: descriptions[attribute],
 		}
+	}
+
+	// Special handling for is_running - not computed, with default value
+	topLevelAttributes["is_running"] = schema.BoolAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: descriptions["is_running"],
+		Default:     booldefault.StaticBool(true),
+	}
+
+	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
+		Description: "Configuration for cluster autoscaler.",
+		Optional:    true,
+		Computed:    true,
+		AttributeTypes: map[string]attr.Type{
+			"is_enable_auto_scaling":           types.BoolType,
+			"scale_down_delay_after_add":       types.Int64Type,
+			"scale_down_delay_after_delete":    types.Int64Type,
+			"scale_down_delay_after_failure":   types.Int64Type,
+			"scale_down_unneeded_time":         types.Int64Type,
+			"scale_down_utilization_threshold": types.Float64Type,
+			"scan_interval":                    types.Int64Type,
+			"expander":                         types.StringType,
+		},
+	}
+
+	topLevelAttributes["cluster_endpoint_access"] = schema.ObjectAttribute{
+		Description: "Configuration for cluster endpoint access.",
+		Optional:    true,
+		Computed:    true,
+		AttributeTypes: map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+	}
+
+	topLevelAttributes["hibernation_schedules"] = schema.ListAttribute{
+		Description: "List of hibernation schedules for the cluster. Each schedule specifies a start and end time in cron format.",
+		Optional:    true,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		},
 	}
 
 	return topLevelAttributes
@@ -240,6 +280,28 @@ func PoolFields() map[string]schema.Attribute {
 			Description: descriptions[attribute],
 		}
 	}
+
+	// poolLevelAttributes["kv"] = schema.ListAttribute{
+	// 	Optional:    true,
+	// 	Computed:    true,
+	// 	ElementType: types.ObjectType{
+	// 		AttrTypes: map[string]attr.Type{
+	// 			"name": types.StringType,
+	// 			"value": types.StringType,
+	// 		},
+	// 	},
+	// }
+	// poolLevelAttributes["taints"] = schema.ListAttribute{
+	// 	Optional:    true,
+	// 	Computed:    true,
+	// 	ElementType: types.ObjectType{
+	// 		AttrTypes: map[string]attr.Type{
+	// 			"key": types.StringType,
+	// 			"value": types.StringType,
+	// 			"effect": types.StringType,
+	// 		},
+	// 	},
+	// }
 
 	return poolLevelAttributes
 }
@@ -1002,7 +1064,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
 	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
 
-	// Parse cluster_autoscaler from API response
+	// Cluster Autoscaler
 	autoscalerMap := map[string]attr.Value{
 		"is_enable_auto_scaling":           types.BoolValue(true),
 		"scale_down_delay_after_add":       types.Int64Value(3600),
@@ -1060,7 +1122,8 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		},
 		autoscalerMap,
 	)
-	// Parse cluster_endpoint_access from extensions and metadata labels
+
+	// Cluster Endpoint Access
 	accessMap := map[string]attr.Value{
 		"type": types.StringValue("public"),
 		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
@@ -1135,7 +1198,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		accessMap,
 	)
 
-	// Parse edge gateway information from infrastructure config
+	// Edge Gateway ID
 	if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
 		state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
 	} else {
@@ -1152,12 +1215,12 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.EdgeGatewayName = types.StringNull()
 	}
 
-	// Default auto_upgrade_expression if missing
+	// Auto Upgrade Expression
 	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
 		state.AutoUpgradeExpression = types.ListNull(types.StringType)
 	}
 
-	// Use the same logic as the power state resource to determine if cluster is running
+	// Hibernation and Hibernation Schedules
 	isRunning := false
 	if len(data.Status.Conditions) > 0 {
 		isRunning = data.Status.Conditions[0].Status == "True"
@@ -1186,11 +1249,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			},
 		}
 
-		var diags diag2.Diagnostics
-		state.HibernationSchedules, diags = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
-		if diags.HasError() {
-			return nil, fmt.Errorf("error creating hibernation schedules list for state: %v", diags)
-		}
+		state.HibernationSchedules, _ = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
 	} else {
 		state.HibernationSchedules = types.ListNull(types.ObjectType{
 			AttrTypes: map[string]attr.Type{
@@ -1201,6 +1260,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		})
 	}
 
+	// Auto Upgrade Version
 	if d.Data.Spec.AutoUpgrade != nil {
 		autoUpgradeInfo := d.Data.Spec.AutoUpgrade
 
