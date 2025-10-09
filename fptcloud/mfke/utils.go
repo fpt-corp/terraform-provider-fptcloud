@@ -705,22 +705,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		!to.AutoUpgradeTimezone.Equal(from.AutoUpgradeTimezone) ||
 		!to.AutoUpgradeExpression.Equal(from.AutoUpgradeExpression) {
 
-		exprs := []string{}
-		if !to.AutoUpgradeExpression.IsNull() && !to.AutoUpgradeExpression.IsUnknown() {
-			for _, e := range to.AutoUpgradeExpression.Elements() {
-				if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
-					exprs = append(exprs, str.ValueString())
-				}
-			}
-		}
-
-		body := map[string]interface{}{
-			"is_enable_auto_upgrade":  to.IsEnableAutoUpgrade.ValueBool(),
-			"auto_upgrade_expression": exprs,
-			"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
-		}
-
-		if err := r.updateAutoUpgradeVersion(ctx, to, from, body); err != nil {
+		if err := r.updateAutoUpgradeVersion(ctx, to, from); err != nil {
 			return err
 		}
 	}
@@ -1417,7 +1402,7 @@ func (r *resourceManagedKubernetesEngine) updateIsRunning(ctx context.Context, t
 	return nil
 }
 
-func (r *resourceManagedKubernetesEngine) updateAutoUpgradeVersion(ctx context.Context, to *managedKubernetesEngine, from *managedKubernetesEngine, body map[string]interface{}) *diag2.ErrorDiagnostic {
+func (r *resourceManagedKubernetesEngine) updateAutoUpgradeVersion(ctx context.Context, to *managedKubernetesEngine, from *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	vpcId := from.VpcId.ValueString()
 	clusterId := from.Id.ValueString()
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
@@ -1428,6 +1413,21 @@ func (r *resourceManagedKubernetesEngine) updateAutoUpgradeVersion(ctx context.C
 
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
+
+	exprs := []string{}
+	if !to.AutoUpgradeExpression.IsNull() && !to.AutoUpgradeExpression.IsUnknown() {
+		for _, e := range to.AutoUpgradeExpression.Elements() {
+			if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
+				exprs = append(exprs, str.ValueString())
+			}
+		}
+	}
+
+	body := map[string]interface{}{
+		"is_enable_auto_upgrade":  to.IsEnableAutoUpgrade.ValueBool(),
+		"auto_upgrade_expression": exprs,
+		"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
+	}
 
 	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
 	if err != nil {
