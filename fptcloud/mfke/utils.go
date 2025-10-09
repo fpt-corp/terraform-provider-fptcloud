@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
-	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	"time"
@@ -24,7 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
-// getNetworkInfoByPlatform network_id, network name, error
+// getNetworkInfoByPlatform network_id, network name
 func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId, platform string, w *managedKubernetesEngineDataWorker, data *managedKubernetesEngineData) (string, string, error) {
 	if strings.ToLower(platform) == "vmw" {
 		// For VMW platform, try to get network ID from worker's network name
@@ -64,6 +63,7 @@ func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.Subnet
 	}
 }
 
+// getNetworkByIdOrName network_id, network name
 func getNetworkByIdOrName(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId string, networkName string, networkId string) (string, string, error) {
 	if networkName != "" && networkId != "" {
 		return "", "", errors.New("only specify network name or id")
@@ -306,13 +306,13 @@ func PoolFields() map[string]schema.Attribute {
 	return poolLevelAttributes
 }
 
+// MapTerraformToJson map terraform to json to CREATE
 func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngineJson, vpcId string) *diag2.ErrorDiagnostic {
 	to.ClusterName = from.ClusterName.ValueString()
 	to.K8SVersion = from.K8SVersion.ValueString()
 	to.Purpose = from.Purpose.ValueString()
 	defaultNetworkID, defaultNetworkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", from.NetworkID.ValueString())
-	fmt.Println("defaultNetworkID: " + defaultNetworkID)
-	fmt.Println("defaultNetworkName: " + defaultNetworkName)
+
 	if err != nil {
 		d := diag2.NewErrorDiagnostic("Error getting default network", err.Error())
 		return &d
@@ -322,8 +322,8 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 	for _, item := range from.Pools {
 		name := item.WorkerPoolID.ValueString()
 
+		// KVs
 		kvs := make([]map[string]string, 0)
-
 		if len(item.Kv) > 0 {
 			// Sort KV blocks by key name for consistent ordering during plan
 			sortedKv := sortKVByKey(item.Kv)
@@ -375,6 +375,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			}
 		}
 
+		// Taints
 		taints := make([]map[string]interface{}, 0)
 		if len(item.Taints) > 0 {
 			for _, taint := range item.Taints {
@@ -466,7 +467,6 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 	to.Pools = pools
 
 	to.NetworkID = from.NetworkID.ValueString()
-
 	to.PodNetwork = from.PodNetwork.ValueString()
 	to.PodPrefix = from.PodPrefix.ValueString()
 	to.ServiceNetwork = from.ServiceNetwork.ValueString()
@@ -531,7 +531,6 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		to.AutoUpgradeTimezone = from.AutoUpgradeTimezone.ValueString()
 	}
 
-	// Map cluster_autoscaler to JSON
 	if !from.ClusterAutoscaler.IsNull() && !from.ClusterAutoscaler.IsUnknown() {
 		autoscalerAttrs := from.ClusterAutoscaler.Attributes()
 
@@ -679,31 +678,17 @@ func (r *resourceManagedKubernetesEngine) CheckForError(a []byte) *diag2.ErrorDi
 func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	// Handle Version changes
 	if from.K8SVersion != to.K8SVersion {
-		if err := r.UpgradeVersion(ctx, from, to); err != nil {
+		err := r.upgradeVersion(ctx, from, to)
+		if err != nil {
 			return err
 		}
 	}
 
 	// Handle is_running changes
 	if from.IsRunning.ValueBool() != to.IsRunning.ValueBool() {
-		vpcId := from.VpcId.ValueString()
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+		err := r.updateIsRunning(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
-			return &d
-		}
-
-		platform = strings.ToLower(platform)
-		isWakeup := to.IsRunning.ValueBool()
-		path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
-
-		resp, err := r.mfkeClient.sendPatch(ctx, path, platform, nil)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error calling hibernate API", err.Error())
-			return &d
-		}
-		if diagErr := fptcloud_dfke.CheckForError(resp); diagErr != nil {
-			return diagErr
+			return err
 		}
 	}
 
@@ -711,8 +696,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 	if !to.HibernationSchedules.Equal(from.HibernationSchedules) {
 		err := r.updateHibernationSchedules(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error updating hibernation schedules", err.Error())
-			return &d
+			return err
 		}
 	}
 
@@ -736,24 +720,8 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 			"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
 		}
 
-		vpcId := from.VpcId.ValueString()
-		clusterId := from.Id.ValueString()
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
-			return &d
-		}
-		platform = strings.ToLower(platform)
-
-		path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
-
-		res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error calling auto upgrade API", err.Error())
-			return &d
-		}
-		if diagErr := r.CheckForError(res); diagErr != nil {
-			return diagErr
+		if err := r.updateAutoUpgradeVersion(ctx, to, from, body); err != nil {
+			return err
 		}
 	}
 
@@ -761,16 +729,14 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 	if !to.ClusterEndpointAccess.Equal(from.ClusterEndpointAccess) {
 		err := r.updateClusterEndpointCIDR(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error updating cluster endpoint CIDR", err.Error())
-			return &d
+			return err
 		}
 	}
 
 	if !to.ClusterAutoscaler.Equal(from.ClusterAutoscaler) {
 		err := r.updateClusterAutoscaler(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error updating cluster autoscaler", err.Error())
-			return &d
+			return err
 		}
 	}
 
@@ -781,38 +747,6 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 	}
 
-	return nil
-}
-
-// upgradeVersion
-func (r *resourceManagedKubernetesEngine) UpgradeVersion(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
-	vpcId := from.VpcId.ValueString()
-	cluster := from.Id.ValueString()
-	targetVersion := to.K8SVersion.ValueString()
-	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-		return &d
-	}
-	platform = strings.ToLower(platform)
-	path := fmt.Sprintf(
-		"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
-		vpcId,
-		platform,
-		cluster,
-		targetVersion,
-	)
-	body, err := r.mfkeClient.sendPatch(ctx, path, platform, struct{}{})
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(
-			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
-			err.Error(),
-		)
-		return &d
-	}
-	if diagErr2 := r.CheckForError(body); diagErr2 != nil {
-		return diagErr2
-	}
 	return nil
 }
 
@@ -1434,17 +1368,88 @@ func (w *managedKubernetesEngineDataWorker) IsWorkerBase() bool {
 	return w.SystemComponents.Allow
 }
 
-func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) error {
+// upgradeVersion
+func (r *resourceManagedKubernetesEngine) upgradeVersion(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	vpcId := from.VpcId.ValueString()
+	clusterId := from.Id.ValueString()
+	targetVersion := to.K8SVersion.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKEUpgradeVersion(vpcId, platform, clusterId, targetVersion)
+	body, err := r.mfkeClient.sendPatch(ctx, path, platform, struct{}{})
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(
+			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
+			err.Error(),
+		)
+		return &d
+	}
+	if diagErr2 := r.CheckForError(body); diagErr2 != nil {
+		return diagErr2
+	}
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateIsRunning(ctx context.Context, to *managedKubernetesEngine, from *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	vpcId := from.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+	isWakeup := to.IsRunning.ValueBool()
+	path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
+
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, nil)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateAutoUpgradeVersion(ctx context.Context, to *managedKubernetesEngine, from *managedKubernetesEngine, body map[string]interface{}) *diag2.ErrorDiagnostic {
+	vpcId := from.VpcId.ValueString()
+	clusterId := from.Id.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
+
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	vpcId := state.VpcId.ValueString()
 
 	var hibernationSchedulesFromPlan []HibernationSchedule
-
 	diags := plan.HibernationSchedules.ElementsAs(ctx, &hibernationSchedulesFromPlan, false)
 	if diags.HasError() {
-		return fmt.Errorf("error parsing hibernation schedules from plan: %v", diags.Errors())
+		d := diag2.NewErrorDiagnostic("Parsing hibernation schedules failed", diags.Errors()[0].Summary())
+		return &d
 	}
 
-	// Convert to JSON format for API
 	var schedulesForJson []HibernationScheduleJson
 	for _, scheduleData := range hibernationSchedulesFromPlan {
 		if scheduleData.Start.IsNull() || scheduleData.End.IsNull() || scheduleData.Location.IsNull() {
@@ -1458,43 +1463,40 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 		})
 	}
 
-	requestBody := HibernationSchedulesRequest{
-		Schedules: schedulesForJson,
-	}
-
+	requestBody := HibernationSchedulesRequest{Schedules: schedulesForJson}
 	if len(requestBody.Schedules) == 0 {
 		requestBody.Schedules = []HibernationScheduleJson{}
 	}
 
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		return fmt.Errorf("error getting platform: %v", err)
+		d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, err.Error())
+		return &d
 	}
 
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEHibernationSchedules(vpcId, platform, state.Id.ValueString())
-
 	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
-		return fmt.Errorf("error calling hibernation schedules API: %v", err)
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
 	}
 
-	tflog.Info(ctx, "Hibernation schedules API response: "+string(resp))
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
 
 	tflog.Info(ctx, "Successfully updated hibernation schedules.")
-
 	return nil
 }
 
-func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
-	ctx context.Context,
-	plan *managedKubernetesEngine,
-	state *managedKubernetesEngine,
-) error {
+func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine,
+) *diag2.ErrorDiagnostic {
 	vpcId := state.VpcId.ValueString()
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		return fmt.Errorf("error getting platform: %v", err)
+		d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+		return &d
 	}
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEUpdateEndpointCIDR(vpcId, platform, state.Id.ValueString())
@@ -1519,20 +1521,26 @@ func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
 
 	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
-		return fmt.Errorf("error calling update cluster endpoint CIDR API: %v", err)
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
 	}
 
 	tflog.Info(ctx, "Cluster endpoint CIDR API response: "+string(resp))
 	tflog.Info(ctx, "Successfully updated cluster endpoint CIDR.")
 
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+
 	return nil
 }
 
-func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) error {
+func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	vpcId := state.VpcId.ValueString()
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		return fmt.Errorf("error getting platform: %v", err)
+		d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+		return &d
 	}
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEUpdateClusterAutoscaler(vpcId, platform, state.Id.ValueString())
@@ -1553,64 +1561,20 @@ func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Co
 
 	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
-		return fmt.Errorf("error calling update cluster autoscaler API: %v", err)
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
 	}
 
 	tflog.Info(ctx, "Cluster autoscaler API response: "+string(resp))
 
 	// Check for API errors in response
 	if diagErr := r.CheckForError(resp); diagErr != nil {
-		return fmt.Errorf("API returned error: %s", diagErr.Summary())
+		return diagErr
 	}
 
 	tflog.Info(ctx, "Successfully updated cluster autoscaler.")
 
 	return nil
-}
-
-// isSystemGeneratedKey checks if a key is system-generated
-func isSystemGeneratedKey(key string) bool {
-	systemKeys := []string{
-		"nvidia.com/device-plugin.config", // System auto-generates this for GPU pools
-		// Add more system-generated keys here if needed
-	}
-
-	for _, systemKey := range systemKeys {
-		if key == systemKey {
-			return true
-		}
-	}
-	return false
-}
-
-// System-generated keys like "nvidia.com/device-plugin.config" should be ignored
-func filterUserDefinedKV(kvMap map[string]string) map[string]string {
-	userDefined := make(map[string]string)
-
-	for k, v := range kvMap {
-		if !isSystemGeneratedKey(k) {
-			userDefined[k] = v
-		}
-	}
-
-	return userDefined
-}
-
-// sortKVByKey sorts KV blocks by key name to ensure consistent ordering
-func sortKVByKey(kvs []KV) []KV {
-	if len(kvs) <= 1 {
-		return kvs
-	}
-
-	// Create a copy to avoid modifying the original slice
-	sorted := make([]KV, len(kvs))
-	copy(sorted, kvs)
-
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Name.ValueString() < sorted[j].Name.ValueString()
-	})
-
-	return sorted
 }
 
 func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
@@ -1672,4 +1636,49 @@ func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context,
 	}
 
 	return nil
+}
+
+// isSystemGeneratedKey checks if a key is system-generated
+func isSystemGeneratedKey(key string) bool {
+	systemKeys := []string{
+		"nvidia.com/device-plugin.config", // System auto-generates this for GPU pools
+		// Add more system-generated keys here if needed
+	}
+
+	for _, systemKey := range systemKeys {
+		if key == systemKey {
+			return true
+		}
+	}
+	return false
+}
+
+// System-generated keys like "nvidia.com/device-plugin.config" should be ignored
+func filterUserDefinedKV(kvMap map[string]string) map[string]string {
+	userDefined := make(map[string]string)
+
+	for k, v := range kvMap {
+		if !isSystemGeneratedKey(k) {
+			userDefined[k] = v
+		}
+	}
+
+	return userDefined
+}
+
+// sortKVByKey sorts KV blocks by key name to ensure consistent ordering
+func sortKVByKey(kvs []KV) []KV {
+	if len(kvs) <= 1 {
+		return kvs
+	}
+
+	// Create a copy to avoid modifying the original slice
+	sorted := make([]KV, len(kvs))
+	copy(sorted, kvs)
+
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Name.ValueString() < sorted[j].Name.ValueString()
+	})
+
+	return sorted
 }

@@ -59,6 +59,7 @@ var ApiPath = struct {
 	ManagedFKEGet                     func(vpcId string, platform string, clusterId string) string
 	ManagedFKEDelete                  func(vpcId string, platform string, clusterName string) string
 	ManagedFKECreate                  func(vpcId string, platform string) string
+	ManagedFKEUpgradeVersion          func(vpcId string, platform string, clusterId string, targetVersion string) string
 	ManagedFKEHibernate               func(vpcId string, platform string, clusterId string, isWakeup bool) string
 	ManagedFKEHibernationSchedules    func(vpcId string, platform string, clusterId string) string
 	ManagedFKEAutoUpgradeVersion      func(vpcId string, platform string, clusterId string) string
@@ -268,6 +269,12 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/get-shoot-specific/shoots/%s",
 			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEUpgradeVersion: func(vpcId string, platform string, clusterId string, targetVersion string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			vpcId, platform, clusterId, targetVersion,
 		)
 	},
 	ManagedFKEHibernate: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
