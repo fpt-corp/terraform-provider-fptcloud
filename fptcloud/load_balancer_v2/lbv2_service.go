@@ -10,6 +10,7 @@ type LoadBalancerV2Service interface {
 	//Load Balancer
 	ListLoadBalancers(vpcId string, page int, pageSize int) (LoadBalancerListResponse, error)
 	GetLoadBalancer(vpcId string, loadBalancerId string) (LoadBalancerDetailResponse, error)
+	ReadLoadBalancer(vpcId string, loadBalancerId string) (LoadBalancerReadResponse, error)
 	CreateLoadBalancer(vpcId string, req LoadBalancerCreateModel) (LoadBalancerResponse, error)
 	UpdateLoadBalancer(vpcId string, loadBalancerId string, req LoadBalancerUpdateModel) (LoadBalancerResponse, error)
 	ResizeLoadBalancer(vpcId string, loadBalancerId string, req LoadBalancerResizeModel) (LoadBalancerResponse, error)
@@ -79,6 +80,20 @@ func (s *LoadBalancerV2ServiceImpl) GetLoadBalancer(vpcId string, loadBalancerId
 	err = json.Unmarshal(resp, &result)
 	if err != nil {
 		return LoadBalancerDetailResponse{}, fmt.Errorf("failed to unmarshal load balancer response: %v", err)
+	}
+	return result, nil
+}
+
+func (s *LoadBalancerV2ServiceImpl) ReadLoadBalancer(vpcId string, loadBalancerId string) (LoadBalancerReadResponse, error) {
+	apiPath := common.ApiPath.ReadLoadBalancer(vpcId, loadBalancerId)
+	resp, err := s.client.SendGetRequest(apiPath)
+	if err != nil {
+		return LoadBalancerReadResponse{}, fmt.Errorf("read load balancer request failed: %v", err)
+	}
+	var result LoadBalancerReadResponse
+	err = json.Unmarshal(resp, &result)
+	if err != nil {
+		return LoadBalancerReadResponse{}, fmt.Errorf("failed to unmarshal load balancer response: %v", err)
 	}
 	return result, nil
 }

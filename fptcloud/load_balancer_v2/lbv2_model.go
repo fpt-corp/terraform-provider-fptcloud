@@ -33,6 +33,37 @@ type LoadBalancer struct {
 	}
 }
 
+type LoadBalancerRead struct {
+	Id                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Description        string   `json:"description"`
+	OperatingStatus    string   `json:"operating_status"`
+	ProvisioningStatus string   `json:"provisioning_status"`
+	PrivateIp          string   `json:"private_ip"`
+	Cidr               string   `json:"cidr"`
+	CreatedAt          string   `json:"created_at"`
+	Tags               []string `json:"tags"`
+	EdgeGateway        struct {
+		Id   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"edge_gateway"`
+	Size struct {
+		Id                    string `json:"id"`
+		Name                  string `json:"name"`
+		VipAmount             int32  `json:"vip_amount"`
+		ActiveConnection      int32  `json:"active_connection"`
+		ApplicationThroughput int32  `json:"application_throughput"`
+	} `json:"size"`
+	PublicIp struct {
+		Id        string `json:"id"`
+		IpAddress string `json:"ip_address"`
+	} `json:"public_ip"`
+	Network struct {
+		Id   string `json:"id"`
+		Name string `json:"name"`
+	}
+}
+
 type LoadBalancerResponse struct {
 	Data struct {
 		Id                 string   `json:"id"`
@@ -55,6 +86,11 @@ type LoadBalancerResponse struct {
 		Tags               []string `json:"tags"`
 	} `json:"data"`
 	Message string `json:"message"`
+}
+
+type LoadBalancerReadResponse struct {
+	LoadBalancer LoadBalancerRead `json:"data"`
+	Message      string           `json:"message"`
 }
 type LoadBalancerDetailResponse struct {
 	LoadBalancer LoadBalancer `json:"data"`

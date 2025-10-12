@@ -72,6 +72,12 @@ func readPool(ctx context.Context, d *schema.ResourceData, m interface{}) diag.D
 			"is_external":   v.IsExternal,
 		})
 	}
+	alpnProtocols := make([]interface{}, 0)
+	if pool.AlpnProtocols != nil {
+		for _, v := range pool.AlpnProtocols {
+			alpnProtocols = append(alpnProtocols, v)
+		}
+	}
 	if err := d.Set("name", pool.Name); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting name: %v", err))
 	}
@@ -99,7 +105,7 @@ func readPool(ctx context.Context, d *schema.ResourceData, m interface{}) diag.D
 	if err := d.Set("persistence_cookie_name", pool.PersistenceCookieName); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting persistence cookie name: %v", err))
 	}
-	if err := d.Set("alpn_protocols", pool.AlpnProtocols); err != nil {
+	if err := d.Set("alpn_protocols", alpnProtocols); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting alpn protocols: %v", err))
 	}
 	if err := d.Set("tls_enabled", pool.TlsEnabled); err != nil {
