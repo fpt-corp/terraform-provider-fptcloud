@@ -64,9 +64,6 @@ func readL7Policy(ctx context.Context, d *schema.ResourceData, m interface{}) di
 	if err := d.Set("action", policy.Action); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting l7 policy action: %v", err))
 	}
-	if err := d.Set("provisioning_status", policy.ProvisioningStatus); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting l7 policy provisioning status: %v", err))
-	}
 	if err := d.Set("redirect_url", policy.RedirectUrl); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting l7 policy redirect url: %v", err))
 	}
@@ -81,12 +78,6 @@ func readL7Policy(ctx context.Context, d *schema.ResourceData, m interface{}) di
 	}
 	if err := d.Set("position", position); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting l7 policy position: %v", err))
-	}
-	if err := d.Set("created_at", policy.CreatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting l7 policy create date: %v", err))
-	}
-	if err := d.Set("updated_at", policy.UpdatedAt); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting l7 policy update date: %v", err))
 	}
 	return nil
 }
