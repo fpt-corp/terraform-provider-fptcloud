@@ -43,11 +43,12 @@ func readLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}
 	vpcId := d.Get("vpc_id").(string)
 	loadBalancerId := d.Id()
 
-	response, err := service.GetLoadBalancer(vpcId, loadBalancerId)
+	response, err := service.ReadLoadBalancer(vpcId, loadBalancerId)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	loadBalancer := response.LoadBalancer
+
 	if err := d.Set("name", loadBalancer.Name); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting name: %s", err))
 	}
@@ -69,7 +70,7 @@ func readLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}
 	if err := d.Set("cidr", loadBalancer.Cidr); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting cidr: %s", err))
 	}
-	if err := d.Set("egw_id", loadBalancer.EgwId); err != nil {
+	if err := d.Set("egw_id", loadBalancer.EdgeGateway.Id); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting egw id: %s", err))
 	}
 	return nil

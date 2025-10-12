@@ -499,9 +499,6 @@ var ApiPath = struct {
 	GetListener: func(vpcId string, listenerId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s", vpcId, listenerId)
 	},
-	ReadListener: func(vpcId string, listenerId string) string {
-		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/read", vpcId, listenerId)
-	},
 	CreateListener: func(vpcId string, loadBalancerId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/listeners/create", vpcId, loadBalancerId)
 	},
@@ -518,9 +515,6 @@ var ApiPath = struct {
 	},
 	GetPool: func(vpcId string, poolId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/pools/%s", vpcId, poolId)
-	},
-	ReadPool: func(vpcId string, poolId string) string {
-		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/pools/%s/read", vpcId, poolId)
 	},
 	CreatePool: func(vpcId string, loadBalancerId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/pools/create", vpcId, loadBalancerId)
@@ -539,9 +533,6 @@ var ApiPath = struct {
 	GetCertificate: func(vpcId string, certificateId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates/%s", vpcId, certificateId)
 	},
-	ReadCertificate: func(vpcId string, certificateId string) string {
-		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates/%s/read", vpcId, certificateId)
-	},
 	CreateCertificate: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates/create", vpcId)
 	},
@@ -555,9 +546,6 @@ var ApiPath = struct {
 	},
 	GetL7Policy: func(vpcId string, listenerId string, policyId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s", vpcId, listenerId, policyId)
-	},
-	ReadL7Policy: func(vpcId string, listenerId string, policyId string) string {
-		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/read", vpcId, listenerId, policyId)
 	},
 	CreateL7Policy: func(vpcId string, listenerId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/create", vpcId, listenerId)
@@ -575,9 +563,6 @@ var ApiPath = struct {
 	},
 	GetL7Rule: func(vpcId string, listenerId string, policyId string, ruleId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/%s", vpcId, listenerId, policyId, ruleId)
-	},
-	ReadL7Rule: func(vpcId string, listenerId string, policyId string, ruleId string) string {
-		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/%s/read", vpcId, listenerId, policyId, ruleId)
 	},
 	CreateL7Rule: func(vpcId string, listenerId string, policyId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/create", vpcId, listenerId, policyId)
