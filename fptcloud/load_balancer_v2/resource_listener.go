@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
+	"terraform-provider-fptcloud/commons/utils"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -53,9 +54,9 @@ func readListener(ctx context.Context, d *schema.ResourceData, m interface{}) di
 		sniCertificateIds = append(sniCertificateIds, v.Id)
 	}
 	insertHeaders := map[string]interface{}{
-		"x_forwarded_for":   listener.InsertHeaders.XForwardedFor,
-		"x_forwarded_port":  listener.InsertHeaders.XForwardedPort,
-		"x_forwarded_proto": listener.InsertHeaders.XForwardedProto,
+		"x_forwarded_for":   utils.ParseBoolSafe(listener.InsertHeaders.XForwardedFor),
+		"x_forwarded_port":  utils.ParseBoolSafe(listener.InsertHeaders.XForwardedPort),
+		"x_forwarded_proto": utils.ParseBoolSafe(listener.InsertHeaders.XForwardedProto),
 	}
 	if err := d.Set("name", listener.Name); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting name: %v", err))
@@ -68,9 +69,6 @@ func readListener(ctx context.Context, d *schema.ResourceData, m interface{}) di
 	}
 	if err := d.Set("protocol_port", listener.Port); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting protocol port: %v", err))
-	}
-	if err := d.Set("provisioning_status", listener.ProvisioningStatus); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting provisioning status: %v", err))
 	}
 	if err := d.Set("insert_headers", []interface{}{insertHeaders}); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting insert headers: %v", err))
@@ -99,7 +97,7 @@ func readListener(ctx context.Context, d *schema.ResourceData, m interface{}) di
 	if err := d.Set("client_data_timeout", listener.ClientDataTimeout); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting client data timeout: %v", err))
 	}
-	if err := d.Set("member_connection_timeout", listener.MemberConnectTimeout); err != nil {
+	if err := d.Set("member_connect_timeout", listener.MemberConnectTimeout); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting member connection timeout: %v", err))
 	}
 	if err := d.Set("member_data_timeout", listener.MemberDataTimeout); err != nil {
@@ -137,18 +135,9 @@ func createListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 		allowedCidrs = append(allowedCidrs, v.(string))
 	}
 
-	protocol := d.Get("protocol").(string)
 	alpnProtocols := []string{}
-	value, ok := d.GetOk("alpn_protocols")
-	if ok {
-		if protocol != "TERMINATED_HTTPS" {
-			return diag.Errorf("alpn_protocols must be null or empty when protocol is not TERMINATED_HTTPS")
-		}
-		alpnRaw := value.([]interface{})
-		for _, v := range alpnRaw {
-			alpnProtocols = append(alpnProtocols, v.(string))
-		}
-		payload.AlpnProtocols = alpnProtocols
+	for _, v := range d.Get("alpn_protocols").([]interface{}) {
+		alpnProtocols = append(alpnProtocols, v.(string))
 	}
 
 	sniCertificateIds := []string{}
@@ -158,7 +147,7 @@ func createListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 
 	payload.Name = d.Get("name").(string)
 	payload.Description = d.Get("description").(string)
-	payload.Protocol = protocol
+	payload.Protocol = d.Get("protocol").(string)
 	payload.ProtocolPort = d.Get("protocol_port").(string)
 	payload.DefaultPoolId = d.Get("default_pool_id").(string)
 	payload.CertificateId = d.Get("certificate_id").(string)
@@ -172,6 +161,7 @@ func createListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	payload.HstsMaxAge = d.Get("hsts_max_age").(int)
 	payload.HstsIncludeSubdomains = d.Get("hsts_include_subdomains").(bool)
 	payload.HstsPreload = d.Get("hsts_preload").(bool)
+	payload.AlpnProtocols = alpnProtocols
 	payload.AllowedCidrs = allowedCidrs
 
 	response, err := service.CreateListener(vpcId, loadBalancerId, payload)
@@ -195,18 +185,9 @@ func updateListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 		allowedCidrs = append(allowedCidrs, v.(string))
 	}
 
-	protocol := d.Get("protocol").(string)
 	alpnProtocols := []string{}
-	value, ok := d.GetOk("alpn_protocols")
-	if ok {
-		if protocol != "TERMINATED_HTTPS" {
-			return diag.Errorf("alpn_protocols must be null or empty when protocol is not TERMINATED_HTTPS")
-		}
-		alpnRaw := value.([]interface{})
-		for _, v := range alpnRaw {
-			alpnProtocols = append(alpnProtocols, v.(string))
-		}
-		payload.AlpnProtocols = alpnProtocols
+	for _, v := range d.Get("alpn_protocols").([]interface{}) {
+		alpnProtocols = append(alpnProtocols, v.(string))
 	}
 
 	sniCertificateIds := []string{}
@@ -233,6 +214,7 @@ func updateListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	payload.HstsMaxAge = d.Get("hsts_max_age").(int)
 	payload.HstsIncludeSubdomains = d.Get("hsts_include_subdomains").(bool)
 	payload.HstsPreload = d.Get("hsts_preload").(bool)
+	payload.AlpnProtocols = alpnProtocols
 	payload.AllowedCidrs = allowedCidrs
 
 	_, err := service.UpdateListener(vpcId, listenerId, payload)
