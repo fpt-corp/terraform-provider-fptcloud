@@ -15,7 +15,7 @@ type LoadBalancer struct {
 	Cidr               string   `json:"cidr"`
 	CreatedAt          string   `json:"created_at"`
 	Tags               []string `json:"tags"`
-	EgwId              string   `json:"egw_id"`
+	EgwName            string   `json:"egw_name"`
 	Size               struct {
 		Id                    string `json:"id"`
 		Name                  string `json:"name"`

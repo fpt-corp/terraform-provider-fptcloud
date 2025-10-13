@@ -42,7 +42,7 @@ Read-Only:
 - `cidr` (String)
 - `created_at` (String)
 - `description` (String)
-- `egw_id` (String)
+- `egw_name` (String)
 - `id` (String)
 - `name` (String)
 - `network` (List of Object) (see [below for nested schema](#nestedobjatt--loadbalancers--network))

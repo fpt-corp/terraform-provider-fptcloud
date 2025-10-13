@@ -36,7 +36,7 @@ output "loadbalancer" {
 - `cidr` (String) The CIDR of the load balancer
 - `created_at` (String) The creation time of the load balancer
 - `description` (String) The description of the load balancer
-- `egw_id` (String) The ID of the edge gateway associated with the load balancer
+- `egw_name` (String) The name of the edge gateway associated with the load balancer
 - `id` (String) The ID of this resource.
 - `name` (String) The name of the load balancer
 - `network` (List of Object) The network of the load balancer (see [below for nested schema](#nestedatt--network))

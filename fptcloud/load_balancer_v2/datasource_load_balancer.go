@@ -72,7 +72,7 @@ func listLoadBalancers(ctx context.Context, d *schema.ResourceData, m interface{
 			"size":                size,
 			"created_at":          lb.CreatedAt,
 			"tags":                tags,
-			"egw_id":              lb.EgwId,
+			"egw_name":            lb.EgwName,
 		})
 	}
 	if err := d.Set("loadbalancers", formattedData); err != nil {
@@ -141,8 +141,8 @@ func getLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{})
 	if err := d.Set("tags", loadBalancer.Tags); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting load balancer tags: %v", err))
 	}
-	if err := d.Set("egw_id", loadBalancer.EgwId); err != nil {
-		return diag.FromErr(fmt.Errorf("error setting load balancer edge gateway id: %v", err))
+	if err := d.Set("egw_name", loadBalancer.EgwName); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting load balancer edge gateway name: %v", err))
 	}
 	if err := d.Set("size", size); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting load balancer size: %v", err))
