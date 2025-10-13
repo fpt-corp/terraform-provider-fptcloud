@@ -135,7 +135,7 @@ func createPool(ctx context.Context, d *schema.ResourceData, m interface{}) diag
 	}
 
 	var membersPayload []InputPoolMember
-	for _, member := range d.Get("pool_members").([]interface{}) {
+	for _, member := range d.Get("pool_members").(*schema.Set).List() {
 		memberMap := member.(map[string]interface{})
 		memberPayload := InputPoolMember{
 			VmId:         memberMap["vm_id"].(string),
@@ -194,7 +194,7 @@ func updatePool(ctx context.Context, d *schema.ResourceData, m interface{}) diag
 	}
 
 	var membersPayload []InputPoolMember
-	for _, member := range d.Get("pool_members").([]interface{}) {
+	for _, member := range d.Get("pool_members").(*schema.Set).List() {
 		memberMap := member.(map[string]interface{})
 		memberPayload := InputPoolMember{
 			VmId:         memberMap["vm_id"].(string),

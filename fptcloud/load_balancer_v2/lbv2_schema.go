@@ -1445,7 +1445,7 @@ var resourcePool = map[string]*schema.Schema{
 		Description: "The health monitor of the pool",
 	},
 	"pool_members": {
-		Type:     schema.TypeList,
+		Type:     schema.TypeSet,
 		Optional: true,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
