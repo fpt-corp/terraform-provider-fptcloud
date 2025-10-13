@@ -126,10 +126,10 @@ var dataSourceLoadBalancers = map[string]*schema.Schema{
 					Computed:    true,
 					Description: "The tags associated with the load balancer",
 				},
-				"egw_id": {
+				"egw_name": {
 					Type:        schema.TypeString,
 					Computed:    true,
-					Description: "The ID of the edge gateway associated with the load balancer",
+					Description: "The name of the edge gateway associated with the load balancer",
 				},
 			},
 		},
@@ -252,10 +252,10 @@ var dataSourceLoadBalancer = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The tags associated with the load balancer",
 	},
-	"egw_id": {
+	"egw_name": {
 		Type:        schema.TypeString,
 		Computed:    true,
-		Description: "The ID of the edge gateway associated with the load balancer",
+		Description: "The name of the edge gateway associated with the load balancer",
 	},
 }
 
