@@ -1,3 +1,30 @@
+## [0.4.0] - 2025-10-14
+
+### Datasource
+
+- fptcloud_load_balancer_v2_lbs
+- fptcloud_load_balancer_v2_lb
+- fptcloud_load_balancer_v2_listeners
+- fptcloud_load_balancer_v2_listener
+- fptcloud_load_balancer_v2_pools
+- fptcloud_load_balancer_v2_pool
+- fptcloud_load_balancer_v2_certificates
+- fptcloud_load_balancer_v2_certificate
+- fptcloud_load_balancer_v2_l7_policies
+- fptcloud_load_balancer_v2_l7_policy
+- fptcloud_load_balancer_v2_l7_rules
+- fptcloud_load_balancer_v2_l7_rule
+- fptcloud_load_balancer_v2_sizes
+
+### Resource
+
+- fptcloud_load_balancer_v2_lb
+- fptcloud_load_balancer_v2_listener
+- fptcloud_load_balancer_v2_pool
+- fptcloud_load_balancer_v2_certificate
+- fptcloud_load_balancer_v2_l7_policy
+- fptcloud_load_balancer_v2_l7_rule
+
 ## [0.3.23] - 2025-09-26
 
 - Update the status when attaching an instance
