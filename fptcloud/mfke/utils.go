@@ -809,7 +809,7 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 	return false
 }
 
-// internalRead
+// InternalRead
 func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id string, state *managedKubernetesEngine) (*managedKubernetesEngineReadResponse, error) {
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
@@ -823,6 +823,8 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	if err != nil {
 		return nil, err
 	}
+
+	// Cluster read response
 	var d managedKubernetesEngineReadResponse
 	err = json.Unmarshal(a, &d)
 	if err != nil {
@@ -832,10 +834,63 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		return nil, fmt.Errorf("error: %v", d.Mess)
 	}
 	data := d.Data
+
+	// auto_upgrade_expression and auto_upgrade_timezone and is_enable_auto_upgrade
+	if data.Spec.AutoUpgrade != nil {
+		autoUpgradeInfo := data.Spec.AutoUpgrade
+
+		isEnabled := len(autoUpgradeInfo.TimeUpgrade) > 0
+		state.IsEnableAutoUpgrade = types.BoolValue(isEnabled)
+
+		state.AutoUpgradeTimezone = types.StringValue(autoUpgradeInfo.TimeZone)
+
+		if isEnabled {
+			listVal, diags := types.ListValueFrom(ctx, types.StringType, autoUpgradeInfo.TimeUpgrade)
+			if diags.HasError() {
+				return nil, fmt.Errorf("error creating auto_upgrade_expression list for state: %v", diags)
+			}
+			state.AutoUpgradeExpression = listVal
+		} else {
+			state.AutoUpgradeExpression = types.ListNull(types.StringType)
+		}
+	} else {
+		state.IsEnableAutoUpgrade = types.BoolValue(false)
+		state.AutoUpgradeTimezone = types.StringNull()
+		state.AutoUpgradeExpression = types.ListNull(types.StringType)
+	}
+
+	// id
 	state.Id = types.StringValue(data.Metadata.Name)
+
+	// cluster_name
 	state.ClusterName = types.StringValue(getClusterName(data.Metadata.Name))
+
+	// vpc_id
 	state.VpcId = types.StringValue(vpcId)
+
+	// k8s_version
 	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
+
+	// pod_network, pod_prefix
+	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
+	state.PodNetwork = types.StringValue(podNetwork[0])
+	state.PodPrefix = types.StringValue(podNetwork[1])
+
+	// service_network, service_prefix
+	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
+	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
+	state.ServicePrefix = types.StringValue(serviceNetwork[1])
+
+	// k8s_max_pod
+	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
+
+	// network_overlay
+	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
+
+	// network_type
+	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
+
+	// purpose
 	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
 		state.Purpose = types.StringValue("public")
 	} else if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "firewall") {
@@ -844,6 +899,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.Purpose = types.StringValue("private")
 	}
 
+	// network_id of Cluster
 	if len(data.Spec.Provider.Workers) > 0 {
 		// Use the first worker to determine cluster network info
 		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
@@ -855,6 +911,71 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		}
 	}
 
+	// cluster_autoscaler
+	state.ClusterAutoscaler, _ = internalReadClusterAutoscaler(data.Spec.Kubernetes.ClusterAutoscaler)
+
+	// cluster_endpoint_access
+	state.ClusterEndpointAccess, _ = internalReadClusterEndpointAccess(data)
+
+	// edge_gateway_id
+	if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
+		state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
+	} else {
+		state.EdgeGatewayId = types.StringNull()
+	}
+
+	// For edge gateway name, we need to extract it from the gatewayRef if available
+	// The gatewayRef contains both id and name
+	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
+	if gatewayRef.Id != "" {
+		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
+		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
+	} else {
+		state.EdgeGatewayName = types.StringNull()
+	}
+
+	// Hibernation
+	isRunning := false
+	if len(data.Status.Conditions) > 0 {
+		isRunning = data.Status.Conditions[0].Status == "True"
+	}
+	if data.Spec.Hibernate != nil {
+		isRunning = !data.Spec.Hibernate.Enabled
+	}
+	state.IsRunning = types.BoolValue(isRunning)
+
+	// Hibernation Schedules
+	if data.Spec.Hibernate != nil && data.Spec.Hibernate.Schedules != nil {
+		var schedulesFromAPI []HibernationSchedule
+
+		for _, apiSchedule := range data.Spec.Hibernate.Schedules {
+			schedulesFromAPI = append(schedulesFromAPI, HibernationSchedule{
+				Start:    types.StringValue(apiSchedule.Start),
+				End:      types.StringValue(apiSchedule.End),
+				Location: types.StringValue(apiSchedule.Location),
+			})
+		}
+
+		hibernationScheduleObjectType := types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		}
+
+		state.HibernationSchedules, _ = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
+	} else {
+		state.HibernationSchedules = types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		})
+	}
+
+	// Worker pools
 	apiPools := make([]*managedKubernetesEnginePool, 0)
 
 	for _, worker := range data.Spec.Provider.Workers {
@@ -970,238 +1091,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		apiPools = append(apiPools, item)
 	}
 
-	// Assign the fully reconstructed list of pools to the state
 	state.Pools = apiPools
-
-	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
-	state.PodNetwork = types.StringValue(podNetwork[0])
-	state.PodPrefix = types.StringValue(podNetwork[1])
-	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
-	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
-	state.ServicePrefix = types.StringValue(serviceNetwork[1])
-	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
-	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
-	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
-
-	// Cluster Autoscaler
-	autoscalerMap := map[string]attr.Value{
-		"is_enable_auto_scaling":           types.BoolValue(true),
-		"scale_down_delay_after_add":       types.Int64Value(3600),
-		"scale_down_delay_after_delete":    types.Int64Value(0),
-		"scale_down_delay_after_failure":   types.Int64Value(180),
-		"scale_down_unneeded_time":         types.Int64Value(1800),
-		"scale_down_utilization_threshold": types.Float64Value(0.5),
-		"scan_interval":                    types.Int64Value(10),
-		"expander":                         types.StringValue("least-waste"),
-	}
-
-	// Parse actual values from API response
-	if data.Spec.Kubernetes.ClusterAutoscaler.Expander != "" {
-		autoscalerMap["expander"] = types.StringValue(data.Spec.Kubernetes.ClusterAutoscaler.Expander)
-	}
-	autoscalerMap["scale_down_utilization_threshold"] = types.Float64Value(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUtilizationThreshold)
-
-	// Parse duration strings to seconds
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterAdd != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterAdd); err == nil {
-			autoscalerMap["scale_down_delay_after_add"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterDelete != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterDelete); err == nil {
-			autoscalerMap["scale_down_delay_after_delete"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterFailure != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterFailure); err == nil {
-			autoscalerMap["scale_down_delay_after_failure"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUnneededTime != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUnneededTime); err == nil {
-			autoscalerMap["scale_down_unneeded_time"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScanInterval != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScanInterval); err == nil {
-			autoscalerMap["scan_interval"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-
-	state.ClusterAutoscaler, _ = types.ObjectValue(
-		map[string]attr.Type{
-			"is_enable_auto_scaling":           types.BoolType,
-			"scale_down_delay_after_add":       types.Int64Type,
-			"scale_down_delay_after_delete":    types.Int64Type,
-			"scale_down_delay_after_failure":   types.Int64Type,
-			"scale_down_unneeded_time":         types.Int64Type,
-			"scale_down_utilization_threshold": types.Float64Type,
-			"scan_interval":                    types.Int64Type,
-			"expander":                         types.StringType,
-		},
-		autoscalerMap,
-	)
-
-	// Cluster Endpoint Access
-	accessMap := map[string]attr.Value{
-		"type": types.StringValue("public"),
-		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
-			types.StringValue("0.0.0.0/0"),
-		}),
-	}
-
-	// Determine cluster type from metadata labels
-	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
-		accessMap["type"] = types.StringValue("public")
-	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
-		// For private-network, need to check privateCluster flag in extensions
-		for _, extension := range data.Spec.Extensions {
-			if extension.Type == "private-network" && extension.ProviderConfig != nil {
-				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
-					if privateCluster {
-						accessMap["type"] = types.StringValue("private")
-					} else {
-						accessMap["type"] = types.StringValue("mixed")
-					}
-				}
-				break
-			}
-		}
-	}
-
-	// Parse extensions field to get CIDR configuration
-	if len(data.Spec.Extensions) > 0 {
-		for _, extension := range data.Spec.Extensions {
-			if extension.ProviderConfig != nil {
-				var cidrValues []attr.Value
-
-				// Handle ACL extension type (public clusters)
-				if extension.Type == "acl" {
-					if rule, ok := extension.ProviderConfig["rule"].(map[string]interface{}); ok {
-						// Extract allow_cidr values from the ACL rule
-						if cidrs, exists := rule["cidrs"].([]interface{}); exists {
-							for _, cidr := range cidrs {
-								if cidrStr, ok := cidr.(string); ok {
-									cidrValues = append(cidrValues, types.StringValue(cidrStr))
-								}
-							}
-						}
-					}
-				}
-
-				// Handle private-network extension type (private/mixed clusters)
-				if extension.Type == "private-network" {
-					// Extract allow_cidr values from allowCIDRs field
-					if allowCIDRs, exists := extension.ProviderConfig["allowCIDRs"].([]interface{}); exists {
-						for _, cidr := range allowCIDRs {
-							if cidrStr, ok := cidr.(string); ok {
-								cidrValues = append(cidrValues, types.StringValue(cidrStr))
-							}
-						}
-					}
-				}
-
-				// Update allow_cidr if we found any CIDR values
-				if len(cidrValues) > 0 {
-					accessMap["allow_cidr"] = types.ListValueMust(types.StringType, cidrValues)
-				}
-			}
-		}
-	}
-
-	state.ClusterEndpointAccess, _ = types.ObjectValue(
-		map[string]attr.Type{
-			"type":       types.StringType,
-			"allow_cidr": types.ListType{ElemType: types.StringType},
-		},
-		accessMap,
-	)
-
-	// Edge Gateway ID
-	if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
-		state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
-	} else {
-		state.EdgeGatewayId = types.StringNull()
-	}
-
-	// For edge gateway name, we need to extract it from the gatewayRef if available
-	// The gatewayRef contains both id and name
-	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
-	if gatewayRef.Id != "" {
-		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
-		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
-	} else {
-		state.EdgeGatewayName = types.StringNull()
-	}
-
-	// Auto Upgrade Expression
-	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
-		state.AutoUpgradeExpression = types.ListNull(types.StringType)
-	}
-
-	// Hibernation and Hibernation Schedules
-	isRunning := false
-	if len(data.Status.Conditions) > 0 {
-		isRunning = data.Status.Conditions[0].Status == "True"
-	}
-	if data.Spec.Hibernate != nil {
-		isRunning = !data.Spec.Hibernate.Enabled
-	}
-	state.IsRunning = types.BoolValue(isRunning)
-
-	if d.Data.Spec.Hibernate != nil && d.Data.Spec.Hibernate.Schedules != nil {
-		var schedulesFromAPI []HibernationSchedule
-
-		for _, apiSchedule := range d.Data.Spec.Hibernate.Schedules {
-			schedulesFromAPI = append(schedulesFromAPI, HibernationSchedule{
-				Start:    types.StringValue(apiSchedule.Start),
-				End:      types.StringValue(apiSchedule.End),
-				Location: types.StringValue(apiSchedule.Location),
-			})
-		}
-
-		hibernationScheduleObjectType := types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		}
-
-		state.HibernationSchedules, _ = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
-	} else {
-		state.HibernationSchedules = types.ListNull(types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		})
-	}
-
-	// Auto Upgrade Version
-	if d.Data.Spec.AutoUpgrade != nil {
-		autoUpgradeInfo := d.Data.Spec.AutoUpgrade
-
-		isEnabled := len(autoUpgradeInfo.TimeUpgrade) > 0
-		state.IsEnableAutoUpgrade = types.BoolValue(isEnabled)
-
-		state.AutoUpgradeTimezone = types.StringValue(autoUpgradeInfo.TimeZone)
-
-		if isEnabled {
-			listVal, diags := types.ListValueFrom(ctx, types.StringType, autoUpgradeInfo.TimeUpgrade)
-			if diags.HasError() {
-				return nil, fmt.Errorf("error creating auto_upgrade_expression list for state: %v", diags)
-			}
-			state.AutoUpgradeExpression = listVal
-		} else {
-			state.AutoUpgradeExpression = types.ListNull(types.StringType)
-		}
-	} else {
-		state.IsEnableAutoUpgrade = types.BoolValue(false)
-		state.AutoUpgradeTimezone = types.StringNull()
-		state.AutoUpgradeExpression = types.ListNull(types.StringType)
-	}
 
 	return &d, nil
 }
@@ -1681,4 +1571,124 @@ func sortKVByKey(kvs []KV) []KV {
 	})
 
 	return sorted
+}
+
+func internalReadClusterAutoscaler(ca managedKubernetesEngineDataClusterAutoscaler) (types.Object, diag2.Diagnostics) {
+	var (
+		scaleDownAdd, scaleDownDel, scaleDownFail int64
+		scaleDownUnneeded, scanInterval           int64
+	)
+
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterAdd); err == nil {
+		scaleDownAdd = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterDelete); err == nil {
+		scaleDownDel = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterFailure); err == nil {
+		scaleDownFail = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownUnneededTime); err == nil {
+		scaleDownUnneeded = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScanInterval); err == nil {
+		scanInterval = int64(d.Seconds())
+	}
+
+	typesMap := map[string]attr.Type{
+		"is_enable_auto_scaling":           types.BoolType,
+		"scale_down_delay_after_add":       types.Int64Type,
+		"scale_down_delay_after_delete":    types.Int64Type,
+		"scale_down_delay_after_failure":   types.Int64Type,
+		"scale_down_unneeded_time":         types.Int64Type,
+		"scale_down_utilization_threshold": types.Float64Type,
+		"scan_interval":                    types.Int64Type,
+		"expander":                         types.StringType,
+	}
+
+	values := map[string]attr.Value{
+		"is_enable_auto_scaling":           types.BoolValue(true),
+		"scale_down_delay_after_add":       types.Int64Value(scaleDownAdd),
+		"scale_down_delay_after_delete":    types.Int64Value(scaleDownDel),
+		"scale_down_delay_after_failure":   types.Int64Value(scaleDownFail),
+		"scale_down_unneeded_time":         types.Int64Value(scaleDownUnneeded),
+		"scale_down_utilization_threshold": types.Float64Value(ca.ScaleDownUtilizationThreshold),
+		"scan_interval":                    types.Int64Value(scanInterval),
+		"expander":                         types.StringValue(ca.Expander),
+	}
+
+	return types.ObjectValue(typesMap, values)
+}
+
+func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.Object, diag2.Diagnostics) {
+	accessMap := map[string]attr.Value{
+		"type": types.StringValue("public"),
+		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("0.0.0.0/0"),
+		}),
+	}
+
+	// Determine cluster type from metadata labels
+	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
+		accessMap["type"] = types.StringValue("public")
+	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
+		for _, extension := range data.Spec.Extensions {
+			if extension.Type == "private-network" && extension.ProviderConfig != nil {
+				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
+					if privateCluster {
+						accessMap["type"] = types.StringValue("private")
+					} else {
+						accessMap["type"] = types.StringValue("mixed")
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Parse extensions field to get CIDR configuration
+	for _, extension := range data.Spec.Extensions {
+		if extension.ProviderConfig == nil {
+			continue
+		}
+
+		var cidrValues []attr.Value
+
+		// ACL type (public)
+		if extension.Type == "acl" {
+			if rule, ok := extension.ProviderConfig["rule"].(map[string]interface{}); ok {
+				if cidrs, exists := rule["cidrs"].([]interface{}); exists {
+					for _, cidr := range cidrs {
+						if cidrStr, ok := cidr.(string); ok {
+							cidrValues = append(cidrValues, types.StringValue(cidrStr))
+						}
+					}
+				}
+			}
+		}
+
+		// private-network type (private/mixed)
+		if extension.Type == "private-network" {
+			if allowCIDRs, exists := extension.ProviderConfig["allowCIDRs"].([]interface{}); exists {
+				for _, cidr := range allowCIDRs {
+					if cidrStr, ok := cidr.(string); ok {
+						cidrValues = append(cidrValues, types.StringValue(cidrStr))
+					}
+				}
+			}
+		}
+
+		// Update if found any CIDR values
+		if len(cidrValues) > 0 {
+			accessMap["allow_cidr"] = types.ListValueMust(types.StringType, cidrValues)
+		}
+	}
+
+	return types.ObjectValue(
+		map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+		accessMap,
+	)
 }
