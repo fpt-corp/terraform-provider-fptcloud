@@ -126,7 +126,7 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 
 	//Waiting for status active
 	createStateConf := &retry.StateChangeConf{
-		Pending: []string{"DISABLE", "PENDING"},
+		Pending: []string{"DISABLE", "PENDING", "DISABLED"},
 		Target:  []string{"ENABLED"},
 		Refresh: func() (interface{}, string, error) {
 			findStorageModel := FindStorageDTO{
