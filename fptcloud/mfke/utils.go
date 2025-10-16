@@ -841,7 +841,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 
 		isEnabled := len(autoUpgradeInfo.TimeUpgrade) > 0
 		state.IsEnableAutoUpgrade = types.BoolValue(isEnabled)
-
 		state.AutoUpgradeTimezone = types.StringValue(autoUpgradeInfo.TimeZone)
 
 		if isEnabled {
@@ -918,23 +917,22 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	state.ClusterEndpointAccess, _ = internalReadClusterEndpointAccess(data)
 
 	// edge_gateway_id
-	if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
-		state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
-	} else {
-		state.EdgeGatewayId = types.StringNull()
-	}
-
-	// For edge gateway name, we need to extract it from the gatewayRef if available
-	// The gatewayRef contains both id and name
+	// if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
+	// 	state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
+	// } else {
+	// 	state.EdgeGatewayId = types.StringNull()
+	// }
+	// edge_gateway_name and edge_gateway_id
 	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
 	if gatewayRef.Id != "" {
 		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
 		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
 	} else {
 		state.EdgeGatewayName = types.StringNull()
+		state.EdgeGatewayId = types.StringNull()
 	}
 
-	// Hibernation
+	// is_running
 	isRunning := false
 	if len(data.Status.Conditions) > 0 {
 		isRunning = data.Status.Conditions[0].Status == "True"
@@ -944,7 +942,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	}
 	state.IsRunning = types.BoolValue(isRunning)
 
-	// Hibernation Schedules
+	// hibernation_schedules
 	if data.Spec.Hibernate != nil && data.Spec.Hibernate.Schedules != nil {
 		var schedulesFromAPI []HibernationSchedule
 
@@ -975,7 +973,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		})
 	}
 
-	// Worker pools
+	// pools
 	apiPools := make([]*managedKubernetesEnginePool, 0)
 
 	for _, worker := range data.Spec.Provider.Workers {
@@ -991,24 +989,39 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		}
 
 		item := &managedKubernetesEnginePool{
-			WorkerPoolID:   types.StringValue(worker.Name),
+			// name
+			WorkerPoolID: types.StringValue(worker.Name),
+			// storage_profile
 			StorageProfile: types.StringValue(worker.Volume.Type),
-			WorkerType:     types.StringValue(flavorId),
+			// worker_type
+			WorkerType: types.StringValue(flavorId),
+			// worker_disk_size
 			WorkerDiskSize: types.Int64Value(int64(parseNumber(worker.Volume.Size))),
-			ScaleMin:       types.Int64Value(int64(worker.Minimum)),
-			ScaleMax:       types.Int64Value(int64(worker.Maximum)),
-			NetworkID:      types.StringValue(networkId),
-			// NetworkName:            types.StringValue(networkName),
-			IsEnableAutoRepair:     types.BoolValue(autoRepair),
-			ContainerRuntime:       types.StringValue(worker.Cri.Name),
-			Tags:                   tagsStringToList(worker.Tags()),
-			VGpuID:                 types.StringValue(worker.ProviderConfig.VGpuID),
+			// scale_min
+			ScaleMin: types.Int64Value(int64(worker.Minimum)),
+			// scale_max
+			ScaleMax: types.Int64Value(int64(worker.Maximum)),
+			// network_id
+			NetworkID: types.StringValue(networkId),
+			// network_name
+			NetworkName: types.StringValue(networkName),
+			// is_enable_auto_repair
+			IsEnableAutoRepair: types.BoolValue(autoRepair),
+			// container_runtime
+			ContainerRuntime: types.StringValue(worker.Cri.Name),
+			// tags
+			Tags: tagsStringToList(worker.Tags()),
+			// vgpu_id
+			VGpuID: types.StringValue(worker.ProviderConfig.VGpuID),
+			// driver_installation_type
 			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
-			GpuDriverVersion:       types.StringValue(worker.Machine.Image.GpuDriverVersion),
-			WorkerBase:             types.BoolValue(worker.IsWorkerBase()),
+			// gpu_driver_version
+			GpuDriverVersion: types.StringValue(worker.Machine.Image.GpuDriverVersion),
+			// worker_base
+			WorkerBase: types.BoolValue(worker.IsWorkerBase()),
 		}
 
-		// For GPU pools, read values from addons configuration
+		// max_client and gpu_sharing_client
 		if worker.ProviderConfig.VGpuID != "" {
 			// Read MaxClient from addons configuration
 			maxClientFromAPI := r.MaxClientFromAddons(&data.Spec, worker.Name)
@@ -1023,6 +1036,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			item.GpuSharingClient = types.StringValue("")
 		}
 
+		// kv
 		if len(worker.Labels) > 0 {
 			// Convert labels to map for filtering
 			labelMap := make(map[string]string)
@@ -1056,6 +1070,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			item.Kv = []KV{}
 		}
 
+		// taints
 		if len(worker.Taints) > 0 {
 			taints := make([]Taint, 0)
 			for _, t := range worker.Taints {
@@ -1084,9 +1099,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		} else {
 			item.Taints = []Taint{}
 		}
-
-		item.NetworkID = types.StringValue(networkId)
-		item.NetworkName = types.StringValue(networkName)
 
 		apiPools = append(apiPools, item)
 	}
