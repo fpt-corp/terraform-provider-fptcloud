@@ -1,3 +1,7 @@
+## [0.3.24] - 2025-10-14
+
+- Feature: Add support for managing LBaaS resources — load balancer, listener, pool, L7 policy, and L7 rule.
+
 ## [0.3.23] - 2025-09-26
 
 - Update the status when attaching an instance

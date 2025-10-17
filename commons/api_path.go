@@ -112,6 +112,52 @@ var ApiPath = struct {
 	ListAccessKeys  func(vpcId, s3ServiceId string) string
 	CreateAccessKey func(vpcId, s3ServiceId string) string
 	DeleteAccessKey func(vpcId, s3ServiceId string) string
+
+	//LBv2
+	//Load balancer
+	ListLoadBalancers  func(vpcId string, page int, pageSize int) string
+	GetLoadBalancer    func(vpcId string, loadBalancerId string) string
+	ReadLoadBalancer   func(vpcId string, loadBalancerId string) string
+	CreateLoadBalancer func(vpcId string) string
+	UpdateLoadBalancer func(vpcId string, loadBalancerId string) string
+	ResizeLoadBalancer func(vpcId string, loadBalancerId string) string
+	DeleteLoadBalancer func(vpcId string, loadBalancerId string) string
+	//Listener
+	ListListeners  func(vpcId string, loadBalancerId string, page int, pageSize int) string
+	GetListener    func(vpcId string, listenerId string) string
+	ReadListener   func(vpcId string, listenerId string) string
+	CreateListener func(vpcId string, loadBalancerId string) string
+	UpdateListener func(vpcId string, listenerId string) string
+	DeleteListener func(vpcId string, listenerId string) string
+	//Pool
+	ListPools  func(vpcId string, loadBalancerId string, page int, pageSize int) string
+	GetPool    func(vpcId string, poolId string) string
+	ReadPool   func(vpcId string, poolId string) string
+	CreatePool func(vpcId string, loadBalancerId string) string
+	UpdatePool func(vpcId string, poolId string) string
+	DeletePool func(vpcId string, poolId string) string
+	//Certificate
+	ListCertificates  func(vpcId string, page int, pageSize int) string
+	GetCertificate    func(vpcId string, certificateId string) string
+	ReadCertificate   func(vpcId string, certificateId string) string
+	CreateCertificate func(vpcId string) string
+	DeleteCertificate func(vpcId string, certificateId string) string
+	//L7 policy
+	ListL7Policies func(vpcId string, listenerId string) string
+	GetL7Policy    func(vpcId string, listenerId string, policyId string) string
+	ReadL7Policy   func(vpcId string, listenerId string, policyId string) string
+	CreateL7Policy func(vpcId string, listenerId string) string
+	UpdateL7Policy func(vpcId string, listenerId string, policyId string) string
+	DeleteL7Policy func(vpcId string, listenerId string, policyId string) string
+	//L7 rule
+	ListL7Rules  func(vpcId string, listenerId string, policyId string) string
+	GetL7Rule    func(vpcId string, listenerId string, policyId string, ruleId string) string
+	ReadL7Rule   func(vpcId string, listenerId string, policyId string, ruleId string) string
+	CreateL7Rule func(vpcId string, listenerId string, policyId string) string
+	UpdateL7Rule func(vpcId string, listenerId string, policyId string, ruleId string) string
+	DeleteL7Rule func(vpcId string, listenerId string, policyId string, ruleId string) string
+	//Size
+	ListSizes func(vpcId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -420,5 +466,116 @@ var ApiPath = struct {
 	},
 	DeleteAccessKey: func(vpcId, s3ServiceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/user/credentials/delete", vpcId, s3ServiceId)
+	},
+
+	//LBv2
+	//Load balancer
+	ListLoadBalancers: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/list?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	GetLoadBalancer: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s", vpcId, loadBalancerId)
+	},
+	ReadLoadBalancer: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/read", vpcId, loadBalancerId)
+	},
+	CreateLoadBalancer: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/create", vpcId)
+	},
+	UpdateLoadBalancer: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/update", vpcId, loadBalancerId)
+	},
+	ResizeLoadBalancer: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/resize", vpcId, loadBalancerId)
+	},
+	DeleteLoadBalancer: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/delete", vpcId, loadBalancerId)
+	},
+
+	//Listener
+	ListListeners: func(vpcId string, loadBalancerId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/listeners/list?page=%d&page_size=%d", vpcId, loadBalancerId, page, pageSize)
+	},
+	GetListener: func(vpcId string, listenerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s", vpcId, listenerId)
+	},
+	CreateListener: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/listeners/create", vpcId, loadBalancerId)
+	},
+	UpdateListener: func(vpcId string, listenerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/update", vpcId, listenerId)
+	},
+	DeleteListener: func(vpcId string, listenerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/delete", vpcId, listenerId)
+	},
+
+	//Pool
+	ListPools: func(vpcId string, loadBalancerId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/pools/list?page=%d&page_size=%d", vpcId, loadBalancerId, page, pageSize)
+	},
+	GetPool: func(vpcId string, poolId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/pools/%s", vpcId, poolId)
+	},
+	CreatePool: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/pools/create", vpcId, loadBalancerId)
+	},
+	UpdatePool: func(vpcId string, poolId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/pools/%s/update", vpcId, poolId)
+	},
+	DeletePool: func(vpcId string, poolId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/pools/%s/delete", vpcId, poolId)
+	},
+
+	//Certificate
+	ListCertificates: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	GetCertificate: func(vpcId string, certificateId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates/%s", vpcId, certificateId)
+	},
+	CreateCertificate: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates/create", vpcId)
+	},
+	DeleteCertificate: func(vpcId string, certificateId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/certificates/%s/delete", vpcId, certificateId)
+	},
+
+	//L7 policy
+	ListL7Policies: func(vpcId string, listenerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies", vpcId, listenerId)
+	},
+	GetL7Policy: func(vpcId string, listenerId string, policyId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s", vpcId, listenerId, policyId)
+	},
+	CreateL7Policy: func(vpcId string, listenerId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/create", vpcId, listenerId)
+	},
+	UpdateL7Policy: func(vpcId string, listenerId string, policyId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/update", vpcId, listenerId, policyId)
+	},
+	DeleteL7Policy: func(vpcId string, listenerId string, policyId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/delete", vpcId, listenerId, policyId)
+	},
+
+	//L7 rule
+	ListL7Rules: func(vpcId string, listenerId string, policyId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules", vpcId, listenerId, policyId)
+	},
+	GetL7Rule: func(vpcId string, listenerId string, policyId string, ruleId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/%s", vpcId, listenerId, policyId, ruleId)
+	},
+	CreateL7Rule: func(vpcId string, listenerId string, policyId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/create", vpcId, listenerId, policyId)
+	},
+	UpdateL7Rule: func(vpcId string, listenerId string, policyId string, ruleId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/%s/update", vpcId, listenerId, policyId, ruleId)
+	},
+	DeleteL7Rule: func(vpcId string, listenerId string, policyId string, ruleId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/listeners/%s/l7policies/%s/rules/%s/delete", vpcId, listenerId, policyId, ruleId)
+	},
+
+	//Size
+	ListSizes: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/sizes", vpcId)
 	},
 }
