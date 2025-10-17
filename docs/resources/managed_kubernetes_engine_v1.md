@@ -65,14 +65,16 @@ resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
     gpu_driver_version    = "default"
     
     # Required KV labels for GPU pools
-    kv {
-      name  = "nvidia.com/mig.config"
-      value = "all-1g.6gb"  # One of: "all-1g.6gb", "all-2g.12gb", "all-4g.24gb", ...
-    }
-    kv {
-      name  = "worker.fptcloud/type"
-      value = "gpu"
-    }
+    kv = [
+      {
+        name  = "nvidia.com/mig.config"
+        value = "all-1g.6gb"  # One of: "all-1g.6gb", "all-2g.12gb", "all-4g.24gb", ...
+      },
+      {
+        name  = "worker.fptcloud/type"
+        value = "gpu"
+      }
+    ]
   }
 }
 ```
@@ -169,32 +171,34 @@ pools {
   # ... other pool configuration ...
   
   # KV labels for node identification and scheduling
-  kv {
-    name  = "environment"
-    value = "production"
-  }
-  kv {
-    name  = "zone"
-    value = "us-east-1a"
-  }
+  kv = [
+    {
+      name  = "environment"
+      value = "production"
+    },
+    {
+      name  = "zone"
+      value = "us-east-1a"
+    }
+  ]
 }
 
 pools {
   # ... other pool configuration ...
   
   # Taints for workload isolation
-  taints {
-    key    = "dedicated"
-    value  = "gpu-workloads"
-    effect = "NoSchedule"
-  }
-  
-  # Taints for spot instances
-  taints {
-    key    = "spot-instance"
-    value  = "true"
-    effect = "PreferNoSchedule"
-  }
+  taints = [
+    {
+      key    = "dedicated"
+      value  = "gpu-workloads"
+      effect = "NoSchedule"
+    },
+    {
+      key    = "spot-instance"
+      value  = "true"
+      effect = "PreferNoSchedule"
+    }
+  ]
 }
 ```
 
@@ -278,14 +282,16 @@ resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
     tags = ["tag_ID1", "tag_ID2"]
 
     # KV labels for base pool
-    kv {
-      name  = "environment"
-      value = "production"
-    }
-    kv {
-      name  = "role"
-      value = "base"
-    }
+    kv = [
+      {
+        name  = "environment"
+        value = "production"
+      },
+      {
+        name  = "role"
+        value = "base"
+      }
+    ]
 
     # Note: Base pools cannot have taints (worker_base = true)
   }
@@ -310,26 +316,30 @@ resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
     gpu_driver_version    = "default"
 
     # Required KV labels for GPU pools
-    kv {
-      name  = "nvidia.com/mig.config"
-      value = "all-1g.6gb"
-    }
-    kv {
-      name  = "worker.fptcloud/type"
-      value = "gpu"
-    }
+    kv = [
+      {
+        name  = "nvidia.com/mig.config"
+        value = "all-1g.6gb"
+      },
+      {
+        name  = "worker.fptcloud/type"
+        value = "gpu"
+      }
+    ]
 
     # Taints for GPU workloads
-    taints {
-      key    = "nvidia.com/gpu"
-      value  = "true"
-      effect = "NoSchedule"
-    }
-    taints {
-      key    = "workload-type"
-      value  = "gpu-intensive"
-      effect = "NoSchedule"
-    }
+    taints = [
+      {
+        key    = "nvidia.com/gpu"
+        value  = "true"
+        effect = "NoSchedule"
+      },
+      {
+        key    = "workload-type"
+        value  = "gpu-intensive"
+        effect = "NoSchedule"
+      }
+    ]
   }
 }
 ```
@@ -434,10 +444,10 @@ The `pools` block supports the following arguments. At least one pool is require
 * `gpu_driver_version` - (Optional) GPU driver version: `"default"` or `"latest"`. Only validated when `vgpu_id` is set. Default: `""`
 
 **Labels and Taints:**
-* `kv` - (Optional) Key-value labels for the pool (block, can be repeated)
+* `kv` - (Optional) Key-value labels for the pool (list of objects)
   - `name` - (Required) Label key
   - `value` - (Required) Label value
-* `taints` - (Optional) Kubernetes taints for the pool (block, can be repeated)
+* `taints` - (Optional) Kubernetes taints for the pool (list of objects)
   - `key` - (Required) Taint key
   - `value` - (Required) Taint value
   - `effect` - (Required) Taint effect: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"`

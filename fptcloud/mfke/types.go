@@ -71,8 +71,8 @@ type managedKubernetesEnginePool struct {
 	NetworkID              types.String `tfsdk:"network_id"`
 	NetworkName            types.String `tfsdk:"network_name"`
 	Tags                   types.List   `tfsdk:"tags"`
-	Kv                     []KV         `tfsdk:"kv"`
-	Taints                 []Taint      `tfsdk:"taints"`
+	Kv                     types.List   `tfsdk:"kv"`
+	Taints                 types.List   `tfsdk:"taints"`
 	VGpuID                 types.String `tfsdk:"vgpu_id"`
 	MaxClient              types.Int64  `tfsdk:"max_client"`
 	GpuSharingClient       types.String `tfsdk:"gpu_sharing_client"`

@@ -45,26 +45,33 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 		}
 
 		// Validate: if worker_base = true, taints must be empty
-		if pool.WorkerBase.ValueBool() && len(pool.Taints) > 0 {
+		if pool.WorkerBase.ValueBool() && !pool.Taints.IsNull() && !pool.Taints.IsUnknown() && len(pool.Taints.Elements()) > 0 {
 			d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker pool '"+name+"' has worker_base = true, but taints are not allowed for base worker pools")
 			return &d
 		}
 
 		// Validate taint effect values
-		for _, taint := range pool.Taints {
-			if !taint.Effect.IsNull() && !taint.Effect.IsUnknown() {
-				effect := taint.Effect.ValueString()
-				allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
-				isValid := false
-				for _, allowed := range allowedEffects {
-					if effect == allowed {
-						isValid = true
-						break
+		if !pool.Taints.IsNull() && !pool.Taints.IsUnknown() {
+			for _, taintElement := range pool.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					effect := taintAttrs["effect"].(types.String)
+
+					if !effect.IsNull() && !effect.IsUnknown() {
+						effectStr := effect.ValueString()
+						allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
+						isValid := false
+						for _, allowed := range allowedEffects {
+							if effectStr == allowed {
+								isValid = true
+								break
+							}
+						}
+						if !isValid {
+							d := diag2.NewErrorDiagnostic("Invalid taint effect", "Taint effect '"+effectStr+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedEffects, ", "))
+							return &d
+						}
 					}
-				}
-				if !isValid {
-					d := diag2.NewErrorDiagnostic("Invalid taint effect", "Taint effect '"+effect+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedEffects, ", "))
-					return &d
 				}
 			}
 		}
@@ -693,7 +700,7 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 			return false
 		}
 
-		if pool.WorkerBase.ValueBool() && len(pool.Taints) > 0 {
+		if pool.WorkerBase.ValueBool() && !pool.Taints.IsNull() && !pool.Taints.IsUnknown() && len(pool.Taints.Elements()) > 0 {
 			response.Diagnostics.AddError(
 				"Invalid taints configuration",
 				fmt.Sprintf("Worker pool '%s' has worker_base = true, but taints are not allowed for base worker pools", pool.WorkerPoolID.ValueString()),
@@ -701,23 +708,30 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 			return false
 		}
 		// Validate taint effect values
-		for _, taint := range pool.Taints {
-			if !taint.Effect.IsNull() && !taint.Effect.IsUnknown() {
-				effect := taint.Effect.ValueString()
-				allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
-				isValid := false
-				for _, allowed := range allowedEffects {
-					if effect == allowed {
-						isValid = true
-						break
+		if !pool.Taints.IsNull() && !pool.Taints.IsUnknown() {
+			for _, taintElement := range pool.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					effect := taintAttrs["effect"].(types.String)
+
+					if !effect.IsNull() && !effect.IsUnknown() {
+						effectStr := effect.ValueString()
+						allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
+						isValid := false
+						for _, allowed := range allowedEffects {
+							if effectStr == allowed {
+								isValid = true
+								break
+							}
+						}
+						if !isValid {
+							response.Diagnostics.AddError(
+								"Invalid taint effect",
+								fmt.Sprintf("Taint effect '%s' in pool '%s' is not allowed. Must be one of: %s", effectStr, pool.WorkerPoolID.ValueString(), strings.Join(allowedEffects, ", ")),
+							)
+							return false
+						}
 					}
-				}
-				if !isValid {
-					response.Diagnostics.AddError(
-						"Invalid taint effect",
-						fmt.Sprintf("Taint effect '%s' in pool '%s' is not allowed. Must be one of: %s", effect, pool.WorkerPoolID.ValueString(), strings.Join(allowedEffects, ", ")),
-					)
-					return false
 				}
 			}
 		}

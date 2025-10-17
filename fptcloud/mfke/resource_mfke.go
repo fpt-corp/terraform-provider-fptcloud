@@ -60,25 +60,6 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 			"pools": schema.ListNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: poolAttributes,
-					Blocks: map[string]schema.Block{
-						"kv": schema.ListNestedBlock{
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"name":  schema.StringAttribute{Required: true, Description: descriptions["name"]},
-									"value": schema.StringAttribute{Required: true, Description: descriptions["kv"]},
-								},
-							},
-						},
-						"taints": schema.ListNestedBlock{
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"key":    schema.StringAttribute{Required: true, Description: "The taint key"},
-									"value":  schema.StringAttribute{Required: true, Description: "The taint value"},
-									"effect": schema.StringAttribute{Required: true, Description: "The taint effect (NoSchedule, NoExecute, PreferNoSchedule)"},
-								},
-							},
-						},
-					},
 				},
 			},
 		},
