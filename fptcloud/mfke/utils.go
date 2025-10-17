@@ -281,27 +281,28 @@ func PoolFields() map[string]schema.Attribute {
 		}
 	}
 
-	// poolLevelAttributes["kv"] = schema.ListAttribute{
-	// 	Optional:    true,
-	// 	Computed:    true,
-	// 	ElementType: types.ObjectType{
-	// 		AttrTypes: map[string]attr.Type{
-	// 			"name": types.StringType,
-	// 			"value": types.StringType,
-	// 		},
-	// 	},
-	// }
-	// poolLevelAttributes["taints"] = schema.ListAttribute{
-	// 	Optional:    true,
-	// 	Computed:    true,
-	// 	ElementType: types.ObjectType{
-	// 		AttrTypes: map[string]attr.Type{
-	// 			"key": types.StringType,
-	// 			"value": types.StringType,
-	// 			"effect": types.StringType,
-	// 		},
-	// 	},
-	// }
+	poolLevelAttributes["kv"] = schema.ListAttribute{
+		Optional: true,
+		Computed: true,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"name":  types.StringType,
+				"value": types.StringType,
+			},
+		},
+	}
+
+	poolLevelAttributes["taints"] = schema.ListAttribute{
+		Optional: true,
+		Computed: true,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"key":    types.StringType,
+				"value":  types.StringType,
+				"effect": types.StringType,
+			},
+		},
+	}
 
 	return poolLevelAttributes
 }
@@ -324,26 +325,35 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 
 		// KVs
 		kvs := make([]map[string]string, 0)
-		if len(item.Kv) > 0 {
+		if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
 			// Sort KV blocks by key name for consistent ordering during plan
-			sortedKv := sortKVByKey(item.Kv)
+			sortedKv, err := sortKVByKey(item.Kv)
+			if err != nil {
+				continue
+			}
 
-			for _, kv := range sortedKv {
-				if kv.Name.IsNull() && kv.Value.IsNull() {
-					continue
-				}
-				key := kv.Name.ValueString()
-				val := kv.Value.ValueString()
-				if key == "" && val == "" {
-					continue
-				}
+			for _, kvElement := range sortedKv.Elements() {
+				if kvObj, ok := kvElement.(types.Object); ok {
+					kvAttrs := kvObj.Attributes()
+					name := kvAttrs["name"].(types.String)
+					value := kvAttrs["value"].(types.String)
 
-				// Skip system-generated keys when sending request
-				if isSystemGeneratedKey(key) {
-					continue
-				}
+					if name.IsNull() && value.IsNull() {
+						continue
+					}
+					key := name.ValueString()
+					val := value.ValueString()
+					if key == "" && val == "" {
+						continue
+					}
 
-				kvs = append(kvs, map[string]string{key: val})
+					// Skip system-generated keys when sending request
+					if isSystemGeneratedKey(key) {
+						continue
+					}
+
+					kvs = append(kvs, map[string]string{key: val})
+				}
 			}
 		}
 
@@ -354,13 +364,21 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			hasWorkerType := false
 			migConfigValue := "all-1g.6gb" // default value
 
-			for _, kv := range item.Kv {
-				if kv.Name.ValueString() == "nvidia.com/mig.config" {
-					hasMigConfig = true
-					migConfigValue = kv.Value.ValueString() // use user-specified value
-				}
-				if kv.Name.ValueString() == "worker.fptcloud/type" {
-					hasWorkerType = true
+			if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
+				for _, kvElement := range item.Kv.Elements() {
+					if kvObj, ok := kvElement.(types.Object); ok {
+						kvAttrs := kvObj.Attributes()
+						name := kvAttrs["name"].(types.String).ValueString()
+						value := kvAttrs["value"].(types.String).ValueString()
+
+						if name == "nvidia.com/mig.config" {
+							hasMigConfig = true
+							migConfigValue = value // use user-specified value
+						}
+						if name == "worker.fptcloud/type" {
+							hasWorkerType = true
+						}
+					}
 				}
 			}
 
@@ -377,24 +395,31 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 
 		// Taints
 		taints := make([]map[string]interface{}, 0)
-		if len(item.Taints) > 0 {
-			for _, taint := range item.Taints {
-				if taint.Key.IsNull() && taint.Value.IsNull() && taint.Effect.IsNull() {
-					continue
+		if !item.Taints.IsNull() && !item.Taints.IsUnknown() {
+			for _, taintElement := range item.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					key := taintAttrs["key"].(types.String)
+					value := taintAttrs["value"].(types.String)
+					effect := taintAttrs["effect"].(types.String)
+
+					if key.IsNull() && value.IsNull() && effect.IsNull() {
+						continue
+					}
+					keyStr := key.ValueString()
+					valStr := value.ValueString()
+					effectStr := effect.ValueString()
+					if keyStr == "" && valStr == "" && effectStr == "" {
+						continue
+					}
+					taintMap := map[string]interface{}{
+						keyStr: map[string]string{
+							"value":  valStr,
+							"effect": effectStr,
+						},
+					}
+					taints = append(taints, taintMap)
 				}
-				key := taint.Key.ValueString()
-				val := taint.Value.ValueString()
-				effect := taint.Effect.ValueString()
-				if key == "" && val == "" && effect == "" {
-					continue
-				}
-				taintMap := map[string]interface{}{
-					key: map[string]string{
-						"value":  val,
-						"effect": effect,
-					},
-				}
-				taints = append(taints, taintMap)
 			}
 		}
 
@@ -564,47 +589,62 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 	}
 
 	kvs := make([]map[string]string, 0)
-	if len(item.Kv) > 0 {
+	if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
 		// Sort KV blocks by key name for consistent ordering during plan
-		sortedKv := sortKVByKey(item.Kv)
-		for _, kv := range sortedKv {
-			if kv.Name.IsNull() && kv.Value.IsNull() {
-				continue
-			}
-			key := kv.Name.ValueString()
-			val := kv.Value.ValueString()
-			if key == "" && val == "" {
-				continue
-			}
+		sortedKv, err := sortKVByKey(item.Kv)
+		if err == nil {
+			for _, kvElement := range sortedKv.Elements() {
+				if kvObj, ok := kvElement.(types.Object); ok {
+					kvAttrs := kvObj.Attributes()
+					name := kvAttrs["name"].(types.String)
+					value := kvAttrs["value"].(types.String)
 
-			// Skip system-generated keys when sending request
-			if isSystemGeneratedKey(key) {
-				continue
-			}
+					if name.IsNull() && value.IsNull() {
+						continue
+					}
+					key := name.ValueString()
+					val := value.ValueString()
+					if key == "" && val == "" {
+						continue
+					}
 
-			kvs = append(kvs, map[string]string{key: val})
+					// Skip system-generated keys when sending request
+					if isSystemGeneratedKey(key) {
+						continue
+					}
+
+					kvs = append(kvs, map[string]string{key: val})
+				}
+			}
 		}
 	}
 
 	taints := make([]map[string]interface{}, 0)
-	if len(item.Taints) > 0 {
-		for _, taint := range item.Taints {
-			if taint.Key.IsNull() && taint.Value.IsNull() && taint.Effect.IsNull() {
-				continue
+	if !item.Taints.IsNull() && !item.Taints.IsUnknown() {
+		for _, taintElement := range item.Taints.Elements() {
+			if taintObj, ok := taintElement.(types.Object); ok {
+				taintAttrs := taintObj.Attributes()
+				key := taintAttrs["key"].(types.String)
+				value := taintAttrs["value"].(types.String)
+				effect := taintAttrs["effect"].(types.String)
+
+				if key.IsNull() && value.IsNull() && effect.IsNull() {
+					continue
+				}
+				keyStr := key.ValueString()
+				valStr := value.ValueString()
+				effectStr := effect.ValueString()
+				if keyStr == "" && valStr == "" && effectStr == "" {
+					continue
+				}
+				taintMap := map[string]interface{}{
+					keyStr: map[string]string{
+						"value":  valStr,
+						"effect": effectStr,
+					},
+				}
+				taints = append(taints, taintMap)
 			}
-			key := taint.Key.ValueString()
-			val := taint.Value.ValueString()
-			effect := taint.Effect.ValueString()
-			if key == "" && val == "" && effect == "" {
-				continue
-			}
-			taintMap := map[string]interface{}{
-				key: map[string]string{
-					"value":  val,
-					"effect": effect,
-				},
-			}
-			taints = append(taints, taintMap)
 		}
 	}
 
@@ -742,13 +782,21 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 
 	kvMap := func(p *managedKubernetesEnginePool) map[string]string {
 		m := map[string]string{}
-		// Sort KV blocks by key name for consistent comparison
-		sortedKv := sortKVByKey(p.Kv)
-		for _, kv := range sortedKv {
-			k := kv.Name.ValueString()
-			v := kv.Value.ValueString()
-			if k != "" || v != "" {
-				m[k] = v
+		// Treat both null and ListNull as empty map for comparison
+		if !p.Kv.IsNull() && !p.Kv.IsUnknown() && len(p.Kv.Elements()) > 0 {
+			// Sort KV blocks by key name for consistent comparison
+			sortedKv, err := sortKVByKey(p.Kv)
+			if err == nil {
+				for _, kvElement := range sortedKv.Elements() {
+					if kvObj, ok := kvElement.(types.Object); ok {
+						kvAttrs := kvObj.Attributes()
+						k := kvAttrs["name"].(types.String).ValueString()
+						v := kvAttrs["value"].(types.String).ValueString()
+						if k != "" || v != "" {
+							m[k] = v
+						}
+					}
+				}
 			}
 		}
 		return m
@@ -756,14 +804,19 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 
 	taintMap := func(p *managedKubernetesEnginePool) map[string]interface{} {
 		m := map[string]interface{}{}
-		for _, taint := range p.Taints {
-			k := taint.Key.ValueString()
-			v := taint.Value.ValueString()
-			effect := taint.Effect.ValueString()
-			if k != "" || v != "" || effect != "" {
-				m[k] = map[string]string{
-					"value":  v,
-					"effect": effect,
+		if !p.Taints.IsNull() && !p.Taints.IsUnknown() {
+			for _, taintElement := range p.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					k := taintAttrs["key"].(types.String).ValueString()
+					v := taintAttrs["value"].(types.String).ValueString()
+					effect := taintAttrs["effect"].(types.String).ValueString()
+					if k != "" || v != "" || effect != "" {
+						m[k] = map[string]string{
+							"value":  v,
+							"effect": effect,
+						}
+					}
 				}
 			}
 		}
@@ -1037,9 +1090,9 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		}
 
 		// kv
+		labelMap := make(map[string]string)
 		if len(worker.Labels) > 0 {
 			// Convert labels to map for filtering
-			labelMap := make(map[string]string)
 			for _, l := range worker.Labels {
 				switch m := l.(type) {
 				case map[string]interface{}:
@@ -1053,26 +1106,52 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 					}
 				}
 			}
+		}
 
-			// Filter out system-generated labels
-			userDefinedLabels := filterUserDefinedKV(labelMap)
+		// Filter out system-generated labels
+		userDefinedLabels := filterUserDefinedKV(labelMap)
 
-			// Convert back to KV slice
-			kvs := make([]KV, 0)
-			for k, v := range userDefinedLabels {
-				kvs = append(kvs, KV{
-					Name:  types.StringValue(k),
-					Value: types.StringValue(v),
-				})
+		// Convert back to KV list
+		kvElements := make([]attr.Value, 0)
+		for k, v := range userDefinedLabels {
+			kvElements = append(kvElements, types.ObjectValueMust(
+				map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+				map[string]attr.Value{
+					"name":  types.StringValue(k),
+					"value": types.StringValue(v),
+				},
+			))
+		}
+
+		// Always create a list, even if empty
+		kvList := types.ListValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+			},
+			kvElements,
+		)
+
+		// Sort KV pairs if any exist
+		if len(kvElements) > 0 {
+			sortedKv, err := sortKVByKey(kvList)
+			if err == nil {
+				item.Kv = sortedKv
+			} else {
+				item.Kv = kvList
 			}
-			item.Kv = sortKVByKey(kvs)
 		} else {
-			item.Kv = []KV{}
+			item.Kv = kvList
 		}
 
 		// taints
+		taintElements := make([]attr.Value, 0)
 		if len(worker.Taints) > 0 {
-			taints := make([]Taint, 0)
 			for _, t := range worker.Taints {
 				switch taintData := t.(type) {
 				case map[string]interface{}:
@@ -1086,19 +1165,35 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 							if e, exists := taintMap["effect"]; exists {
 								effect = fmt.Sprint(e)
 							}
-							taints = append(taints, Taint{
-								Key:    types.StringValue(key),
-								Value:  types.StringValue(value),
-								Effect: types.StringValue(effect),
-							})
+							taintElements = append(taintElements, types.ObjectValueMust(
+								map[string]attr.Type{
+									"key":    types.StringType,
+									"value":  types.StringType,
+									"effect": types.StringType,
+								},
+								map[string]attr.Value{
+									"key":    types.StringValue(key),
+									"value":  types.StringValue(value),
+									"effect": types.StringValue(effect),
+								},
+							))
 						}
 					}
 				}
 			}
-			item.Taints = taints
-		} else {
-			item.Taints = []Taint{}
 		}
+
+		// Always create a list, even if empty
+		item.Taints = types.ListValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"key":    types.StringType,
+					"value":  types.StringType,
+					"effect": types.StringType,
+				},
+			},
+			taintElements,
+		)
 
 		apiPools = append(apiPools, item)
 	}
@@ -1569,20 +1664,53 @@ func filterUserDefinedKV(kvMap map[string]string) map[string]string {
 }
 
 // sortKVByKey sorts KV blocks by key name to ensure consistent ordering
-func sortKVByKey(kvs []KV) []KV {
-	if len(kvs) <= 1 {
-		return kvs
+func sortKVByKey(kvList types.List) (types.List, error) {
+	if kvList.IsNull() || kvList.IsUnknown() || len(kvList.Elements()) <= 1 {
+		return kvList, nil
 	}
 
-	// Create a copy to avoid modifying the original slice
-	sorted := make([]KV, len(kvs))
-	copy(sorted, kvs)
+	// Convert to KV slice for sorting
+	kvElements := kvList.Elements()
+	kvs := make([]KV, len(kvElements))
+	for i, kvElement := range kvElements {
+		if kvObj, ok := kvElement.(types.Object); ok {
+			kvAttrs := kvObj.Attributes()
+			kvs[i] = KV{
+				Name:  kvAttrs["name"].(types.String),
+				Value: kvAttrs["value"].(types.String),
+			}
+		}
+	}
 
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Name.ValueString() < sorted[j].Name.ValueString()
+	// Sort by key name
+	sort.Slice(kvs, func(i, j int) bool {
+		return kvs[i].Name.ValueString() < kvs[j].Name.ValueString()
 	})
 
-	return sorted
+	// Convert back to types.List
+	sortedElements := make([]attr.Value, len(kvs))
+	for i, kv := range kvs {
+		sortedElements[i] = types.ObjectValueMust(
+			map[string]attr.Type{
+				"name":  types.StringType,
+				"value": types.StringType,
+			},
+			map[string]attr.Value{
+				"name":  kv.Name,
+				"value": kv.Value,
+			},
+		)
+	}
+
+	return types.ListValueMust(
+		types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"name":  types.StringType,
+				"value": types.StringType,
+			},
+		},
+		sortedElements,
+	), nil
 }
 
 func internalReadClusterAutoscaler(ca managedKubernetesEngineDataClusterAutoscaler) (types.Object, diag2.Diagnostics) {
