@@ -94,10 +94,8 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	objectLock := d.Get("object_lock").(bool)
-	if !objectLock {
-		d.Set("object_lock", false)
-	} else {
-		d.Set("object_lock", true)
+	if err := d.Set("object_lock", objectLock); err != nil {
+		return diag.FromErr(fmt.Errorf("failed to set object lock for bucket %s: %w", d.Get("name").(string), err))
 	}
 
 	req := BucketRequest{
