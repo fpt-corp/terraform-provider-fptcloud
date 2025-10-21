@@ -8,7 +8,37 @@ import (
 
 const (
 	regionError = "region %s is not enabled"
+
+	// Pagination constants
+	defaultPageSize = 25
+	maxPageSize     = 999999
+
+	// Bucket configuration constants
+	defaultVersioning        = "Suspended"
+	defaultAcl               = "private"
+	defaultObjectLockEnabled = false
 )
+
+// Common error handling utilities
+func HandleAPIError(operation string, err error) CommonResponse {
+	if err != nil {
+		return CommonResponse{
+			Status:  false,
+			Message: fmt.Sprintf("failed to %s: %v", operation, err),
+		}
+	}
+	return CommonResponse{Status: true}
+}
+
+func HandleJSONError(operation string, err error) CommonResponse {
+	if err != nil {
+		return CommonResponse{
+			Status:  false,
+			Message: fmt.Sprintf("failed to unmarshal %s response: %v", operation, err),
+		}
+	}
+	return CommonResponse{Status: true}
+}
 
 // ObjectStorageService defines the interface for object storage operations
 type ObjectStorageService interface {
@@ -85,17 +115,15 @@ func (s *ObjectStorageServiceImpl) CheckServiceEnable(vpcId string) S3ServiceEna
 }
 
 func (s *ObjectStorageServiceImpl) CreateBucket(req BucketRequest, vpcId, s3ServiceId string) CommonResponse {
-
 	apiPath := common.ApiPath.CreateBucket(vpcId, s3ServiceId)
 	resp, err := s.client.SendPostRequest(apiPath, req)
 	if err != nil {
-		return CommonResponse{Status: false, Message: err.Error()}
+		return HandleAPIError("create bucket", err)
 	}
 
 	var bucket CommonResponse
-	err = json.Unmarshal(resp, &bucket)
-	if err != nil {
-		return CommonResponse{Status: false, Message: err.Error()}
+	if err := json.Unmarshal(resp, &bucket); err != nil {
+		return HandleJSONError("create bucket", err)
 	}
 
 	return CommonResponse{Status: bucket.Status, Message: bucket.Message}
