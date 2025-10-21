@@ -78,7 +78,7 @@ func resourceBucketCorsCreate(ctx context.Context, d *schema.ResourceData, m int
 	vpcId := d.Get("vpc_id").(string)
 	bucketName := d.Get("bucket_name").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
@@ -129,12 +129,12 @@ func resourceBucketCorsRead(_ context.Context, d *schema.ResourceData, m interfa
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	page := 1
-	pageSize := 999999
+	pageSize := maxPageSize
 
 	bucketCorsDetails, _ := service.GetBucketCors(vpcId, s3ServiceDetail.S3ServiceId, bucketName, page, pageSize)
 	if !bucketCorsDetails.Status {
@@ -167,7 +167,7 @@ func resourceBucketCorsDelete(ctx context.Context, d *schema.ResourceData, m int
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}

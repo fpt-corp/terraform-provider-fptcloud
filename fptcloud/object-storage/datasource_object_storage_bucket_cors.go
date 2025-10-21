@@ -92,7 +92,7 @@ func dataSourceBucketCorsRead(ctx context.Context, d *schema.ResourceData, m int
 	client := m.(*common.Client)
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}

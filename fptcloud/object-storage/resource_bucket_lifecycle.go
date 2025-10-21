@@ -95,7 +95,7 @@ func resourceBucketLifeCycleCreate(ctx context.Context, d *schema.ResourceData, 
 	} else {
 		return diag.FromErr(fmt.Errorf("either 'life_cycle_rule' or 'life_cycle_rule_file' must be specified"))
 	}
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
@@ -140,12 +140,12 @@ func resourceBucketLifeCycleRead(_ context.Context, d *schema.ResourceData, m in
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	page := 1
-	pageSize := 999999
+	pageSize := maxPageSize
 
 	lifeCycleResponse := service.GetBucketLifecycle(vpcId, s3ServiceDetail.S3ServiceId, bucketName, page, pageSize)
 	if !lifeCycleResponse.Status {
@@ -178,7 +178,7 @@ func resourceBucketLifeCycleDelete(ctx context.Context, d *schema.ResourceData, 
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}

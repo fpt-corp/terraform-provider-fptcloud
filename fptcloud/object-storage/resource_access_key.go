@@ -63,7 +63,7 @@ func resourceAccessKeyCreate(ctx context.Context, d *schema.ResourceData, m inte
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
@@ -105,7 +105,7 @@ func resourceAccessKeyRead(ctx context.Context, d *schema.ResourceData, m interf
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceId := getServiceEnableRegion(service, vpcId, regionName).S3ServiceId
+	s3ServiceId := GetServiceEnableRegion(service, vpcId, regionName).S3ServiceId
 	resp, err := service.ListAccessKeys(vpcId, s3ServiceId)
 	if err != nil {
 		return diag.FromErr(err)
@@ -141,7 +141,7 @@ func resourceAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m inte
 		accessKeyId = d.Get("access_key_id").(string)
 	}
 
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}

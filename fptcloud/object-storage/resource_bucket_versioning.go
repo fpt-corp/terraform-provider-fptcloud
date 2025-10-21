@@ -55,7 +55,7 @@ func resourceBucketVersioningCreate(ctx context.Context, d *schema.ResourceData,
 	}
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}

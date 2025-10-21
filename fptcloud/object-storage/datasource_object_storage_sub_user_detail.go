@@ -61,7 +61,7 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(objectStorageService, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}

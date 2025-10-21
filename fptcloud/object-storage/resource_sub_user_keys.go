@@ -52,7 +52,7 @@ func resourceSubUserAccessKeyCreate(ctx context.Context, d *schema.ResourceData,
 
 	vpcId := d.Get("vpc_id").(string)
 	subUserId := d.Get("user_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	s3ServiceDetail := GetServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
@@ -79,7 +79,7 @@ func resourceReadUserDetail(ctx context.Context, d *schema.ResourceData, m inter
 	objectStorageService := NewObjectStorageService(client)
 
 	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	s3ServiceDetail := GetServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
@@ -99,7 +99,7 @@ func resourceSubUserAccessKeyDelete(ctx context.Context, d *schema.ResourceData,
 	objectStorageService := NewObjectStorageService(client)
 
 	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	s3ServiceDetail := GetServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}

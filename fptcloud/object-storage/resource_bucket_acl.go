@@ -68,7 +68,7 @@ func resourceBucketAclCreate(ctx context.Context, d *schema.ResourceData, m inte
 	if cannedAcl != "private" && cannedAcl != "public-read" {
 		return diag.Errorf("canned_acl must be either private or public-read, got %s", cannedAcl)
 	}
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
@@ -95,7 +95,7 @@ func resourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interf
 	vpcId := d.Get("vpc_id").(string)
 	bucketName := d.Get("bucket_name").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
