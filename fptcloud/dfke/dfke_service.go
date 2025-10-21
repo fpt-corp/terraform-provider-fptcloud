@@ -31,7 +31,7 @@ func (a *dfkeApiClient) FindEdgeByEdgeGatewayId(ctx context.Context, vpcId strin
 	tflog.Info(ctx, "Resolving edge by gateway ID "+edgeId)
 
 	path := fmt.Sprintf("/v1/vmware/vpc/%s/edge_gateway/list", vpcId)
-	r, err := a.Client.SendGetRequest(path)
+	r, err := a.SendGetRequest(path)
 	if err != nil {
 		return "", err
 	}
