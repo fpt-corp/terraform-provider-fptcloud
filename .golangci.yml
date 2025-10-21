@@ -1,5 +1,6 @@
 # Visit https://golangci-lint.run/ for usage documentation
 # and information on other useful linters
+version: 2
 issues:
   max-issues-per-linter: 50
   max-same-issues: 3
@@ -9,13 +10,13 @@ linters:
   enable:
     - durationcheck
     - errcheck
-    - gofmt
-    - gosimple
+    # gofmt removed: it's a formatter, not a linter
+    # gosimple is part of staticcheck in this version
     - makezero
     - misspell
     - predeclared
     - staticcheck
-    - tenv
+    # tenv not available in this version
     - unconvert
     - unparam
     - unused

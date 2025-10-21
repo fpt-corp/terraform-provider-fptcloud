@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	common "terraform-provider-fptcloud/commons"
+	"time"
+
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"strconv"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 var (
@@ -52,7 +53,7 @@ func (r *resourceDatabaseStatus) Create(ctx context.Context, request resource.Cr
 	// Getting current status of database on the server
 	var timeStart = time.Now()
 	var timeout = 120 * time.Second
-	var err error = errors.New("init error (create)")
+	var err = errors.New("init error (create)")
 	var status = ""
 
 	for time.Since(timeStart) < timeout && err != nil {
@@ -213,7 +214,7 @@ func (r *resourceDatabaseStatus) getDatabaseCurrentStatus(ctx context.Context, d
 		return status, err
 	}
 	if d.Code != "200" {
-		return status, fmt.Errorf("Database not found")
+		return status, fmt.Errorf("database not found")
 	}
 	cluster = d.Data.Cluster
 
@@ -228,7 +229,7 @@ func (r *resourceDatabaseStatus) getDatabaseCurrentStatus(ctx context.Context, d
 		}
 		err = json.Unmarshal(a, &d)
 		if d.Code != "200" {
-			return status, fmt.Errorf("Database not found")
+			return status, fmt.Errorf("database not found")
 		}
 		if err != nil {
 			return "", err
@@ -242,7 +243,7 @@ func (r *resourceDatabaseStatus) getDatabaseCurrentStatus(ctx context.Context, d
 	if cluster.Status == "running" || cluster.Status == "stopped" || cluster.Status == "failed" {
 		status = cluster.Status
 	} else {
-		return "not found", fmt.Errorf("Request time out! Can not provision database")
+		return "not found", fmt.Errorf("request timed out: cannot provision database")
 	}
 
 	return status, nil
@@ -275,7 +276,7 @@ func (r *resourceDatabaseStatus) stopDatabase(ctx context.Context, databaseId st
 		time.Sleep(60 * time.Second)
 	}
 
-	return fmt.Errorf("Request time out! Can not stop database")
+	return fmt.Errorf("request timed out: cannot stop database")
 }
 
 // Start a stopped database
@@ -303,7 +304,7 @@ func (r *resourceDatabaseStatus) startDatabase(ctx context.Context, databaseId s
 		time.Sleep(60 * time.Second)
 	}
 
-	return fmt.Errorf("Request time out! Can not start database")
+	return fmt.Errorf("request timed out: cannot start database")
 }
 
 // Get resource data from API, then update to terraform state
@@ -347,7 +348,7 @@ func (r *resourceDatabaseStatus) internalRead(ctx context.Context, databaseId st
 	}
 
 	if nodeTotal == 0 {
-		return fmt.Errorf("Request time out! Can not provision nodes for database")
+		return fmt.Errorf("request timed out: cannot provision nodes for database")
 	} else {
 		// Update resource status to state
 		state.Id = types.StringValue(cluster.VpcId)

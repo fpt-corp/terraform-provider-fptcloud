@@ -5,6 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	common "terraform-provider-fptcloud/commons"
+	"time"
+
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -13,10 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"strconv"
-	"strings"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 var (
@@ -469,9 +470,9 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 	}
 
 	if status == "failed" {
-		return fmt.Errorf("failed to provision nodes for database! Server error")
+		return fmt.Errorf("failed to provision nodes for database: server error")
 	} else if nodeTotal == 0 {
-		return fmt.Errorf("Request time out! Can not provision nodes for database")
+		return fmt.Errorf("request timed out: cannot provision nodes for database")
 	} else {
 		tflog.Info(ctx, "Provisioned nodes for database successfully!")
 		// Update resource status to state
