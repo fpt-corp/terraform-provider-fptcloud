@@ -51,6 +51,13 @@ func ResourceBucket() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
+			"object_lock": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				ForceNew:    true,
+				Description: "Enable object lock for the bucket. When enabled, objects in the bucket cannot be deleted or overwritten.",
+			},
 			"status": {
 				Type:        schema.TypeBool,
 				Computed:    true,
@@ -86,11 +93,18 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
+	objectLock := d.Get("object_lock").(bool)
+	if !objectLock {
+		d.Set("object_lock", false)
+	} else {
+		d.Set("object_lock", true)
+	}
 
 	req := BucketRequest{
 		Name:       d.Get("name").(string),
 		Versioning: d.Get("versioning").(string),
 		Acl:        d.Get("acl").(string),
+		ObjectLock: objectLock,
 	}
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
