@@ -100,7 +100,7 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 		storageModel.Type = storageType.(string)
 	}
 
-	if !(storageModel.Type == Local || storageModel.Type == External) {
+	if storageModel.Type != Local && storageModel.Type != External {
 		return diag.Errorf("[ERR] Storage type %s not supported", storageModel.Type)
 	}
 

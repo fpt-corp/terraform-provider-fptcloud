@@ -95,7 +95,7 @@ func (x *xplatProvider) Configure(ctx context.Context, request provider.Configur
 	region := os.Getenv("FPTCLOUD_REGION")
 	tenantName := os.Getenv("FPTCLOUD_TENANT_NAME")
 	apiEndpoint := os.Getenv("FPTCLOUD_API_URL")
-	var timeout int = 5
+	var timeout = 5
 
 	if !config.Token.IsNull() {
 		token = config.Token.ValueString()

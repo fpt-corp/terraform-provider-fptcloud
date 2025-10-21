@@ -34,7 +34,7 @@ func init() {
 }
 
 func TestProviderImpl(t *testing.T) {
-	var _ *schema.Provider = fptcloud.Provider()
+	var _ = fptcloud.Provider()
 }
 
 func TestWithConfig(t *testing.T) {

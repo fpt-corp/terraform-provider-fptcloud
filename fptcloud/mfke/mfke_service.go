@@ -20,7 +20,7 @@ func newMfkeApiClient(c *commons.Client) *MfkeApiClient {
 }
 
 func (m *MfkeApiClient) sendGet(requestURL string, infraType string) ([]byte, error) {
-	u := m.Client.PrepareClientURL(requestURL)
+	u := m.PrepareClientURL(requestURL)
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func (m *MfkeApiClient) sendGet(requestURL string, infraType string) ([]byte, er
 }
 
 func (m *MfkeApiClient) sendPost(ctx context.Context, requestURL string, infraType string, params interface{}) ([]byte, error) {
-	u := m.Client.PrepareClientURL(requestURL)
+	u := m.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
 	jsonValue, _ := json.Marshal(params)
@@ -46,7 +46,7 @@ func (m *MfkeApiClient) sendPost(ctx context.Context, requestURL string, infraTy
 }
 
 func (m *MfkeApiClient) sendPatch(ctx context.Context, requestURL string, infraType string, params interface{}) ([]byte, error) {
-	u := m.Client.PrepareClientURL(requestURL)
+	u := m.PrepareClientURL(requestURL)
 
 	// we create a new buffer and encode everything to json to send it in the request
 	jsonValue, _ := json.Marshal(params)
@@ -62,7 +62,7 @@ func (m *MfkeApiClient) sendPatch(ctx context.Context, requestURL string, infraT
 }
 
 func (m *MfkeApiClient) sendDelete(requestURL string, infraType string) ([]byte, error) {
-	u := m.Client.PrepareClientURL(requestURL)
+	u := m.PrepareClientURL(requestURL)
 	req, err := http.NewRequest("DELETE", u.String(), nil)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (m *MfkeApiClient) sendDelete(requestURL string, infraType string) ([]byte,
 }
 
 func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType string) ([]byte, error) {
-	switch m.Client.Region {
+	switch m.Region {
 	case "VN/HAN":
 		request.Header.Set("fpt-region", "hanoi-vn")
 	case "VN/SGN":
@@ -82,9 +82,9 @@ func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType s
 	case "JP/JCSI2":
 		request.Header.Set("fpt-region", "JP/JCSI2")
 	default:
-		request.Header.Set("fpt-region", m.Client.Region)
+		request.Header.Set("fpt-region", m.Region)
 	}
 	request.Header.Set("infra-type", strings.ToUpper(infraType))
 
-	return m.Client.SendRequest(request)
+	return m.SendRequest(request)
 }

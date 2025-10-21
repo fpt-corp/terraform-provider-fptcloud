@@ -16,7 +16,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	var debugMode bool = true
+	var debugMode = true
 
 	flag.BoolVar(
 		&debugMode,
