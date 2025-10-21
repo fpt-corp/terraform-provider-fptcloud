@@ -3,4 +3,5 @@ resource "fptcloud_object_storage_bucket" "test_create_new_bucket" {
   region_name = "your_region_name"
   name        = "test_bucket"
   acl         = "private"
+  object_lock = false
 }

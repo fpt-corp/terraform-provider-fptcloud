@@ -116,8 +116,9 @@ func TestCreateBucketReturnsBucketIDWhenSuccess(t *testing.T) {
 	vpcId := "vpc_id"
 	s3ServiceId := "s3_service_id"
 	bucketRequest := fptcloud_object_storage.BucketRequest{
-		Name: "bucket_name",
-		Acl:  "private",
+		Name:       "bucket_name",
+		Acl:        "private",
+		ObjectLock: false,
 	}
 	r := service.CreateBucket(bucketRequest, vpcId, s3ServiceId)
 	assert.NotNil(t, r)
@@ -137,8 +138,9 @@ func TestCreateBucketReturnsErrorWhenFailed(t *testing.T) {
 	vpcId := "vpc_id"
 	s3ServiceId := "s3_service_id"
 	bucketRequest := fptcloud_object_storage.BucketRequest{
-		Name: "bucket_name",
-		Acl:  "private",
+		Name:       "bucket_name",
+		Acl:        "private",
+		ObjectLock: false,
 	}
 	r := service.CreateBucket(bucketRequest, vpcId, s3ServiceId)
 	assert.NotNil(t, r)

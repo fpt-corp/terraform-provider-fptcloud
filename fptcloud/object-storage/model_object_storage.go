@@ -90,6 +90,7 @@ type BucketRequest struct {
 	Name       string `json:"name"`
 	Versioning string `json:"versioning,omitempty"`
 	Acl        string `json:"acl"`
+	ObjectLock bool   `json:"object_lock"`
 }
 
 type BucketVersioningRequest struct {

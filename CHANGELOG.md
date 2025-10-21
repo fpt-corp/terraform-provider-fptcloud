@@ -1,3 +1,7 @@
+## [0.3.25] - 2025-10-21
+
+- Update: Create bucket with object lock
+
 ## [0.3.24] - 2025-10-14
 
 - Feature: Add support for managing LBaaS resources — load balancer, listener, pool, L7 policy, and L7 rule.
