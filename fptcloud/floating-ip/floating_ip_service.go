@@ -122,7 +122,7 @@ func (s *FloatingIpServiceImpl) ListFloatingIp(vpcId string) (*[]FloatingIp, err
 		return nil, errors.New(response.Message)
 	}
 	if response.Data == nil || len(response.Data.Data) == 0 {
-		return nil, errors.New("Floating ip not found")
+		return nil, errors.New("floating ip not found")
 	}
 
 	return &response.Data.Data, nil

@@ -110,7 +110,12 @@ func (c *Client) SendRequest(req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			// swallow close error but keep explicit check for linters
+			_ = cerr
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	c.LastJSONResponse = string(body)

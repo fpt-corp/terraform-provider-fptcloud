@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	_ "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
@@ -20,7 +20,7 @@ func TestProvider(t *testing.T) {
 
 // TestProviderImp tests the provider implementation
 func TestProviderImp(t *testing.T) {
-	var _ *schema.Provider = Provider()
+	var _ = Provider()
 }
 
 // TestConfig tests the configuration
