@@ -71,7 +71,7 @@ func resourceBucketStaticWebsiteCreate(ctx context.Context, d *schema.ResourceDa
 	regionName := d.Get("region_name").(string)
 	indexDocument := d.Get("index_document_suffix").(string)
 	errorDocument := d.Get("error_document_key").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
@@ -102,7 +102,7 @@ func resourceDeleteBucketStaticWebsite(ctx context.Context, d *schema.ResourceDa
 	bucketName := d.Get("bucket_name").(string)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	s3ServiceDetail := GetServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}

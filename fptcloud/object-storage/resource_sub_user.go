@@ -50,7 +50,7 @@ func resourceSubUserCreate(ctx context.Context, d *schema.ResourceData, m interf
 		UserId: subUserId,
 	}
 
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	s3ServiceDetail := GetServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
@@ -74,7 +74,7 @@ func resourceSubUserDelete(ctx context.Context, d *schema.ResourceData, m interf
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
+	s3ServiceDetail := GetServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
