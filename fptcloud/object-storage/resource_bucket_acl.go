@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func ResourceBucketAcl() *schema.Resource {
@@ -35,10 +36,11 @@ func ResourceBucketAcl() *schema.Resource {
 				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 			"canned_acl": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The Access Control List (ACL) status of the bucket which can be one of the following values: private, public-read, default is private",
-				ForceNew:    true,
+				Type:         schema.TypeString,
+				Required:     true,
+				Description:  "The Access Control List (ACL) status of the bucket which can be one of the following values: private, public-read, default is private",
+				ForceNew:     true,
+				ValidateFunc: validation.StringInSlice([]string{"private", "public-read"}, false),
 			},
 			"apply_objects": {
 				Type:        schema.TypeBool,
@@ -65,9 +67,6 @@ func resourceBucketAclCreate(ctx context.Context, d *schema.ResourceData, m inte
 	regionName := d.Get("region_name").(string)
 	cannedAcl := d.Get("canned_acl").(string)
 	applyObjects := d.Get("apply_objects").(bool)
-	if cannedAcl != "private" && cannedAcl != "public-read" {
-		return diag.Errorf("canned_acl must be either private or public-read, got %s", cannedAcl)
-	}
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
 	if s3ServiceDetail.S3ServiceId == "" {
 		return diag.FromErr(fmt.Errorf(regionError, regionName))

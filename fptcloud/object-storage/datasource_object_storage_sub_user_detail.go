@@ -20,8 +20,8 @@ func DataSourceSubUserDetail() *schema.Resource {
 			},
 			"user_id": {
 				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "The sub-user ID",
+				Required:    true,
+				Description: "The sub-user ID to query",
 			},
 			"arn": {
 				Type:        schema.TypeString,
@@ -59,15 +59,29 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
-	regionName := d.Get("region_name").(string)
 
-	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, regionName)
-	if s3ServiceDetail.S3ServiceId == "" {
-		return diag.FromErr(fmt.Errorf(regionError, regionName))
+	// Get all available regions and find the one with the sub-user
+	serviceEnable := objectStorageService.CheckServiceEnable(vpcId)
+	if serviceEnable.Total == 0 {
+		return diag.FromErr(fmt.Errorf("no S3 services found for VPC %s", vpcId))
 	}
 
 	subUserId := d.Get("user_id").(string)
-	subUser := objectStorageService.DetailSubUser(vpcId, s3ServiceDetail.S3ServiceId, subUserId)
+	var subUser *DetailSubUser
+
+	// Try to find the sub-user in any available region
+	for _, service := range serviceEnable.Data {
+		subUser = objectStorageService.DetailSubUser(vpcId, service.S3ServiceID, subUserId)
+		if subUser != nil && subUser.UserID != "" {
+			break
+		}
+	}
+
+	if subUser == nil {
+		d.SetId("")
+		return diag.Errorf("sub-user with ID %s not found", subUserId)
+	}
+
 	d.SetId(subUser.UserID)
 	if subUser.UserID == "" {
 		d.SetId("")
@@ -77,7 +91,7 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	if err := d.Set("user_id", subUser.UserID); err != nil {
 		return diag.FromErr(err)
 	}
-	if subUser.Arn != nil {
+	if subUser.Arn != "" {
 		if err := d.Set("arn", subUser.Arn); err != nil {
 			return diag.FromErr(err)
 		}
@@ -89,7 +103,7 @@ func dataSourceSubUserDetailRead(ctx context.Context, d *schema.ResourceData, m 
 	if err := d.Set("active", subUser.Active); err != nil {
 		return diag.FromErr(err)
 	}
-	if subUser.CreatedAt != nil {
+	if subUser.CreatedAt != "" {
 		if err := d.Set("created_at", subUser.CreatedAt); err != nil {
 			return diag.FromErr(err)
 		}

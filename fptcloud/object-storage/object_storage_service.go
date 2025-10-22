@@ -236,7 +236,9 @@ func (s *ObjectStorageServiceImpl) CreateBucketCors(vpcId, s3ServiceId, bucketNa
 
 func (s *ObjectStorageServiceImpl) UpdateBucketCors(vpcId, s3ServiceId, bucketName string, cors []map[string]interface{}) CommonResponse {
 	apiPath := common.ApiPath.PutBucketCORS(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendPutRequest(apiPath, cors); err != nil {
+	// Backend expects { "CORSRules": [ ... ] }
+	payload := map[string]interface{}{"CORSRules": cors}
+	if _, err := s.client.SendPutRequest(apiPath, payload); err != nil {
 		return CommonResponse{Status: false, Message: err.Error()}
 	}
 	return CommonResponse{Status: true, Message: "Bucket CORS configuration updated successfully"}
