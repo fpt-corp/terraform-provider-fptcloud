@@ -339,6 +339,19 @@ func TestGetDetailSubUserReturnOkWhenSuccess(t *testing.T) {
 	assert.Equal(t, "SubUserReadWrite", subUser.Role)
 }
 
+func TestGetDetailSubUserReturnNilWhenError(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/s3/s3_service_id/sub-users/nonexistent_user": "",
+	})
+	defer server.Close()
+	service := fptcloud_object_storage.NewObjectStorageService(mockClient)
+	vpcId := "vpc_id"
+	s3ServiceId := "s3_service_id"
+	subUserId := "nonexistent_user"
+	subUser := service.DetailSubUser(vpcId, s3ServiceId, subUserId)
+	assert.Nil(t, subUser, "DetailSubUser should return nil when user is not found")
+}
+
 func TestCreateSubUserAccessKeyReturnsAccessKeyWhenSuccess(t *testing.T) {
 	mockResponse := `{
 		"status": true,

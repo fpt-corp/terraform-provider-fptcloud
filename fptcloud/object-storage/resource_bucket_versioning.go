@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 func ResourceBucketVersioning() *schema.Resource {
@@ -22,10 +23,11 @@ func ResourceBucketVersioning() *schema.Resource {
 				Description: "Name of the bucket",
 			},
 			"versioning_status": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "Status of the versioning, must be Enabled or Suspended",
-				ForceNew:    true, // Marking this field as ForceNew to ensure that the resource is recreated when the value is changed
+				Type:         schema.TypeString,
+				Required:     true,
+				Description:  "Status of the versioning, must be Enabled or Suspended",
+				ForceNew:     true, // Marking this field as ForceNew to ensure that the resource is recreated when the value is changed
+				ValidateFunc: validation.StringInSlice([]string{"Enabled", "Suspended"}, false),
 			},
 			"region_name": {
 				Type:        schema.TypeString,
@@ -50,9 +52,6 @@ func resourceBucketVersioningCreate(ctx context.Context, d *schema.ResourceData,
 	bucketName := d.Get("bucket_name").(string)
 
 	versioningStatus := d.Get("versioning_status").(string)
-	if versioningStatus != "Enabled" && versioningStatus != "Suspended" {
-		return diag.FromErr(fmt.Errorf("versioning status must be Enabled or Suspended"))
-	}
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
 	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)

@@ -8,9 +8,9 @@ type AccessKey struct {
 	Credentials []struct {
 		ID          string `json:"id"`
 		Credentials []struct {
-			AccessKey   string      `json:"accessKey"`
-			Active      bool        `json:"active"`
-			CreatedDate interface{} `json:"createdDate,omitempty"`
+			AccessKey   string `json:"accessKey"`
+			Active      bool   `json:"active"`
+			CreatedDate string `json:"createdDate,omitempty"`
 		} `json:"credentials"`
 	} `json:"credentials"`
 }
@@ -38,7 +38,7 @@ type BucketAclResponse struct {
 }
 
 type BucketCors struct {
-	CorsRules []CorsRule `json:"CORSRules"`
+	CorsRules []CorsRule `json:"cors_rules"`
 }
 
 type BucketCorsResponse struct {
@@ -89,8 +89,8 @@ type BucketPolicyResponse struct {
 type BucketRequest struct {
 	Name       string `json:"name"`
 	Versioning string `json:"versioning,omitempty"`
-	Acl        string `json:"acl"`
-	ObjectLock bool   `json:"object_lock"`
+	Acl        string `json:"acl,omitempty"`
+	ObjectLock bool   `json:"object_lock,omitempty"`
 }
 
 type BucketVersioningRequest struct {
@@ -150,20 +150,20 @@ type CreateAccessKeyResponse struct {
 	Status     bool   `json:"status"`
 	Message    string `json:"message,omitempty"`
 	Credential struct {
-		AccessKey   string      `json:"accessKey"`
-		SecretKey   string      `json:"secretKey"`
-		Active      interface{} `json:"active"`
-		CreatedDate interface{} `json:"createdDate,omitempty"`
+		AccessKey   string `json:"accessKey"`
+		SecretKey   string `json:"secretKey"`
+		Active      bool   `json:"active,omitempty"`
+		CreatedDate string `json:"createdDate,omitempty"`
 	} `json:"credential,omitempty"`
 }
 
 type DetailSubUser struct {
-	UserID     string      `json:"user_id"`
-	Arn        interface{} `json:"arn,omitempty"`
-	Active     bool        `json:"active"`
-	Role       string      `json:"role"`
-	CreatedAt  interface{} `json:"created_at,omitempty"`
-	AccessKeys []string    `json:"access_keys"`
+	UserID     string   `json:"user_id"`
+	Arn        string   `json:"arn,omitempty"`
+	Active     bool     `json:"active"`
+	Role       string   `json:"role"`
+	CreatedAt  string   `json:"created_at,omitempty"`
+	AccessKeys []string `json:"access_keys"`
 }
 
 type Expiration struct {
@@ -206,25 +206,25 @@ type S3BucketLifecycleConfig struct {
 
 type S3ServiceEnableResponse struct {
 	Data []struct {
-		S3ServiceName      string      `json:"s3_service_name"`
-		S3ServiceID        string      `json:"s3_service_id"`
-		S3Platform         string      `json:"s3_platform"`
-		DefaultUser        interface{} `json:"default_user,omitempty"`
-		MigrateQuota       int         `json:"migrate_quota"`
-		SyncQuota          int         `json:"sync_quota"`
-		RgwTotalNodes      int         `json:"rgw_total_nodes,omitempty"`
-		RgwUserActiveNodes int         `json:"rgw_user_active_nodes,omitempty"`
-		HasUnusualConfig   interface{} `json:"has_unusual_config,omitempty"`
+		S3ServiceName      string `json:"s3_service_name"`
+		S3ServiceID        string `json:"s3_service_id"`
+		S3Platform         string `json:"s3_platform"`
+		DefaultUser        string `json:"default_user,omitempty"`
+		MigrateQuota       int    `json:"migrate_quota"`
+		SyncQuota          int    `json:"sync_quota"`
+		RgwTotalNodes      int    `json:"rgw_total_nodes,omitempty"`
+		RgwUserActiveNodes int    `json:"rgw_user_active_nodes,omitempty"`
+		HasUnusualConfig   bool   `json:"has_unusual_config,omitempty"`
 	} `json:"data"`
 	Total int `json:"total"`
 }
 
 type Statement struct {
-	Sid       string                 `json:"Sid"`
-	Effect    string                 `json:"Effect"`
-	Principal map[string]interface{} `json:"Principal"`
-	Action    []string               `json:"Action"`
-	Resource  []string               `json:"Resource"`
+	Sid       string   `json:"Sid"`
+	Effect    string   `json:"Effect"`
+	Principal string   `json:"Principal"`
+	Action    []string `json:"Action"`
+	Resource  []string `json:"Resource"`
 }
 
 type SubUser struct {
@@ -236,10 +236,10 @@ type SubUserCreateKeyResponse struct {
 	Status     bool   `json:"status"`
 	Message    string `json:"message,omitempty"`
 	Credential struct {
-		AccessKey   string      `json:"accessKey,omitempty"`
-		SecretKey   string      `json:"secretKey,omitempty"`
-		Active      interface{} `json:"active,omitempty"`
-		CreatedDate interface{} `json:"createdDate,omitempty"`
+		AccessKey   string `json:"accessKey,omitempty"`
+		SecretKey   string `json:"secretKey,omitempty"`
+		Active      bool   `json:"active,omitempty"`
+		CreatedDate string `json:"createdDate,omitempty"`
 	} `json:"credential,omitempty"`
 }
 
@@ -252,12 +252,12 @@ type SubUserCreateRequest struct {
 
 type SubUserListResponse struct {
 	SubUsers []struct {
-		UserID     string      `json:"user_id"`
-		Arn        string      `json:"arn"`
-		Active     bool        `json:"active"`
-		Role       string      `json:"role"`
-		CreatedAt  interface{} `json:"created_at,omitempty"`
-		AccessKeys interface{} `json:"access_keys,omitempty"`
+		UserID     string   `json:"user_id"`
+		Arn        string   `json:"arn"`
+		Active     bool     `json:"active"`
+		Role       string   `json:"role"`
+		CreatedAt  string   `json:"created_at,omitempty"`
+		AccessKeys []string `json:"access_keys,omitempty"`
 	} `json:"sub_users"`
 	Total int `json:"total"`
 }

@@ -1,3 +1,7 @@
+## [0.3.26] - 2025-10-22
+
+- Fix: Bucket configuration, sub user resource.
+
 ## [0.3.25] - 2025-10-21
 
 - Update: Create bucket with object lock

@@ -17,6 +17,7 @@ func ResourceBucketLifeCycle() *schema.Resource {
 		UpdateContext: nil,
 		DeleteContext: resourceBucketLifeCycleDelete,
 		ReadContext:   resourceBucketLifeCycleRead,
+		CustomizeDiff: customizeBucketLifecycleDiff,
 		Schema: map[string]*schema.Schema{
 			"vpc_id": {
 				Type:        schema.TypeString,
@@ -69,6 +70,35 @@ func ResourceBucketLifeCycle() *schema.Resource {
 			},
 		},
 	}
+}
+
+// customizeBucketLifecycleDiff performs plan-time validation for lifecycle rule JSON
+// Ensures a valid JSON is provided and contains a non-empty ID. Also validates
+// Expiration fields do not conflict (Days vs ExpiredObjectDeleteMarker).
+func customizeBucketLifecycleDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	var lifecycleRuleContent string
+	if v, ok := d.GetOk("life_cycle_rule"); ok {
+		lifecycleRuleContent = v.(string)
+	} else if v, ok := d.GetOk("life_cycle_rule_file"); ok {
+		lifecycleRuleContent = v.(string)
+	} else {
+		// Nothing to validate if neither is provided (Terraform may compute later)
+		return nil
+	}
+
+	// Parse JSON into typed struct for stronger validation
+	jsonMap, err := parseLifeCycleData(lifecycleRuleContent)
+	if err != nil {
+		return fmt.Errorf("life_cycle_rule must be valid JSON: %w", err)
+	}
+	if jsonMap.ID == "" {
+		return fmt.Errorf("life_cycle_rule must include non-empty ID")
+	}
+	if jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
+		return fmt.Errorf("Expiration.Days and Expiration.ExpiredObjectDeleteMarker cannot be set at the same time")
+	}
+
+	return nil
 }
 func parseLifeCycleData(lifeCycleData string) (S3BucketLifecycleConfig, error) {
 	var jsonMap S3BucketLifecycleConfig
@@ -154,7 +184,7 @@ func resourceBucketLifeCycleRead(_ context.Context, d *schema.ResourceData, m in
 	d.SetId(bucketName)
 	var formattedData []interface{}
 	if lifeCycleResponse.Total == 0 {
-		if err := d.Set("life_cycle_rules", make([]interface{}, 0)); err != nil {
+		if err := d.Set("rules", make([]interface{}, 0)); err != nil {
 			d.SetId("")
 			return diag.FromErr(err)
 		}
@@ -199,9 +229,9 @@ func resourceBucketLifeCycleDelete(ctx context.Context, d *schema.ResourceData, 
 
 	payload := map[string]interface{}{
 		"AbortIncompleteMultipartUpload": map[string]interface{}{"DaysAfterInitiation": jsonMap.AbortIncompleteMultipartUpload.DaysAfterInitiation},
-		"OrgID":                          jsonMap.ID,
 		"Status":                         "Enabled",
 		"ID":                             jsonMap.ID,
+		"OrgID":                          jsonMap.ID, // Portal need both ID and OrgID
 		"Filter":                         map[string]interface{}{"Prefix": jsonMap.Filter.Prefix},
 		"NoncurrentVersionExpiration":    map[string]interface{}{"NoncurrentDays": jsonMap.NoncurrentVersionExpiration.NoncurrentDays},
 	}
