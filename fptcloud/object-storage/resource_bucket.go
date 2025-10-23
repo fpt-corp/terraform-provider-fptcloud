@@ -96,23 +96,13 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	client := m.(*common.Client)
 	objectStorageService := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
-	objectLock := d.Get("object_lock").(bool)
 	versioning := d.Get("versioning").(string)
-
-	// Validate object lock and versioning constraints
-	if objectLock && versioning == "Suspended" {
-		return diag.FromErr(fmt.Errorf("object lock cannot be enabled when versioning is suspended. Object lock requires versioning to be enabled"))
-	}
-
-	if err := d.Set("object_lock", objectLock); err != nil {
-		return diag.FromErr(fmt.Errorf("failed to set object lock for bucket %s: %w", d.Get("name").(string), err))
-	}
 
 	req := BucketRequest{
 		Name:       d.Get("name").(string),
 		Versioning: versioning,
 		Acl:        d.Get("acl").(string),
-		ObjectLock: objectLock,
+		ObjectLock: true,
 	}
 	s3ServiceDetail := getServiceEnableRegion(objectStorageService, vpcId, d.Get("region_name").(string))
 	if s3ServiceDetail.S3ServiceId == "" {
