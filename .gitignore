@@ -40,3 +40,8 @@ go.work
 
 # main.tf file to test
 main.tf
+.env
+test.sh
+tf.sh
+.specstory/**
+*.sh

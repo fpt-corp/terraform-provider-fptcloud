@@ -181,25 +181,31 @@ func resourceBucketCorsDelete(ctx context.Context, d *schema.ResourceData, m int
 	} else {
 		return diag.FromErr(fmt.Errorf("either 'cors_config' or 'cors_config_file' must be specified"))
 	}
-	var jsonMap []CorsRule
-	err := json.Unmarshal([]byte(corsConfigData), &jsonMap)
-	if err != nil {
-		return diag.FromErr(err)
+	var jsonList []CorsRule
+	// Accept both array and single object for convenience
+	if err := json.Unmarshal([]byte(corsConfigData), &jsonList); err != nil {
+		// try single object fallback
+		var single CorsRule
+		if err2 := json.Unmarshal([]byte(corsConfigData), &single); err2 != nil {
+			return diag.FromErr(err)
+		}
+		jsonList = []CorsRule{single}
 	}
 	var payload []map[string]interface{}
-	for _, corsRule := range jsonMap {
-		payload := map[string]interface{}{
+	for _, corsRule := range jsonList {
+		rulePayload := map[string]interface{}{
 			"AllowedOrigins": corsRule.AllowedOrigins,
 			"AllowedMethods": corsRule.AllowedMethods,
 			"ID":             corsRule.ID,
 			"MaxAgeSeconds":  corsRule.MaxAgeSeconds,
 		}
 		if len(corsRule.AllowedHeaders) > 0 {
-			payload["AllowedHeaders"] = corsRule.AllowedHeaders
+			rulePayload["AllowedHeaders"] = corsRule.AllowedHeaders
 		}
 		if len(corsRule.ExposeHeaders) > 0 {
-			payload["ExposeHeaders"] = corsRule.ExposeHeaders
+			rulePayload["ExposeHeaders"] = corsRule.ExposeHeaders
 		}
+		payload = append(payload, rulePayload)
 	}
 	r := service.UpdateBucketCors(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 	if !r.Status {

@@ -85,3 +85,11 @@ func GetCommaSeparatedAllowedKeys(allowedKeys []string) string {
 	sort.Strings(res)
 	return strings.Join(res, ", ")
 }
+
+func ParseBoolSafe(s string) bool {
+	b, err := strconv.ParseBool(s)
+	if err != nil {
+		return false
+	}
+	return b
+}
