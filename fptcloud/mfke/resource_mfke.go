@@ -106,11 +106,22 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 	// Check service account before creating
 	serviceAccountEnabled, err := r.mfkeClient.checkServiceAccount(ctx, state.VpcId.ValueString(), platform)
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error checking service account", err.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error checking service account, please try again", err.Error()))
 		return
 	}
 	if !serviceAccountEnabled {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("VPC does not have service account", "VPC does not have service account"))
+		return
+	}
+
+	// Check quota resource before creating
+	quotaCheckPassed, err := r.mfkeClient.checkQuotaResource(ctx, state.VpcId.ValueString(), platform)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error checking quota resource", err.Error()))
+		return
+	}
+	if !quotaCheckPassed {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Quota resource check failed", "Quota resource check failed"))
 		return
 	}
 

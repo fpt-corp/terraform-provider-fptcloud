@@ -385,3 +385,8 @@ type ACLRule struct {
 	Cidrs  []string `json:"cidrs"`
 	Type   string   `json:"type"`
 }
+
+type quotaResourceResponse struct {
+	StatusCode int      `json:"status_code"`
+	Mess       []string `json:"mess"`
+}
