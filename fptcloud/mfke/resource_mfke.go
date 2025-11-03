@@ -103,6 +103,17 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 		return
 	}
 
+	// Check service account before creating
+	serviceAccountEnabled, err := r.mfkeClient.checkServiceAccount(ctx, state.VpcId.ValueString(), platform)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error checking service account", err.Error()))
+		return
+	}
+	if !serviceAccountEnabled {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("VPC does not have service account", "VPC does not have service account"))
+		return
+	}
+
 	path := commons.ApiPath.ManagedFKECreate(state.VpcId.ValueString(), strings.ToLower(platform))
 	tflog.Info(ctx, "Calling path "+path)
 	a, err := r.mfkeClient.sendPost(ctx, path, platform, f)

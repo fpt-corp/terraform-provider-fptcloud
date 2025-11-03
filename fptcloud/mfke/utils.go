@@ -1832,3 +1832,44 @@ func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.
 		accessMap,
 	)
 }
+
+func (m *MfkeApiClient) checkServiceAccount(ctx context.Context, vpcId string, platform string) (bool, error) {
+	path := commons.ApiPath.ManagedFKECheckEnableServiceAccount(vpcId, strings.ToLower(platform))
+
+	maxRetries := 10
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		tflog.Info(ctx, fmt.Sprintf("Checking service account (attempt %d/%d): %s", attempt, maxRetries, path))
+
+		_, err := m.sendGet(path, strings.ToUpper(platform))
+		if err == nil {
+			// No error means status code is 200, service account is enabled
+			tflog.Info(ctx, "Service account check passed")
+			return true, nil
+		}
+
+		// Check if it's an HTTPError to get status code
+		var httpErr commons.HTTPError
+		if errors.As(err, &httpErr) {
+			// If status code is 200 (shouldn't happen, but just in case)
+			if httpErr.Code == 200 {
+				tflog.Info(ctx, "Service account check passed")
+				return true, nil
+			}
+			// Non-200 status code
+			lastErr = fmt.Errorf("service account check returned status code %d", httpErr.Code)
+		} else {
+			// Network or other error
+			lastErr = err
+		}
+
+		if attempt < maxRetries {
+			tflog.Info(ctx, "Service account check failed, retrying in 1 second...")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+	}
+
+	return false, lastErr
+}
