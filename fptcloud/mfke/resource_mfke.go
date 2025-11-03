@@ -9,7 +9,6 @@ import (
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -54,77 +53,13 @@ func (r *resourceManagedKubernetesEngine) Schema(_ context.Context, _ resource.S
 		Computed: true,
 	}
 
-	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
-		Description: "Configuration for cluster autoscaler.",
-		Optional:    true,
-		Computed:    true,
-		AttributeTypes: map[string]attr.Type{
-			"is_enable_auto_scaling":           types.BoolType,
-			"scale_down_delay_after_add":       types.Int64Type,
-			"scale_down_delay_after_delete":    types.Int64Type,
-			"scale_down_delay_after_failure":   types.Int64Type,
-			"scale_down_unneeded_time":         types.Int64Type,
-			"scale_down_utilization_threshold": types.Float64Type,
-			"scan_interval":                    types.Int64Type,
-			"expander":                         types.StringType,
-		},
-	}
-
-	topLevelAttributes["cluster_endpoint_access"] = schema.ObjectAttribute{
-		Description: "Configuration for cluster endpoint access.",
-		Optional:    true,
-		Computed:    true,
-		AttributeTypes: map[string]attr.Type{
-			"type":       types.StringType,
-			"allow_cidr": types.ListType{ElemType: types.StringType},
-		},
-	}
-
 	response.Schema = schema.Schema{
 		Description: "Manage managed FKE clusters.",
 		Attributes:  topLevelAttributes,
 		Blocks: map[string]schema.Block{
-			"hibernation_schedules": schema.ListNestedBlock{
-				Description: "List of hibernation schedules for the cluster. Each schedule specifies a start and end time in cron format.",
-				NestedObject: schema.NestedBlockObject{
-					Attributes: map[string]schema.Attribute{
-						"start": schema.StringAttribute{
-							Description: "Cron format for the start of the hibernation window (e.g., '0 23 * * 2,4').",
-							Required:    true,
-						},
-						"end": schema.StringAttribute{
-							Description: "Cron format for the end of the hibernation window (e.g., '0 7 * * 2,4').",
-							Required:    true,
-						},
-						"location": schema.StringAttribute{
-							Description: "The timezone for the schedule (e.g., 'Asia/Bangkok').",
-							Required:    true,
-						},
-					},
-				},
-			},
 			"pools": schema.ListNestedBlock{
 				NestedObject: schema.NestedBlockObject{
 					Attributes: poolAttributes,
-					Blocks: map[string]schema.Block{
-						"kv": schema.ListNestedBlock{
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"name":  schema.StringAttribute{Required: true, Description: descriptions["name"]},
-									"value": schema.StringAttribute{Required: true, Description: descriptions["kv"]},
-								},
-							},
-						},
-						"taints": schema.ListNestedBlock{
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"key":    schema.StringAttribute{Required: true, Description: "The taint key"},
-									"value":  schema.StringAttribute{Required: true, Description: "The taint value"},
-									"effect": schema.StringAttribute{Required: true, Description: "The taint effect (NoSchedule, NoExecute, PreferNoSchedule)"},
-								},
-							},
-						},
-					},
 				},
 			},
 		},
@@ -165,6 +100,17 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 
 	if err := validateNetwork(&state, platform); err != nil {
 		response.Diagnostics.Append(err)
+		return
+	}
+
+	// Check service account before creating
+	serviceAccountEnabled, err := r.mfkeClient.checkServiceAccount(ctx, state.VpcId.ValueString(), platform)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error checking service account", err.Error()))
+		return
+	}
+	if !serviceAccountEnabled {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("VPC does not have service account", "VPC does not have service account"))
 		return
 	}
 

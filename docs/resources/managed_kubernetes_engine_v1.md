@@ -65,14 +65,16 @@ resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
     gpu_driver_version    = "default"
     
     # Required KV labels for GPU pools
-    kv {
-      name  = "nvidia.com/mig.config"
-      value = "all-1g.6gb"  # One of: "all-1g.6gb", "all-2g.12gb", "all-4g.24gb", ...
-    }
-    kv {
-      name  = "worker.fptcloud/type"
-      value = "gpu"
-    }
+    kv = [
+      {
+        name  = "nvidia.com/mig.config"
+        value = "all-1g.6gb"  # One of: "all-1g.6gb", "all-2g.12gb", "all-4g.24gb", ...
+      },
+      {
+        name  = "worker.fptcloud/type"
+        value = "gpu"
+      }
+    ]
   }
 }
 ```
@@ -169,31 +171,175 @@ pools {
   # ... other pool configuration ...
   
   # KV labels for node identification and scheduling
-  kv {
-    name  = "environment"
-    value = "production"
-  }
-  kv {
-    name  = "zone"
-    value = "us-east-1a"
-  }
+  kv = [
+    {
+      name  = "environment"
+      value = "production"
+    },
+    {
+      name  = "zone"
+      value = "us-east-1a"
+    }
+  ]
 }
 
 pools {
   # ... other pool configuration ...
   
   # Taints for workload isolation
-  taints {
-    key    = "dedicated"
-    value  = "gpu-workloads"
-    effect = "NoSchedule"
+  taints = [
+    {
+      key    = "dedicated"
+      value  = "gpu-workloads"
+      effect = "NoSchedule"
+    },
+    {
+      key    = "spot-instance"
+      value  = "true"
+      effect = "PreferNoSchedule"
+    }
+  ]
+}
+```
+
+### Complete Example with All Fields
+```hcl
+resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
+  # Required fields
+  vpc_id       = data.fptcloud_vpc.vpc.id
+  cluster_name = "complete-cluster-example"
+  network_id   = data.fptcloud_subnet.subnet.id
+
+  # Optional cluster configuration
+  k8s_version     = "1.31.4"
+  purpose         = "private"
+  network_type    = "calico"
+  network_overlay = "CrossSubnet"
+  is_running      = true
+
+  # Network configuration
+  pod_network     = "100.96.0.0"
+  pod_prefix      = "11"
+  service_network = "100.64.0.0"
+  service_prefix  = "13"
+  k8s_max_pod     = 110
+
+  # Edge Gateway configuration (for VMW operation clusters)
+  edge_gateway_id     = "urn:vcloud:gateway:12345678-1234-1234-1234-123456789012"
+  edge_gateway_name   = "my-edge-gateway"
+  internal_subnet_lb  = "10.0.1.0/24"
+
+  # Auto upgrade configuration
+  is_enable_auto_upgrade = true
+  auto_upgrade_expression = ["0 2 * * 0"]  # Every Sunday at 2 AM
+  auto_upgrade_timezone   = "Asia/Ho_Chi_Minh"
+
+  # Hibernation schedules
+  hibernation_schedules = [
+    {
+      start    = "0 23 * * 1-5"  # Weekdays at 11 PM
+      end      = "0 7 * * 1-5"   # Weekdays at 7 AM
+      location = "Asia/Ho_Chi_Minh"
+    },
+    {
+      start    = "0 22 * * 6"    # Saturday at 10 PM
+      end      = "0 8 * * 0"     # Sunday at 8 AM
+      location = "Asia/Ho_Chi_Minh"
+    }
+  ]
+
+  # Cluster autoscaler configuration
+  cluster_autoscaler = {
+    is_enable_auto_scaling           = true
+    scale_down_delay_after_add       = 3600
+    scale_down_delay_after_delete    = 0
+    scale_down_delay_after_failure   = 180
+    scale_down_unneeded_time         = 1800
+    scale_down_utilization_threshold = 0.5
+    scan_interval                    = 10
+    expander                        = "least-waste"
   }
-  
-  # Taints for spot instances
-  taints {
-    key    = "spot-instance"
-    value  = "true"
-    effect = "PreferNoSchedule"
+
+  # Cluster endpoint access configuration
+  cluster_endpoint_access = {
+    type       = "private"
+    allow_cidr = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  }
+
+  # Base worker pool
+  pools {
+    name             = "base-pool"
+    storage_profile  = "Premium-SSD"
+    worker_type      = data.fptcloud_flavor.cpu_flavor.flavors[0].id
+    worker_disk_size = 40
+    scale_min        = 1
+    scale_max        = 3
+    worker_base      = true
+    network_id       = data.fptcloud_subnet.subnet.id
+    network_name     = data.fptcloud_subnet.subnet.name
+    container_runtime = "containerd"
+    is_enable_auto_repair = true
+    tags = ["tag_ID1", "tag_ID2"]
+
+    # KV labels for base pool
+    kv = [
+      {
+        name  = "environment"
+        value = "production"
+      },
+      {
+        name  = "role"
+        value = "base"
+      }
+    ]
+
+    # Note: Base pools cannot have taints (worker_base = true)
+  }
+
+  # GPU worker pool
+  pools {
+    name             = "gpu-pool"
+    storage_profile  = "Premium-SSD"
+    worker_type      = data.fptcloud_flavor.gpu_flavor.flavors[0].id
+    worker_disk_size = 100
+    scale_min        = 1
+    scale_max        = 5
+    worker_base      = false
+    container_runtime = "containerd"
+    is_enable_auto_repair = true
+
+    # GPU configuration
+    vgpu_id               = data.fptcloud_vgpu.vgpu.vgpus[0].id
+    max_client            = 4
+    gpu_sharing_client    = "timeSlicing"
+    driver_installation_type = "pre-install"
+    gpu_driver_version    = "default"
+
+    # Required KV labels for GPU pools
+    kv = [
+      {
+        name  = "nvidia.com/mig.config"
+        value = "all-1g.6gb"
+      },
+      {
+        name  = "worker.fptcloud/type"
+        value = "gpu"
+      }
+    ]
+
+    # Taints for GPU workloads
+    taints = [
+      {
+        key    = "nvidia.com/gpu"
+        value  = "true"
+        effect = "NoSchedule"
+      },
+      {
+        key    = "workload-type"
+        value  = "gpu-intensive"
+        effect = "NoSchedule"
+      }
+    ]
   }
 }
 ```
@@ -298,10 +444,10 @@ The `pools` block supports the following arguments. At least one pool is require
 * `gpu_driver_version` - (Optional) GPU driver version: `"default"` or `"latest"`. Only validated when `vgpu_id` is set. Default: `""`
 
 **Labels and Taints:**
-* `kv` - (Optional) Key-value labels for the pool (block, can be repeated)
+* `kv` - (Optional) Key-value labels for the pool (list of objects)
   - `name` - (Required) Label key
   - `value` - (Required) Label value
-* `taints` - (Optional) Kubernetes taints for the pool (block, can be repeated)
+* `taints` - (Optional) Kubernetes taints for the pool (list of objects)
   - `key` - (Required) Taint key
   - `value` - (Required) Taint value
   - `effect` - (Required) Taint effect: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"`

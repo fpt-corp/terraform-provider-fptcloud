@@ -50,22 +50,25 @@ var ApiPath = struct {
 	DatabaseStop   func() string
 	DatabaseStart  func() string
 
+	// Dedicated FKE
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
 	DedicatedFKEGet            func(vpcId string, clusterId string) string
 	DedicatedFKEUpgradeVersion func(vpcId string, clusterId string) string
 	DedicatedFKEManagement     func(vpcId string, clusterId string) string
 
-	ManagedFKEList                    func(vpcId string, page int, pageSize int, infraType string) string
-	ManagedFKEGet                     func(vpcId string, platform string, clusterId string) string
-	ManagedFKEDelete                  func(vpcId string, platform string, clusterName string) string
-	ManagedFKECreate                  func(vpcId string, platform string) string
-	ManagedFKEHibernate               func(vpcId string, platform string, clusterId string, isWakeup bool) string
-	ManagedFKEHibernationSchedules    func(vpcId string, platform string, clusterId string) string
-	ManagedFKEAutoUpgradeVersion      func(vpcId string, platform string, clusterId string) string
-	ManagedFKEConfigWorker            func(vpcId string, platform string, clusterId string) string
-	ManagedFKEUpdateEndpointCIDR      func(vpcId string, platform string, clusterId string) string
-	ManagedFKEUpdateClusterAutoscaler func(vpcId string, platform string, clusterId string) string
-	GetFKEOSVersion                   func(vpcId string, platform string) string
+	// Managed FKE
+	ManagedFKEList                      func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedFKEGet                       func(vpcId string, platform string, clusterId string) string
+	ManagedFKEDelete                    func(vpcId string, platform string, clusterName string) string
+	ManagedFKECreate                    func(vpcId string, platform string) string
+	ManagedFKEUpgradeVersion            func(vpcId string, platform string, clusterId string, targetVersion string) string
+	ManagedFKEHibernate                 func(vpcId string, platform string, clusterId string, isWakeup bool) string
+	ManagedFKEHibernationSchedules      func(vpcId string, platform string, clusterId string) string
+	ManagedFKEAutoUpgradeVersion        func(vpcId string, platform string, clusterId string) string
+	ManagedFKEConfigWorker              func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateEndpointCIDR        func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateClusterAutoscaler   func(vpcId string, platform string, clusterId string) string
+	ManagedFKECheckEnableServiceAccount func(vpcId string, platform string) string
 
 	// GPU
 	GetGPUInfo func(vpcId string) string
@@ -316,6 +319,12 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
+	ManagedFKEUpgradeVersion: func(vpcId string, platform string, clusterId string, targetVersion string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			vpcId, platform, clusterId, targetVersion,
+		)
+	},
 	ManagedFKEHibernate: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
 		action := "hibernate"
 		if isWakeup {
@@ -360,6 +369,14 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
+
+	ManagedFKECheckEnableServiceAccount: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/check-enable-service-account",
+			vpcId, platform,
+		)
+	},
+
 	GetGPUInfo: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vgpu/list?vpc_id=%s", vpcId)
 	},

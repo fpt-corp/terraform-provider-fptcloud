@@ -1,3 +1,9 @@
+## [0.3.29] - 2025-11-03
+
+- Refactor: Refactor KV and taints type of M-FKE.
+- Update: Update resource M-FKE
+- Feat: Add check service account M-FKE
+
 ## [0.3.26] - 2025-10-22
 
 - Fix: Bucket configuration, sub user resource.

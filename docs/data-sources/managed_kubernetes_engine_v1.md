@@ -72,7 +72,7 @@ Optional:
 - `gpu_driver_version` (String)
 - `gpu_sharing_client` (String) GPU sharing client (optional)
 - `is_enable_auto_repair` (Boolean) Whether to enable auto-repair
-- `kv` (List of Map of String) Label for the pool (optional)
+- `kv` (List of Object) Label for the pool (optional)
 - `max_client` (Number) Maximum number of clients (optional)
 - `network_name` (String) Subnet name
 - `tags` (String) Tags for the worker pool (optional)

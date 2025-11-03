@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"terraform-provider-fptcloud/commons"
-	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	"time"
@@ -19,11 +18,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
-// getNetworkInfoByPlatform network_id, network name, error
+// getNetworkInfoByPlatform network_id, network name
 func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId, platform string, w *managedKubernetesEngineDataWorker, data *managedKubernetesEngineData) (string, string, error) {
 	if strings.ToLower(platform) == "vmw" {
 		// For VMW platform, try to get network ID from worker's network name
@@ -63,6 +63,7 @@ func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.Subnet
 	}
 }
 
+// getNetworkByIdOrName network_id, network name
 func getNetworkByIdOrName(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId string, networkName string, networkId string) (string, string, error) {
 	if networkName != "" && networkId != "" {
 		return "", "", errors.New("only specify network name or id")
@@ -116,7 +117,6 @@ func TopFields() map[string]schema.Attribute {
 	optionalInts := []string{"k8s_max_pod"}
 	// Optional bool fields
 	optionalBools := []string{"is_enable_auto_upgrade"}
-	// Special handling for is_running - it should be user-configurable for hibernation/wake-up
 	// Optional list fields
 	optionalLists := []string{"auto_upgrade_expression"}
 
@@ -155,12 +155,6 @@ func TopFields() map[string]schema.Attribute {
 			Description: descriptions[attribute],
 		}
 	}
-	// Special handling for is_running - make it computed to avoid inconsistent state
-	topLevelAttributes["is_running"] = schema.BoolAttribute{
-		Optional:    true,
-		Computed:    true,
-		Description: descriptions["is_running"],
-	}
 	for _, attribute := range optionalLists {
 		topLevelAttributes[attribute] = schema.ListAttribute{
 			Optional:    true,
@@ -168,6 +162,52 @@ func TopFields() map[string]schema.Attribute {
 			ElementType: types.StringType,
 			Description: descriptions[attribute],
 		}
+	}
+
+	// Special handling for is_running - not computed, with default value
+	topLevelAttributes["is_running"] = schema.BoolAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: descriptions["is_running"],
+		Default:     booldefault.StaticBool(true),
+	}
+
+	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
+		Description: "Configuration for cluster autoscaler.",
+		Optional:    true,
+		Computed:    true,
+		AttributeTypes: map[string]attr.Type{
+			"is_enable_auto_scaling":           types.BoolType,
+			"scale_down_delay_after_add":       types.Int64Type,
+			"scale_down_delay_after_delete":    types.Int64Type,
+			"scale_down_delay_after_failure":   types.Int64Type,
+			"scale_down_unneeded_time":         types.Int64Type,
+			"scale_down_utilization_threshold": types.Float64Type,
+			"scan_interval":                    types.Int64Type,
+			"expander":                         types.StringType,
+		},
+	}
+
+	topLevelAttributes["cluster_endpoint_access"] = schema.ObjectAttribute{
+		Description: "Configuration for cluster endpoint access.",
+		Optional:    true,
+		Computed:    true,
+		AttributeTypes: map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+	}
+
+	topLevelAttributes["hibernation_schedules"] = schema.ListAttribute{
+		Description: "List of hibernation schedules for the cluster. Each schedule specifies a start and end time in cron format.",
+		Optional:    true,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		},
 	}
 
 	return topLevelAttributes
@@ -241,16 +281,39 @@ func PoolFields() map[string]schema.Attribute {
 		}
 	}
 
+	poolLevelAttributes["kv"] = schema.ListAttribute{
+		Optional: true,
+		Computed: true,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"name":  types.StringType,
+				"value": types.StringType,
+			},
+		},
+	}
+
+	poolLevelAttributes["taints"] = schema.ListAttribute{
+		Optional: true,
+		Computed: true,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"key":    types.StringType,
+				"value":  types.StringType,
+				"effect": types.StringType,
+			},
+		},
+	}
+
 	return poolLevelAttributes
 }
 
+// MapTerraformToJson map terraform to json to CREATE
 func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngineJson, vpcId string) *diag2.ErrorDiagnostic {
 	to.ClusterName = from.ClusterName.ValueString()
 	to.K8SVersion = from.K8SVersion.ValueString()
 	to.Purpose = from.Purpose.ValueString()
 	defaultNetworkID, defaultNetworkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", from.NetworkID.ValueString())
-	fmt.Println("defaultNetworkID: " + defaultNetworkID)
-	fmt.Println("defaultNetworkName: " + defaultNetworkName)
+
 	if err != nil {
 		d := diag2.NewErrorDiagnostic("Error getting default network", err.Error())
 		return &d
@@ -260,28 +323,34 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 	for _, item := range from.Pools {
 		name := item.WorkerPoolID.ValueString()
 
+		// KVs
 		kvs := make([]map[string]string, 0)
-
-		if len(item.Kv) > 0 {
+		if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
 			// Sort KV blocks by key name for consistent ordering during plan
 			sortedKv := sortKVByKey(item.Kv)
 
-			for _, kv := range sortedKv {
-				if kv.Name.IsNull() && kv.Value.IsNull() {
-					continue
-				}
-				key := kv.Name.ValueString()
-				val := kv.Value.ValueString()
-				if key == "" && val == "" {
-					continue
-				}
+			for _, kvElement := range sortedKv.Elements() {
+				if kvObj, ok := kvElement.(types.Object); ok {
+					kvAttrs := kvObj.Attributes()
+					name := kvAttrs["name"].(types.String)
+					value := kvAttrs["value"].(types.String)
 
-				// Skip system-generated keys when sending request
-				if isSystemGeneratedKey(key) {
-					continue
-				}
+					if name.IsNull() && value.IsNull() {
+						continue
+					}
+					key := name.ValueString()
+					val := value.ValueString()
+					if key == "" && val == "" {
+						continue
+					}
 
-				kvs = append(kvs, map[string]string{key: val})
+					// Skip system-generated keys when sending request
+					if isSystemGeneratedKey(key) {
+						continue
+					}
+
+					kvs = append(kvs, map[string]string{key: val})
+				}
 			}
 		}
 
@@ -292,13 +361,21 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			hasWorkerType := false
 			migConfigValue := "all-1g.6gb" // default value
 
-			for _, kv := range item.Kv {
-				if kv.Name.ValueString() == "nvidia.com/mig.config" {
-					hasMigConfig = true
-					migConfigValue = kv.Value.ValueString() // use user-specified value
-				}
-				if kv.Name.ValueString() == "worker.fptcloud/type" {
-					hasWorkerType = true
+			if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
+				for _, kvElement := range item.Kv.Elements() {
+					if kvObj, ok := kvElement.(types.Object); ok {
+						kvAttrs := kvObj.Attributes()
+						name := kvAttrs["name"].(types.String).ValueString()
+						value := kvAttrs["value"].(types.String).ValueString()
+
+						if name == "nvidia.com/mig.config" {
+							hasMigConfig = true
+							migConfigValue = value // use user-specified value
+						}
+						if name == "worker.fptcloud/type" {
+							hasWorkerType = true
+						}
+					}
 				}
 			}
 
@@ -313,25 +390,33 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			}
 		}
 
+		// Taints
 		taints := make([]map[string]interface{}, 0)
-		if len(item.Taints) > 0 {
-			for _, taint := range item.Taints {
-				if taint.Key.IsNull() && taint.Value.IsNull() && taint.Effect.IsNull() {
-					continue
+		if !item.Taints.IsNull() && !item.Taints.IsUnknown() {
+			for _, taintElement := range item.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					key := taintAttrs["key"].(types.String)
+					value := taintAttrs["value"].(types.String)
+					effect := taintAttrs["effect"].(types.String)
+
+					if key.IsNull() && value.IsNull() && effect.IsNull() {
+						continue
+					}
+					keyStr := key.ValueString()
+					valStr := value.ValueString()
+					effectStr := effect.ValueString()
+					if keyStr == "" && valStr == "" && effectStr == "" {
+						continue
+					}
+					taintMap := map[string]interface{}{
+						keyStr: map[string]string{
+							"value":  valStr,
+							"effect": effectStr,
+						},
+					}
+					taints = append(taints, taintMap)
 				}
-				key := taint.Key.ValueString()
-				val := taint.Value.ValueString()
-				effect := taint.Effect.ValueString()
-				if key == "" && val == "" && effect == "" {
-					continue
-				}
-				taintMap := map[string]interface{}{
-					key: map[string]string{
-						"value":  val,
-						"effect": effect,
-					},
-				}
-				taints = append(taints, taintMap)
 			}
 		}
 
@@ -404,7 +489,6 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 	to.Pools = pools
 
 	to.NetworkID = from.NetworkID.ValueString()
-
 	to.PodNetwork = from.PodNetwork.ValueString()
 	to.PodPrefix = from.PodPrefix.ValueString()
 	to.ServiceNetwork = from.ServiceNetwork.ValueString()
@@ -469,7 +553,6 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		to.AutoUpgradeTimezone = from.AutoUpgradeTimezone.ValueString()
 	}
 
-	// Map cluster_autoscaler to JSON
 	if !from.ClusterAutoscaler.IsNull() && !from.ClusterAutoscaler.IsUnknown() {
 		autoscalerAttrs := from.ClusterAutoscaler.Attributes()
 
@@ -503,47 +586,60 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 	}
 
 	kvs := make([]map[string]string, 0)
-	if len(item.Kv) > 0 {
+	if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
 		// Sort KV blocks by key name for consistent ordering during plan
 		sortedKv := sortKVByKey(item.Kv)
-		for _, kv := range sortedKv {
-			if kv.Name.IsNull() && kv.Value.IsNull() {
-				continue
-			}
-			key := kv.Name.ValueString()
-			val := kv.Value.ValueString()
-			if key == "" && val == "" {
-				continue
-			}
+		for _, kvElement := range sortedKv.Elements() {
+			if kvObj, ok := kvElement.(types.Object); ok {
+				kvAttrs := kvObj.Attributes()
+				name := kvAttrs["name"].(types.String)
+				value := kvAttrs["value"].(types.String)
 
-			// Skip system-generated keys when sending request
-			if isSystemGeneratedKey(key) {
-				continue
-			}
+				if name.IsNull() && value.IsNull() {
+					continue
+				}
+				key := name.ValueString()
+				val := value.ValueString()
+				if key == "" && val == "" {
+					continue
+				}
 
-			kvs = append(kvs, map[string]string{key: val})
+				// Skip system-generated keys when sending request
+				if isSystemGeneratedKey(key) {
+					continue
+				}
+
+				kvs = append(kvs, map[string]string{key: val})
+			}
 		}
 	}
 
 	taints := make([]map[string]interface{}, 0)
-	if len(item.Taints) > 0 {
-		for _, taint := range item.Taints {
-			if taint.Key.IsNull() && taint.Value.IsNull() && taint.Effect.IsNull() {
-				continue
+	if !item.Taints.IsNull() && !item.Taints.IsUnknown() {
+		for _, taintElement := range item.Taints.Elements() {
+			if taintObj, ok := taintElement.(types.Object); ok {
+				taintAttrs := taintObj.Attributes()
+				key := taintAttrs["key"].(types.String)
+				value := taintAttrs["value"].(types.String)
+				effect := taintAttrs["effect"].(types.String)
+
+				if key.IsNull() && value.IsNull() && effect.IsNull() {
+					continue
+				}
+				keyStr := key.ValueString()
+				valStr := value.ValueString()
+				effectStr := effect.ValueString()
+				if keyStr == "" && valStr == "" && effectStr == "" {
+					continue
+				}
+				taintMap := map[string]interface{}{
+					keyStr: map[string]string{
+						"value":  valStr,
+						"effect": effectStr,
+					},
+				}
+				taints = append(taints, taintMap)
 			}
-			key := taint.Key.ValueString()
-			val := taint.Value.ValueString()
-			effect := taint.Effect.ValueString()
-			if key == "" && val == "" && effect == "" {
-				continue
-			}
-			taintMap := map[string]interface{}{
-				key: map[string]string{
-					"value":  val,
-					"effect": effect,
-				},
-			}
-			taints = append(taints, taintMap)
 		}
 	}
 
@@ -617,31 +713,17 @@ func (r *resourceManagedKubernetesEngine) CheckForError(a []byte) *diag2.ErrorDi
 func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	// Handle Version changes
 	if from.K8SVersion != to.K8SVersion {
-		if err := r.UpgradeVersion(ctx, from, to); err != nil {
+		err := r.upgradeVersion(ctx, from, to)
+		if err != nil {
 			return err
 		}
 	}
 
 	// Handle is_running changes
 	if from.IsRunning.ValueBool() != to.IsRunning.ValueBool() {
-		vpcId := from.VpcId.ValueString()
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+		err := r.updateIsRunning(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
-			return &d
-		}
-
-		platform = strings.ToLower(platform)
-		isWakeup := to.IsRunning.ValueBool()
-		path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
-
-		resp, err := r.mfkeClient.sendPatch(ctx, path, platform, nil)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error calling hibernate API", err.Error())
-			return &d
-		}
-		if diagErr := fptcloud_dfke.CheckForError(resp); diagErr != nil {
-			return diagErr
+			return err
 		}
 	}
 
@@ -649,8 +731,7 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 	if !to.HibernationSchedules.Equal(from.HibernationSchedules) {
 		err := r.updateHibernationSchedules(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error updating hibernation schedules", err.Error())
-			return &d
+			return err
 		}
 	}
 
@@ -659,39 +740,8 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		!to.AutoUpgradeTimezone.Equal(from.AutoUpgradeTimezone) ||
 		!to.AutoUpgradeExpression.Equal(from.AutoUpgradeExpression) {
 
-		exprs := []string{}
-		if !to.AutoUpgradeExpression.IsNull() && !to.AutoUpgradeExpression.IsUnknown() {
-			for _, e := range to.AutoUpgradeExpression.Elements() {
-				if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
-					exprs = append(exprs, str.ValueString())
-				}
-			}
-		}
-
-		body := map[string]interface{}{
-			"is_enable_auto_upgrade":  to.IsEnableAutoUpgrade.ValueBool(),
-			"auto_upgrade_expression": exprs,
-			"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
-		}
-
-		vpcId := from.VpcId.ValueString()
-		clusterId := from.Id.ValueString()
-		platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
-			return &d
-		}
-		platform = strings.ToLower(platform)
-
-		path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
-
-		res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
-		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error calling auto upgrade API", err.Error())
-			return &d
-		}
-		if diagErr := r.CheckForError(res); diagErr != nil {
-			return diagErr
+		if err := r.updateAutoUpgradeVersion(ctx, to, from); err != nil {
+			return err
 		}
 	}
 
@@ -699,16 +749,14 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 	if !to.ClusterEndpointAccess.Equal(from.ClusterEndpointAccess) {
 		err := r.updateClusterEndpointCIDR(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error updating cluster endpoint CIDR", err.Error())
-			return &d
+			return err
 		}
 	}
 
 	if !to.ClusterAutoscaler.Equal(from.ClusterAutoscaler) {
 		err := r.updateClusterAutoscaler(ctx, to, from)
 		if err != nil {
-			d := diag2.NewErrorDiagnostic("Error updating cluster autoscaler", err.Error())
-			return &d
+			return err
 		}
 	}
 
@@ -722,38 +770,6 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 	return nil
 }
 
-// upgradeVersion
-func (r *resourceManagedKubernetesEngine) UpgradeVersion(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
-	vpcId := from.VpcId.ValueString()
-	cluster := from.Id.ValueString()
-	targetVersion := to.K8SVersion.ValueString()
-	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-		return &d
-	}
-	platform = strings.ToLower(platform)
-	path := fmt.Sprintf(
-		"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
-		vpcId,
-		platform,
-		cluster,
-		targetVersion,
-	)
-	body, err := r.mfkeClient.sendPatch(ctx, path, platform, struct{}{})
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(
-			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
-			err.Error(),
-		)
-		return &d
-	}
-	if diagErr2 := r.CheckForError(body); diagErr2 != nil {
-		return diagErr2
-	}
-	return nil
-}
-
 // diffPool
 func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) bool {
 	fromPool := map[string]*managedKubernetesEnginePool{}
@@ -761,13 +777,19 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 
 	kvMap := func(p *managedKubernetesEnginePool) map[string]string {
 		m := map[string]string{}
-		// Sort KV blocks by key name for consistent comparison
-		sortedKv := sortKVByKey(p.Kv)
-		for _, kv := range sortedKv {
-			k := kv.Name.ValueString()
-			v := kv.Value.ValueString()
-			if k != "" || v != "" {
-				m[k] = v
+		// Treat both null and ListNull as empty map for comparison
+		if !p.Kv.IsNull() && !p.Kv.IsUnknown() && len(p.Kv.Elements()) > 0 {
+			// Sort KV blocks by key name for consistent comparison
+			sortedKv := sortKVByKey(p.Kv)
+			for _, kvElement := range sortedKv.Elements() {
+				if kvObj, ok := kvElement.(types.Object); ok {
+					kvAttrs := kvObj.Attributes()
+					k := kvAttrs["name"].(types.String).ValueString()
+					v := kvAttrs["value"].(types.String).ValueString()
+					if k != "" || v != "" {
+						m[k] = v
+					}
+				}
 			}
 		}
 		return m
@@ -775,14 +797,19 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 
 	taintMap := func(p *managedKubernetesEnginePool) map[string]interface{} {
 		m := map[string]interface{}{}
-		for _, taint := range p.Taints {
-			k := taint.Key.ValueString()
-			v := taint.Value.ValueString()
-			effect := taint.Effect.ValueString()
-			if k != "" || v != "" || effect != "" {
-				m[k] = map[string]string{
-					"value":  v,
-					"effect": effect,
+		if !p.Taints.IsNull() && !p.Taints.IsUnknown() {
+			for _, taintElement := range p.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					k := taintAttrs["key"].(types.String).ValueString()
+					v := taintAttrs["value"].(types.String).ValueString()
+					effect := taintAttrs["effect"].(types.String).ValueString()
+					if k != "" || v != "" || effect != "" {
+						m[k] = map[string]string{
+							"value":  v,
+							"effect": effect,
+						}
+					}
 				}
 			}
 		}
@@ -828,7 +855,7 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 	return false
 }
 
-// internalRead
+// InternalRead
 func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id string, state *managedKubernetesEngine) (*managedKubernetesEngineReadResponse, error) {
 	vpcId := state.VpcId.ValueString()
 	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
@@ -842,6 +869,8 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	if err != nil {
 		return nil, err
 	}
+
+	// Cluster read response
 	var d managedKubernetesEngineReadResponse
 	err = json.Unmarshal(a, &d)
 	if err != nil {
@@ -851,362 +880,13 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		return nil, fmt.Errorf("error: %v", d.Mess)
 	}
 	data := d.Data
-	state.Id = types.StringValue(data.Metadata.Name)
-	state.ClusterName = types.StringValue(getClusterName(data.Metadata.Name))
-	state.VpcId = types.StringValue(vpcId)
-	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
-	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
-		state.Purpose = types.StringValue("public")
-	} else if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "firewall") {
-		state.Purpose = types.StringValue("firewall")
-	} else {
-		state.Purpose = types.StringValue("private")
-	}
 
-	if len(data.Spec.Provider.Workers) > 0 {
-		// Use the first worker to determine cluster network info
-		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
-		if err == nil {
-			state.NetworkID = types.StringValue(clusterNetworkID)
-			tflog.Info(ctx, fmt.Sprintf("DEBUG: Set cluster NetworkID to: '%s'", clusterNetworkID))
-		} else {
-			tflog.Warn(ctx, fmt.Sprintf("DEBUG: Error getting cluster network info: %v", err))
-		}
-	}
-
-	apiPools := make([]*managedKubernetesEnginePool, 0)
-
-	for _, worker := range data.Spec.Provider.Workers {
-		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
-		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
-		if !ok {
-			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
-		}
-		autoRepair := worker.AutoRepair()
-		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, worker, &data)
-		if e != nil {
-			return nil, e
-		}
-
-		item := &managedKubernetesEnginePool{
-			WorkerPoolID:   types.StringValue(worker.Name),
-			StorageProfile: types.StringValue(worker.Volume.Type),
-			WorkerType:     types.StringValue(flavorId),
-			WorkerDiskSize: types.Int64Value(int64(parseNumber(worker.Volume.Size))),
-			ScaleMin:       types.Int64Value(int64(worker.Minimum)),
-			ScaleMax:       types.Int64Value(int64(worker.Maximum)),
-			NetworkID:      types.StringValue(networkId),
-			// NetworkName:            types.StringValue(networkName),
-			IsEnableAutoRepair:     types.BoolValue(autoRepair),
-			ContainerRuntime:       types.StringValue(worker.Cri.Name),
-			Tags:                   tagsStringToList(worker.Tags()),
-			VGpuID:                 types.StringValue(worker.ProviderConfig.VGpuID),
-			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
-			GpuDriverVersion:       types.StringValue(worker.Machine.Image.GpuDriverVersion),
-			WorkerBase:             types.BoolValue(worker.IsWorkerBase()),
-		}
-
-		// For GPU pools, read values from addons configuration
-		if worker.ProviderConfig.VGpuID != "" {
-			// Read MaxClient from addons configuration
-			maxClientFromAPI := r.MaxClientFromAddons(&data.Spec, worker.Name)
-			item.MaxClient = types.Int64Value(maxClientFromAPI)
-
-			// Read GpuSharingClient from addons configuration
-			gpuSharingClientFromAPI := r.GpuSharingClientFromAddons(&data.Spec, worker.Name)
-			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
-		} else {
-			// Non-GPU pools: set default values
-			item.MaxClient = types.Int64Value(0)
-			item.GpuSharingClient = types.StringValue("")
-		}
-
-		if len(worker.Labels) > 0 {
-			// Convert labels to map for filtering
-			labelMap := make(map[string]string)
-			for _, l := range worker.Labels {
-				switch m := l.(type) {
-				case map[string]interface{}:
-					for k, v := range m {
-						vs := fmt.Sprint(v)
-						labelMap[k] = vs
-					}
-				case map[string]string:
-					for k, v := range m {
-						labelMap[k] = v
-					}
-				}
-			}
-
-			// Filter out system-generated labels
-			userDefinedLabels := filterUserDefinedKV(labelMap)
-
-			// Convert back to KV slice
-			kvs := make([]KV, 0)
-			for k, v := range userDefinedLabels {
-				kvs = append(kvs, KV{
-					Name:  types.StringValue(k),
-					Value: types.StringValue(v),
-				})
-			}
-			item.Kv = sortKVByKey(kvs)
-		} else {
-			item.Kv = []KV{}
-		}
-
-		if len(worker.Taints) > 0 {
-			taints := make([]Taint, 0)
-			for _, t := range worker.Taints {
-				switch taintData := t.(type) {
-				case map[string]interface{}:
-					for key, taintValue := range taintData {
-						if taintMap, ok := taintValue.(map[string]interface{}); ok {
-							value := ""
-							effect := ""
-							if v, exists := taintMap["value"]; exists {
-								value = fmt.Sprint(v)
-							}
-							if e, exists := taintMap["effect"]; exists {
-								effect = fmt.Sprint(e)
-							}
-							taints = append(taints, Taint{
-								Key:    types.StringValue(key),
-								Value:  types.StringValue(value),
-								Effect: types.StringValue(effect),
-							})
-						}
-					}
-				}
-			}
-			item.Taints = taints
-		} else {
-			item.Taints = []Taint{}
-		}
-
-		item.NetworkID = types.StringValue(networkId)
-		item.NetworkName = types.StringValue(networkName)
-
-		apiPools = append(apiPools, item)
-	}
-
-	// Assign the fully reconstructed list of pools to the state
-	state.Pools = apiPools
-
-	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
-	state.PodNetwork = types.StringValue(podNetwork[0])
-	state.PodPrefix = types.StringValue(podNetwork[1])
-	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
-	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
-	state.ServicePrefix = types.StringValue(serviceNetwork[1])
-	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
-	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
-	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
-
-	// Parse cluster_autoscaler from API response
-	autoscalerMap := map[string]attr.Value{
-		"is_enable_auto_scaling":           types.BoolValue(true),
-		"scale_down_delay_after_add":       types.Int64Value(3600),
-		"scale_down_delay_after_delete":    types.Int64Value(0),
-		"scale_down_delay_after_failure":   types.Int64Value(180),
-		"scale_down_unneeded_time":         types.Int64Value(1800),
-		"scale_down_utilization_threshold": types.Float64Value(0.5),
-		"scan_interval":                    types.Int64Value(10),
-		"expander":                         types.StringValue("least-waste"),
-	}
-
-	// Parse actual values from API response
-	if data.Spec.Kubernetes.ClusterAutoscaler.Expander != "" {
-		autoscalerMap["expander"] = types.StringValue(data.Spec.Kubernetes.ClusterAutoscaler.Expander)
-	}
-	autoscalerMap["scale_down_utilization_threshold"] = types.Float64Value(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUtilizationThreshold)
-
-	// Parse duration strings to seconds
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterAdd != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterAdd); err == nil {
-			autoscalerMap["scale_down_delay_after_add"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterDelete != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterDelete); err == nil {
-			autoscalerMap["scale_down_delay_after_delete"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterFailure != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownDelayAfterFailure); err == nil {
-			autoscalerMap["scale_down_delay_after_failure"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUnneededTime != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScaleDownUnneededTime); err == nil {
-			autoscalerMap["scale_down_unneeded_time"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-	if data.Spec.Kubernetes.ClusterAutoscaler.ScanInterval != "" {
-		if duration, err := time.ParseDuration(data.Spec.Kubernetes.ClusterAutoscaler.ScanInterval); err == nil {
-			autoscalerMap["scan_interval"] = types.Int64Value(int64(duration.Seconds()))
-		}
-	}
-
-	state.ClusterAutoscaler, _ = types.ObjectValue(
-		map[string]attr.Type{
-			"is_enable_auto_scaling":           types.BoolType,
-			"scale_down_delay_after_add":       types.Int64Type,
-			"scale_down_delay_after_delete":    types.Int64Type,
-			"scale_down_delay_after_failure":   types.Int64Type,
-			"scale_down_unneeded_time":         types.Int64Type,
-			"scale_down_utilization_threshold": types.Float64Type,
-			"scan_interval":                    types.Int64Type,
-			"expander":                         types.StringType,
-		},
-		autoscalerMap,
-	)
-	// Parse cluster_endpoint_access from extensions and metadata labels
-	accessMap := map[string]attr.Value{
-		"type": types.StringValue("public"),
-		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
-			types.StringValue("0.0.0.0/0"),
-		}),
-	}
-
-	// Determine cluster type from metadata labels
-	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
-		accessMap["type"] = types.StringValue("public")
-	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
-		// For private-network, need to check privateCluster flag in extensions
-		for _, extension := range data.Spec.Extensions {
-			if extension.Type == "private-network" && extension.ProviderConfig != nil {
-				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
-					if privateCluster {
-						accessMap["type"] = types.StringValue("private")
-					} else {
-						accessMap["type"] = types.StringValue("mixed")
-					}
-				}
-				break
-			}
-		}
-	}
-
-	// Parse extensions field to get CIDR configuration
-	if len(data.Spec.Extensions) > 0 {
-		for _, extension := range data.Spec.Extensions {
-			if extension.ProviderConfig != nil {
-				var cidrValues []attr.Value
-
-				// Handle ACL extension type (public clusters)
-				if extension.Type == "acl" {
-					if rule, ok := extension.ProviderConfig["rule"].(map[string]interface{}); ok {
-						// Extract allow_cidr values from the ACL rule
-						if cidrs, exists := rule["cidrs"].([]interface{}); exists {
-							for _, cidr := range cidrs {
-								if cidrStr, ok := cidr.(string); ok {
-									cidrValues = append(cidrValues, types.StringValue(cidrStr))
-								}
-							}
-						}
-					}
-				}
-
-				// Handle private-network extension type (private/mixed clusters)
-				if extension.Type == "private-network" {
-					// Extract allow_cidr values from allowCIDRs field
-					if allowCIDRs, exists := extension.ProviderConfig["allowCIDRs"].([]interface{}); exists {
-						for _, cidr := range allowCIDRs {
-							if cidrStr, ok := cidr.(string); ok {
-								cidrValues = append(cidrValues, types.StringValue(cidrStr))
-							}
-						}
-					}
-				}
-
-				// Update allow_cidr if we found any CIDR values
-				if len(cidrValues) > 0 {
-					accessMap["allow_cidr"] = types.ListValueMust(types.StringType, cidrValues)
-				}
-			}
-		}
-	}
-
-	state.ClusterEndpointAccess, _ = types.ObjectValue(
-		map[string]attr.Type{
-			"type":       types.StringType,
-			"allow_cidr": types.ListType{ElemType: types.StringType},
-		},
-		accessMap,
-	)
-
-	// Parse edge gateway information from infrastructure config
-	if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
-		state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
-	} else {
-		state.EdgeGatewayId = types.StringNull()
-	}
-
-	// For edge gateway name, we need to extract it from the gatewayRef if available
-	// The gatewayRef contains both id and name
-	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
-	if gatewayRef.Id != "" {
-		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
-		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
-	} else {
-		state.EdgeGatewayName = types.StringNull()
-	}
-
-	// Default auto_upgrade_expression if missing
-	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
-		state.AutoUpgradeExpression = types.ListNull(types.StringType)
-	}
-
-	// Use the same logic as the power state resource to determine if cluster is running
-	isRunning := false
-	if len(data.Status.Conditions) > 0 {
-		isRunning = data.Status.Conditions[0].Status == "True"
-	}
-	if data.Spec.Hibernate != nil {
-		isRunning = !data.Spec.Hibernate.Enabled
-	}
-	state.IsRunning = types.BoolValue(isRunning)
-
-	if d.Data.Spec.Hibernate != nil && d.Data.Spec.Hibernate.Schedules != nil {
-		var schedulesFromAPI []HibernationSchedule
-
-		for _, apiSchedule := range d.Data.Spec.Hibernate.Schedules {
-			schedulesFromAPI = append(schedulesFromAPI, HibernationSchedule{
-				Start:    types.StringValue(apiSchedule.Start),
-				End:      types.StringValue(apiSchedule.End),
-				Location: types.StringValue(apiSchedule.Location),
-			})
-		}
-
-		hibernationScheduleObjectType := types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		}
-
-		var diags diag2.Diagnostics
-		state.HibernationSchedules, diags = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
-		if diags.HasError() {
-			return nil, fmt.Errorf("error creating hibernation schedules list for state: %v", diags)
-		}
-	} else {
-		state.HibernationSchedules = types.ListNull(types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		})
-	}
-
-	if d.Data.Spec.AutoUpgrade != nil {
-		autoUpgradeInfo := d.Data.Spec.AutoUpgrade
+	// auto_upgrade_expression and auto_upgrade_timezone and is_enable_auto_upgrade
+	if data.Spec.AutoUpgrade != nil {
+		autoUpgradeInfo := data.Spec.AutoUpgrade
 
 		isEnabled := len(autoUpgradeInfo.TimeUpgrade) > 0
 		state.IsEnableAutoUpgrade = types.BoolValue(isEnabled)
-
 		state.AutoUpgradeTimezone = types.StringValue(autoUpgradeInfo.TimeZone)
 
 		if isEnabled {
@@ -1223,6 +903,290 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.AutoUpgradeTimezone = types.StringNull()
 		state.AutoUpgradeExpression = types.ListNull(types.StringType)
 	}
+
+	// id
+	state.Id = types.StringValue(data.Metadata.Name)
+
+	// cluster_name
+	state.ClusterName = types.StringValue(getClusterName(data.Metadata.Name))
+
+	// vpc_id
+	state.VpcId = types.StringValue(vpcId)
+
+	// k8s_version
+	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
+
+	// pod_network, pod_prefix
+	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
+	state.PodNetwork = types.StringValue(podNetwork[0])
+	state.PodPrefix = types.StringValue(podNetwork[1])
+
+	// service_network, service_prefix
+	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
+	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
+	state.ServicePrefix = types.StringValue(serviceNetwork[1])
+
+	// k8s_max_pod
+	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
+
+	// network_overlay
+	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
+
+	// network_type
+	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
+
+	// purpose
+	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
+		state.Purpose = types.StringValue("public")
+	} else if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "firewall") {
+		state.Purpose = types.StringValue("firewall")
+	} else {
+		state.Purpose = types.StringValue("private")
+	}
+
+	// network_id of Cluster
+	if len(data.Spec.Provider.Workers) > 0 {
+		// Use the first worker to determine cluster network info
+		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
+		if err == nil {
+			state.NetworkID = types.StringValue(clusterNetworkID)
+			tflog.Info(ctx, fmt.Sprintf("DEBUG: Set cluster NetworkID to: '%s'", clusterNetworkID))
+		} else {
+			tflog.Warn(ctx, fmt.Sprintf("DEBUG: Error getting cluster network info: %v", err))
+		}
+	}
+
+	// cluster_autoscaler
+	state.ClusterAutoscaler, _ = internalReadClusterAutoscaler(data.Spec.Kubernetes.ClusterAutoscaler)
+
+	// cluster_endpoint_access
+	state.ClusterEndpointAccess, _ = internalReadClusterEndpointAccess(data)
+
+	// edge_gateway_id
+	// if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
+	// 	state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
+	// } else {
+	// 	state.EdgeGatewayId = types.StringNull()
+	// }
+	// edge_gateway_name and edge_gateway_id
+	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
+	if gatewayRef.Id != "" {
+		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
+		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
+	} else {
+		state.EdgeGatewayName = types.StringNull()
+		state.EdgeGatewayId = types.StringNull()
+	}
+
+	// is_running
+	isRunning := false
+	if len(data.Status.Conditions) > 0 {
+		isRunning = data.Status.Conditions[0].Status == "True"
+	}
+	if data.Spec.Hibernate != nil {
+		isRunning = !data.Spec.Hibernate.Enabled
+	}
+	state.IsRunning = types.BoolValue(isRunning)
+
+	// hibernation_schedules
+	if data.Spec.Hibernate != nil && data.Spec.Hibernate.Schedules != nil {
+		var schedulesFromAPI []HibernationSchedule
+
+		for _, apiSchedule := range data.Spec.Hibernate.Schedules {
+			schedulesFromAPI = append(schedulesFromAPI, HibernationSchedule{
+				Start:    types.StringValue(apiSchedule.Start),
+				End:      types.StringValue(apiSchedule.End),
+				Location: types.StringValue(apiSchedule.Location),
+			})
+		}
+
+		hibernationScheduleObjectType := types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		}
+
+		state.HibernationSchedules, _ = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
+	} else {
+		state.HibernationSchedules = types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"start":    types.StringType,
+				"end":      types.StringType,
+				"location": types.StringType,
+			},
+		})
+	}
+
+	// pools
+	apiPools := make([]*managedKubernetesEnginePool, 0)
+
+	for _, worker := range data.Spec.Provider.Workers {
+		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
+		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
+		if !ok {
+			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
+		}
+		autoRepair := worker.AutoRepair()
+		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, worker, &data)
+		if e != nil {
+			return nil, e
+		}
+
+		item := &managedKubernetesEnginePool{
+			// name
+			WorkerPoolID: types.StringValue(worker.Name),
+			// storage_profile
+			StorageProfile: types.StringValue(worker.Volume.Type),
+			// worker_type
+			WorkerType: types.StringValue(flavorId),
+			// worker_disk_size
+			WorkerDiskSize: types.Int64Value(int64(parseNumber(worker.Volume.Size))),
+			// scale_min
+			ScaleMin: types.Int64Value(int64(worker.Minimum)),
+			// scale_max
+			ScaleMax: types.Int64Value(int64(worker.Maximum)),
+			// network_id
+			NetworkID: types.StringValue(networkId),
+			// network_name
+			NetworkName: types.StringValue(networkName),
+			// is_enable_auto_repair
+			IsEnableAutoRepair: types.BoolValue(autoRepair),
+			// container_runtime
+			ContainerRuntime: types.StringValue(worker.Cri.Name),
+			// tags
+			Tags: tagsStringToList(worker.Tags()),
+			// vgpu_id
+			VGpuID: types.StringValue(worker.ProviderConfig.VGpuID),
+			// driver_installation_type
+			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
+			// gpu_driver_version
+			GpuDriverVersion: types.StringValue(worker.Machine.Image.GpuDriverVersion),
+			// worker_base
+			WorkerBase: types.BoolValue(worker.IsWorkerBase()),
+		}
+
+		// max_client and gpu_sharing_client
+		if worker.ProviderConfig.VGpuID != "" {
+			// Read MaxClient from addons configuration
+			maxClientFromAPI := r.MaxClientFromAddons(&data.Spec, worker.Name)
+			item.MaxClient = types.Int64Value(maxClientFromAPI)
+
+			// Read GpuSharingClient from addons configuration
+			gpuSharingClientFromAPI := r.GpuSharingClientFromAddons(&data.Spec, worker.Name)
+			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
+		} else {
+			// Non-GPU pools: set default values
+			item.MaxClient = types.Int64Value(0)
+			item.GpuSharingClient = types.StringValue("")
+		}
+
+		// kv
+		labelMap := make(map[string]string)
+		if len(worker.Labels) > 0 {
+			// Convert labels to map for filtering
+			for _, l := range worker.Labels {
+				switch m := l.(type) {
+				case map[string]interface{}:
+					for k, v := range m {
+						vs := fmt.Sprint(v)
+						labelMap[k] = vs
+					}
+				case map[string]string:
+					for k, v := range m {
+						labelMap[k] = v
+					}
+				}
+			}
+		}
+
+		// Filter out system-generated labels
+		userDefinedLabels := filterUserDefinedKV(labelMap)
+
+		// Convert back to KV list
+		kvElements := make([]attr.Value, 0)
+		for k, v := range userDefinedLabels {
+			kvElements = append(kvElements, types.ObjectValueMust(
+				map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+				map[string]attr.Value{
+					"name":  types.StringValue(k),
+					"value": types.StringValue(v),
+				},
+			))
+		}
+
+		// Always create a list, even if empty
+		kvList := types.ListValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+			},
+			kvElements,
+		)
+
+		// Sort KV pairs if any exist
+		if len(kvElements) > 0 {
+			item.Kv = sortKVByKey(kvList)
+		} else {
+			item.Kv = kvList
+		}
+
+		// taints
+		taintElements := make([]attr.Value, 0)
+		if len(worker.Taints) > 0 {
+			for _, t := range worker.Taints {
+				switch taintData := t.(type) {
+				case map[string]interface{}:
+					for key, taintValue := range taintData {
+						if taintMap, ok := taintValue.(map[string]interface{}); ok {
+							value := ""
+							effect := ""
+							if v, exists := taintMap["value"]; exists {
+								value = fmt.Sprint(v)
+							}
+							if e, exists := taintMap["effect"]; exists {
+								effect = fmt.Sprint(e)
+							}
+							taintElements = append(taintElements, types.ObjectValueMust(
+								map[string]attr.Type{
+									"key":    types.StringType,
+									"value":  types.StringType,
+									"effect": types.StringType,
+								},
+								map[string]attr.Value{
+									"key":    types.StringValue(key),
+									"value":  types.StringValue(value),
+									"effect": types.StringValue(effect),
+								},
+							))
+						}
+					}
+				}
+			}
+		}
+
+		// Always create a list, even if empty
+		item.Taints = types.ListValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"key":    types.StringType,
+					"value":  types.StringType,
+					"effect": types.StringType,
+				},
+			},
+			taintElements,
+		)
+
+		apiPools = append(apiPools, item)
+	}
+
+	state.Pools = apiPools
 
 	return &d, nil
 }
@@ -1374,17 +1338,103 @@ func (w *managedKubernetesEngineDataWorker) IsWorkerBase() bool {
 	return w.SystemComponents.Allow
 }
 
-func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) error {
+// upgradeVersion
+func (r *resourceManagedKubernetesEngine) upgradeVersion(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	vpcId := from.VpcId.ValueString()
+	clusterId := from.Id.ValueString()
+	targetVersion := to.K8SVersion.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKEUpgradeVersion(vpcId, platform, clusterId, targetVersion)
+	body, err := r.mfkeClient.sendPatch(ctx, path, platform, struct{}{})
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(
+			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
+			err.Error(),
+		)
+		return &d
+	}
+	if diagErr2 := r.CheckForError(body); diagErr2 != nil {
+		return diagErr2
+	}
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateIsRunning(ctx context.Context, to *managedKubernetesEngine, from *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	vpcId := from.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+	isWakeup := to.IsRunning.ValueBool()
+	path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
+
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, nil)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateAutoUpgradeVersion(ctx context.Context, to *managedKubernetesEngine, from *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	vpcId := from.VpcId.ValueString()
+	clusterId := from.Id.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
+
+	exprs := []string{}
+	if !to.AutoUpgradeExpression.IsNull() && !to.AutoUpgradeExpression.IsUnknown() {
+		for _, e := range to.AutoUpgradeExpression.Elements() {
+			if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
+				exprs = append(exprs, str.ValueString())
+			}
+		}
+	}
+
+	body := map[string]interface{}{
+		"is_enable_auto_upgrade":  to.IsEnableAutoUpgrade.ValueBool(),
+		"auto_upgrade_expression": exprs,
+		"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
+	}
+
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	vpcId := state.VpcId.ValueString()
 
 	var hibernationSchedulesFromPlan []HibernationSchedule
-
 	diags := plan.HibernationSchedules.ElementsAs(ctx, &hibernationSchedulesFromPlan, false)
 	if diags.HasError() {
-		return fmt.Errorf("error parsing hibernation schedules from plan: %v", diags.Errors())
+		d := diag2.NewErrorDiagnostic("Parsing hibernation schedules failed", diags.Errors()[0].Summary())
+		return &d
 	}
 
-	// Convert to JSON format for API
 	var schedulesForJson []HibernationScheduleJson
 	for _, scheduleData := range hibernationSchedulesFromPlan {
 		if scheduleData.Start.IsNull() || scheduleData.End.IsNull() || scheduleData.Location.IsNull() {
@@ -1398,43 +1448,40 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 		})
 	}
 
-	requestBody := HibernationSchedulesRequest{
-		Schedules: schedulesForJson,
-	}
-
+	requestBody := HibernationSchedulesRequest{Schedules: schedulesForJson}
 	if len(requestBody.Schedules) == 0 {
 		requestBody.Schedules = []HibernationScheduleJson{}
 	}
 
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		return fmt.Errorf("error getting platform: %v", err)
+		d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, err.Error())
+		return &d
 	}
 
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEHibernationSchedules(vpcId, platform, state.Id.ValueString())
-
 	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
-		return fmt.Errorf("error calling hibernation schedules API: %v", err)
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
 	}
 
-	tflog.Info(ctx, "Hibernation schedules API response: "+string(resp))
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
 
 	tflog.Info(ctx, "Successfully updated hibernation schedules.")
-
 	return nil
 }
 
-func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
-	ctx context.Context,
-	plan *managedKubernetesEngine,
-	state *managedKubernetesEngine,
-) error {
+func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine,
+) *diag2.ErrorDiagnostic {
 	vpcId := state.VpcId.ValueString()
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		return fmt.Errorf("error getting platform: %v", err)
+		d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+		return &d
 	}
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEUpdateEndpointCIDR(vpcId, platform, state.Id.ValueString())
@@ -1459,20 +1506,26 @@ func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(
 
 	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
-		return fmt.Errorf("error calling update cluster endpoint CIDR API: %v", err)
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
 	}
 
 	tflog.Info(ctx, "Cluster endpoint CIDR API response: "+string(resp))
 	tflog.Info(ctx, "Successfully updated cluster endpoint CIDR.")
 
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+
 	return nil
 }
 
-func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) error {
+func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) *diag2.ErrorDiagnostic {
 	vpcId := state.VpcId.ValueString()
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		return fmt.Errorf("error getting platform: %v", err)
+		d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+		return &d
 	}
 	platform = strings.ToLower(platform)
 	path := commons.ApiPath.ManagedFKEUpdateClusterAutoscaler(vpcId, platform, state.Id.ValueString())
@@ -1493,64 +1546,20 @@ func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Co
 
 	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
 	if err != nil {
-		return fmt.Errorf("error calling update cluster autoscaler API: %v", err)
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
 	}
 
 	tflog.Info(ctx, "Cluster autoscaler API response: "+string(resp))
 
 	// Check for API errors in response
 	if diagErr := r.CheckForError(resp); diagErr != nil {
-		return fmt.Errorf("API returned error: %s", diagErr.Summary())
+		return diagErr
 	}
 
 	tflog.Info(ctx, "Successfully updated cluster autoscaler.")
 
 	return nil
-}
-
-// isSystemGeneratedKey checks if a key is system-generated
-func isSystemGeneratedKey(key string) bool {
-	systemKeys := []string{
-		"nvidia.com/device-plugin.config", // System auto-generates this for GPU pools
-		// Add more system-generated keys here if needed
-	}
-
-	for _, systemKey := range systemKeys {
-		if key == systemKey {
-			return true
-		}
-	}
-	return false
-}
-
-// System-generated keys like "nvidia.com/device-plugin.config" should be ignored
-func filterUserDefinedKV(kvMap map[string]string) map[string]string {
-	userDefined := make(map[string]string)
-
-	for k, v := range kvMap {
-		if !isSystemGeneratedKey(k) {
-			userDefined[k] = v
-		}
-	}
-
-	return userDefined
-}
-
-// sortKVByKey sorts KV blocks by key name to ensure consistent ordering
-func sortKVByKey(kvs []KV) []KV {
-	if len(kvs) <= 1 {
-		return kvs
-	}
-
-	// Create a copy to avoid modifying the original slice
-	sorted := make([]KV, len(kvs))
-	copy(sorted, kvs)
-
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Name.ValueString() < sorted[j].Name.ValueString()
-	})
-
-	return sorted
 }
 
 func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {
@@ -1612,4 +1621,243 @@ func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context,
 	}
 
 	return nil
+}
+
+// isSystemGeneratedKey checks if a key is system-generated
+func isSystemGeneratedKey(key string) bool {
+	systemKeys := []string{
+		"nvidia.com/device-plugin.config", // System auto-generates this for GPU pools
+		// Add more system-generated keys here if needed
+	}
+
+	for _, systemKey := range systemKeys {
+		if key == systemKey {
+			return true
+		}
+	}
+	return false
+}
+
+// System-generated keys like "nvidia.com/device-plugin.config" should be ignored
+func filterUserDefinedKV(kvMap map[string]string) map[string]string {
+	userDefined := make(map[string]string)
+
+	for k, v := range kvMap {
+		if !isSystemGeneratedKey(k) {
+			userDefined[k] = v
+		}
+	}
+
+	return userDefined
+}
+
+// sortKVByKey sorts KV blocks by key name to ensure consistent ordering
+func sortKVByKey(kvList types.List) types.List {
+	if kvList.IsNull() || kvList.IsUnknown() || len(kvList.Elements()) <= 1 {
+		return kvList
+	}
+
+	// Convert to KV slice for sorting
+	kvElements := kvList.Elements()
+	kvs := make([]KV, len(kvElements))
+	for i, kvElement := range kvElements {
+		if kvObj, ok := kvElement.(types.Object); ok {
+			kvAttrs := kvObj.Attributes()
+			kvs[i] = KV{
+				Name:  kvAttrs["name"].(types.String),
+				Value: kvAttrs["value"].(types.String),
+			}
+		}
+	}
+
+	// Sort by key name
+	sort.Slice(kvs, func(i, j int) bool {
+		return kvs[i].Name.ValueString() < kvs[j].Name.ValueString()
+	})
+
+	// Convert back to types.List
+	sortedElements := make([]attr.Value, len(kvs))
+	for i, kv := range kvs {
+		sortedElements[i] = types.ObjectValueMust(
+			map[string]attr.Type{
+				"name":  types.StringType,
+				"value": types.StringType,
+			},
+			map[string]attr.Value{
+				"name":  kv.Name,
+				"value": kv.Value,
+			},
+		)
+	}
+
+	return types.ListValueMust(
+		types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"name":  types.StringType,
+				"value": types.StringType,
+			},
+		},
+		sortedElements,
+	)
+}
+
+func internalReadClusterAutoscaler(ca managedKubernetesEngineDataClusterAutoscaler) (types.Object, diag2.Diagnostics) {
+	var (
+		scaleDownAdd, scaleDownDel, scaleDownFail int64
+		scaleDownUnneeded, scanInterval           int64
+	)
+
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterAdd); err == nil {
+		scaleDownAdd = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterDelete); err == nil {
+		scaleDownDel = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterFailure); err == nil {
+		scaleDownFail = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownUnneededTime); err == nil {
+		scaleDownUnneeded = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScanInterval); err == nil {
+		scanInterval = int64(d.Seconds())
+	}
+
+	typesMap := map[string]attr.Type{
+		"is_enable_auto_scaling":           types.BoolType,
+		"scale_down_delay_after_add":       types.Int64Type,
+		"scale_down_delay_after_delete":    types.Int64Type,
+		"scale_down_delay_after_failure":   types.Int64Type,
+		"scale_down_unneeded_time":         types.Int64Type,
+		"scale_down_utilization_threshold": types.Float64Type,
+		"scan_interval":                    types.Int64Type,
+		"expander":                         types.StringType,
+	}
+
+	values := map[string]attr.Value{
+		"is_enable_auto_scaling":           types.BoolValue(true),
+		"scale_down_delay_after_add":       types.Int64Value(scaleDownAdd),
+		"scale_down_delay_after_delete":    types.Int64Value(scaleDownDel),
+		"scale_down_delay_after_failure":   types.Int64Value(scaleDownFail),
+		"scale_down_unneeded_time":         types.Int64Value(scaleDownUnneeded),
+		"scale_down_utilization_threshold": types.Float64Value(ca.ScaleDownUtilizationThreshold),
+		"scan_interval":                    types.Int64Value(scanInterval),
+		"expander":                         types.StringValue(ca.Expander),
+	}
+
+	return types.ObjectValue(typesMap, values)
+}
+
+func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.Object, diag2.Diagnostics) {
+	accessMap := map[string]attr.Value{
+		"type": types.StringValue("public"),
+		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("0.0.0.0/0"),
+		}),
+	}
+
+	// Determine cluster type from metadata labels
+	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
+		accessMap["type"] = types.StringValue("public")
+	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
+		for _, extension := range data.Spec.Extensions {
+			if extension.Type == "private-network" && extension.ProviderConfig != nil {
+				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
+					if privateCluster {
+						accessMap["type"] = types.StringValue("private")
+					} else {
+						accessMap["type"] = types.StringValue("mixed")
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Parse extensions field to get CIDR configuration
+	for _, extension := range data.Spec.Extensions {
+		if extension.ProviderConfig == nil {
+			continue
+		}
+
+		var cidrValues []attr.Value
+
+		// ACL type (public)
+		if extension.Type == "acl" {
+			if rule, ok := extension.ProviderConfig["rule"].(map[string]interface{}); ok {
+				if cidrs, exists := rule["cidrs"].([]interface{}); exists {
+					for _, cidr := range cidrs {
+						if cidrStr, ok := cidr.(string); ok {
+							cidrValues = append(cidrValues, types.StringValue(cidrStr))
+						}
+					}
+				}
+			}
+		}
+
+		// private-network type (private/mixed)
+		if extension.Type == "private-network" {
+			if allowCIDRs, exists := extension.ProviderConfig["allowCIDRs"].([]interface{}); exists {
+				for _, cidr := range allowCIDRs {
+					if cidrStr, ok := cidr.(string); ok {
+						cidrValues = append(cidrValues, types.StringValue(cidrStr))
+					}
+				}
+			}
+		}
+
+		// Update if found any CIDR values
+		if len(cidrValues) > 0 {
+			accessMap["allow_cidr"] = types.ListValueMust(types.StringType, cidrValues)
+		}
+	}
+
+	return types.ObjectValue(
+		map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+		accessMap,
+	)
+}
+
+func (m *MfkeApiClient) checkServiceAccount(ctx context.Context, vpcId string, platform string) (bool, error) {
+	path := commons.ApiPath.ManagedFKECheckEnableServiceAccount(vpcId, strings.ToLower(platform))
+
+	maxRetries := 10
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		tflog.Info(ctx, fmt.Sprintf("Checking service account (attempt %d/%d): %s", attempt, maxRetries, path))
+
+		_, err := m.sendGet(path, strings.ToUpper(platform))
+		if err == nil {
+			// No error means status code is 200, service account is enabled
+			tflog.Info(ctx, "Service account check passed")
+			return true, nil
+		}
+
+		// Check if it's an HTTPError to get status code
+		var httpErr commons.HTTPError
+		if errors.As(err, &httpErr) {
+			// If status code is 200 (shouldn't happen, but just in case)
+			if httpErr.Code == 200 {
+				tflog.Info(ctx, "Service account check passed")
+				return true, nil
+			}
+			// Non-200 status code
+			lastErr = fmt.Errorf("service account check returned status code %d", httpErr.Code)
+		} else {
+			// Network or other error
+			lastErr = err
+		}
+
+		if attempt < maxRetries {
+			tflog.Info(ctx, "Service account check failed, retrying in 1 second...")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+	}
+
+	return false, lastErr
 }
