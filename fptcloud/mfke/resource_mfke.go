@@ -115,15 +115,15 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 	}
 
 	// Check quota resource before creating
-	quotaCheckPassed, err := r.mfkeClient.checkQuotaResource(ctx, state.VpcId.ValueString(), platform)
-	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error checking quota resource", err.Error()))
-		return
-	}
-	if !quotaCheckPassed {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Quota resource check failed", "Quota resource check failed"))
-		return
-	}
+	// quotaCheckPassed, err := r.mfkeClient.checkQuotaResource(ctx, state.VpcId.ValueString(), platform)
+	// if err != nil {
+	// 	response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error checking quota resource", err.Error()))
+	// 	return
+	// }
+	// if !quotaCheckPassed {
+	// 	response.Diagnostics.Append(diag2.NewErrorDiagnostic("Quota resource check failed", "Quota resource check failed"))
+	// 	return
+	// }
 
 	path := commons.ApiPath.ManagedFKECreate(state.VpcId.ValueString(), strings.ToLower(platform))
 	tflog.Info(ctx, "Calling path "+path)

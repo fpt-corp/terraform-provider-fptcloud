@@ -1862,46 +1862,46 @@ func (m *MfkeApiClient) checkServiceAccount(ctx context.Context, vpcId string, p
 	return false, lastErr
 }
 
-func (m *MfkeApiClient) checkQuotaResource(ctx context.Context, vpcId string, platform string) (bool, error) {
-	path := commons.ApiPath.ManagedFKECheckQuotaResource(vpcId, strings.ToLower(platform))
+// func (m *MfkeApiClient) checkQuotaResource(ctx context.Context, vpcId string, platform string) (bool, error) {
+// 	path := commons.ApiPath.ManagedFKECheckQuotaResource(vpcId, strings.ToLower(platform))
 
-	tflog.Info(ctx, fmt.Sprintf("Checking quota resource: %s", path))
+// 	tflog.Info(ctx, fmt.Sprintf("Checking quota resource: %s", path))
 
-	responseBody, err := m.sendGet(path, strings.ToUpper(platform))
-	if err != nil {
-		// Check if it's an HTTPError (non-200 status code from HTTP layer)
-		var httpErr commons.HTTPError
-		if errors.As(err, &httpErr) {
-			// Try to parse the response body if available
-			var quotaResp quotaResourceResponse
-			if parseErr := json.Unmarshal([]byte(httpErr.Reason), &quotaResp); parseErr == nil {
-				// If we can parse the response, use the message from API
-				if len(quotaResp.Mess) > 0 {
-					return false, errors.New(strings.Join(quotaResp.Mess, "; "))
-				}
-			}
-			return false, fmt.Errorf("quota resource check returned status code %d: %s", httpErr.Code, httpErr.Reason)
-		}
-		// Network or other error
-		return false, err
-	}
+// 	responseBody, err := m.sendPost(ctx, path, strings.ToUpper(platform), nil)
+// 	if err != nil {
+// 		// Check if it's an HTTPError (non-200 status code from HTTP layer)
+// 		var httpErr commons.HTTPError
+// 		if errors.As(err, &httpErr) {
+// 			// Try to parse the response body if available
+// 			var quotaResp quotaResourceResponse
+// 			if parseErr := json.Unmarshal([]byte(httpErr.Reason), &quotaResp); parseErr == nil {
+// 				// If we can parse the response, use the message from API
+// 				if len(quotaResp.Mess) > 0 {
+// 					return false, errors.New(strings.Join(quotaResp.Mess, "; "))
+// 				}
+// 			}
+// 			return false, fmt.Errorf("quota resource check returned status code %d: %s", httpErr.Code, httpErr.Reason)
+// 		}
+// 		// Network or other error
+// 		return false, err
+// 	}
 
-	// Parse response to check status_code
-	var quotaResp quotaResourceResponse
-	if err := json.Unmarshal(responseBody, &quotaResp); err != nil {
-		return false, fmt.Errorf("error parsing quota resource response: %w", err)
-	}
+// 	// Parse response to check status_code
+// 	var quotaResp quotaResourceResponse
+// 	if err := json.Unmarshal(responseBody, &quotaResp); err != nil {
+// 		return false, fmt.Errorf("error parsing quota resource response: %w", err)
+// 	}
 
-	// Check status_code from response
-	if quotaResp.StatusCode == 200 {
-		tflog.Info(ctx, "Quota resource check passed")
-		return true, nil
-	}
+// 	// Check status_code from response
+// 	if quotaResp.StatusCode == 200 {
+// 		tflog.Info(ctx, "Quota resource check passed")
+// 		return true, nil
+// 	}
 
-	// Non-200 status code, return message from API
-	errorMsg := fmt.Sprintf("quota resource check failed with status code %d", quotaResp.StatusCode)
-	if len(quotaResp.Mess) > 0 {
-		errorMsg = strings.Join(quotaResp.Mess, "; ")
-	}
-	return false, errors.New(errorMsg)
-}
+// 	// Non-200 status code, return message from API
+// 	errorMsg := fmt.Sprintf("quota resource check failed with status code %d", quotaResp.StatusCode)
+// 	if len(quotaResp.Mess) > 0 {
+// 		errorMsg = strings.Join(quotaResp.Mess, "; ")
+// 	}
+// 	return false, errors.New(errorMsg)
+// }
