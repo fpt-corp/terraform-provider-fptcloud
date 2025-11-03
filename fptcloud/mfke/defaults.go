@@ -325,10 +325,7 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 
 		if !plan.Pools[i].Kv.IsNull() && !plan.Pools[i].Kv.IsUnknown() {
 			// Sort KV pairs to ensure consistent ordering
-			sortedKv, err := sortKVByKey(plan.Pools[i].Kv)
-			if err == nil {
-				plan.Pools[i].Kv = sortedKv
-			}
+			plan.Pools[i].Kv = sortKVByKey(plan.Pools[i].Kv)
 		}
 		// Don't change null/unknown values - let them stay as they are
 		if plan.Pools[i].VGpuID.IsNull() || plan.Pools[i].VGpuID.IsUnknown() || plan.Pools[i].VGpuID.ValueString() == "" {

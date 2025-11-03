@@ -327,10 +327,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		kvs := make([]map[string]string, 0)
 		if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
 			// Sort KV blocks by key name for consistent ordering during plan
-			sortedKv, err := sortKVByKey(item.Kv)
-			if err != nil {
-				continue
-			}
+			sortedKv := sortKVByKey(item.Kv)
 
 			for _, kvElement := range sortedKv.Elements() {
 				if kvObj, ok := kvElement.(types.Object); ok {
@@ -591,30 +588,28 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 	kvs := make([]map[string]string, 0)
 	if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
 		// Sort KV blocks by key name for consistent ordering during plan
-		sortedKv, err := sortKVByKey(item.Kv)
-		if err == nil {
-			for _, kvElement := range sortedKv.Elements() {
-				if kvObj, ok := kvElement.(types.Object); ok {
-					kvAttrs := kvObj.Attributes()
-					name := kvAttrs["name"].(types.String)
-					value := kvAttrs["value"].(types.String)
+		sortedKv := sortKVByKey(item.Kv)
+		for _, kvElement := range sortedKv.Elements() {
+			if kvObj, ok := kvElement.(types.Object); ok {
+				kvAttrs := kvObj.Attributes()
+				name := kvAttrs["name"].(types.String)
+				value := kvAttrs["value"].(types.String)
 
-					if name.IsNull() && value.IsNull() {
-						continue
-					}
-					key := name.ValueString()
-					val := value.ValueString()
-					if key == "" && val == "" {
-						continue
-					}
-
-					// Skip system-generated keys when sending request
-					if isSystemGeneratedKey(key) {
-						continue
-					}
-
-					kvs = append(kvs, map[string]string{key: val})
+				if name.IsNull() && value.IsNull() {
+					continue
 				}
+				key := name.ValueString()
+				val := value.ValueString()
+				if key == "" && val == "" {
+					continue
+				}
+
+				// Skip system-generated keys when sending request
+				if isSystemGeneratedKey(key) {
+					continue
+				}
+
+				kvs = append(kvs, map[string]string{key: val})
 			}
 		}
 	}
@@ -785,16 +780,14 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 		// Treat both null and ListNull as empty map for comparison
 		if !p.Kv.IsNull() && !p.Kv.IsUnknown() && len(p.Kv.Elements()) > 0 {
 			// Sort KV blocks by key name for consistent comparison
-			sortedKv, err := sortKVByKey(p.Kv)
-			if err == nil {
-				for _, kvElement := range sortedKv.Elements() {
-					if kvObj, ok := kvElement.(types.Object); ok {
-						kvAttrs := kvObj.Attributes()
-						k := kvAttrs["name"].(types.String).ValueString()
-						v := kvAttrs["value"].(types.String).ValueString()
-						if k != "" || v != "" {
-							m[k] = v
-						}
+			sortedKv := sortKVByKey(p.Kv)
+			for _, kvElement := range sortedKv.Elements() {
+				if kvObj, ok := kvElement.(types.Object); ok {
+					kvAttrs := kvObj.Attributes()
+					k := kvAttrs["name"].(types.String).ValueString()
+					v := kvAttrs["value"].(types.String).ValueString()
+					if k != "" || v != "" {
+						m[k] = v
 					}
 				}
 			}
@@ -1139,12 +1132,7 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 
 		// Sort KV pairs if any exist
 		if len(kvElements) > 0 {
-			sortedKv, err := sortKVByKey(kvList)
-			if err == nil {
-				item.Kv = sortedKv
-			} else {
-				item.Kv = kvList
-			}
+			item.Kv = sortKVByKey(kvList)
 		} else {
 			item.Kv = kvList
 		}
@@ -1664,9 +1652,9 @@ func filterUserDefinedKV(kvMap map[string]string) map[string]string {
 }
 
 // sortKVByKey sorts KV blocks by key name to ensure consistent ordering
-func sortKVByKey(kvList types.List) (types.List, error) {
+func sortKVByKey(kvList types.List) types.List {
 	if kvList.IsNull() || kvList.IsUnknown() || len(kvList.Elements()) <= 1 {
-		return kvList, nil
+		return kvList
 	}
 
 	// Convert to KV slice for sorting
@@ -1710,7 +1698,7 @@ func sortKVByKey(kvList types.List) (types.List, error) {
 			},
 		},
 		sortedElements,
-	), nil
+	)
 }
 
 func internalReadClusterAutoscaler(ca managedKubernetesEngineDataClusterAutoscaler) (types.Object, diag2.Diagnostics) {
