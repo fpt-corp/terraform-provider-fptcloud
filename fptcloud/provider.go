@@ -12,6 +12,7 @@ import (
 	fptcloud_instance_group "terraform-provider-fptcloud/fptcloud/instance-group"
 	fptcloud_instance_group_policy "terraform-provider-fptcloud/fptcloud/instance-group-policy"
 	fptcloud_load_balancer_v2 "terraform-provider-fptcloud/fptcloud/load_balancer_v2"
+	fptcloud_mfke_storage_policy "terraform-provider-fptcloud/fptcloud/mfke-storage-policy"
 
 	fptcloud_object_storage "terraform-provider-fptcloud/fptcloud/object-storage"
 	fptcloud_security_group "terraform-provider-fptcloud/fptcloud/security-group"
@@ -72,6 +73,7 @@ func Provider() *schema.Provider {
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage_policy":                       fptcloud_storage_policy.DataSourceStoragePolicy(),
+			"fptcloud_mfke_storage_policy":                  fptcloud_mfke_storage_policy.DataSourceMfkeStoragePolicy(),
 			"fptcloud_storage":                              fptcloud_storage.DataSourceStorage(),
 			"fptcloud_ssh_key":                              fptcloud_ssh.DataSourceSSHKey(),
 			"fptcloud_vpc":                                  fptcloud_vpc.NewDataSource(),
