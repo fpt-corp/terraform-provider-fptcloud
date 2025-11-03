@@ -1,3 +1,7 @@
+## [0.3.30] - 2025-11-03
+
+- Feat: Add Managed FKE storage policy
+
 ## [0.3.29] - 2025-11-03
 
 - Refactor: Refactor KV and taints type of M-FKE.

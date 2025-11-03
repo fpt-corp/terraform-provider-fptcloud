@@ -69,6 +69,8 @@ var ApiPath = struct {
 	ManagedFKEUpdateEndpointCIDR        func(vpcId string, platform string, clusterId string) string
 	ManagedFKEUpdateClusterAutoscaler   func(vpcId string, platform string, clusterId string) string
 	ManagedFKECheckEnableServiceAccount func(vpcId string, platform string) string
+	ManagedFKECheckQuotaResource        func(vpcId string, platform string) string
+	ManagedFKEStoragePolicy             func(vpcId string) string
 
 	// GPU
 	GetGPUInfo func(vpcId string) string
@@ -330,7 +332,6 @@ var ApiPath = struct {
 		if isWakeup {
 			action = "wakeup"
 		}
-
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/%s",
 			vpcId, platform, clusterId, action,
@@ -374,6 +375,20 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/check-enable-service-account",
 			vpcId, platform,
+		)
+	},
+
+	ManagedFKECheckQuotaResource: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/check-quota-resources",
+			vpcId, platform,
+		)
+	},
+
+	ManagedFKEStoragePolicy: func(vpcId string) string {
+		return fmt.Sprintf(
+			"/v1/internal/vpc/%s/find_storage_policy",
+			vpcId,
 		)
 	},
 
