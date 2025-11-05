@@ -120,44 +120,74 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error()))
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("Create response: Type=%s, Message=%s", createResponse.Type, createResponse.Message))
 
-	currentState.Id = types.StringValue(createResponse.Data.ClusterId)
-	response.State.Set(ctx, &currentState)
-
-	// Update new state of resource to terraform state
-	var timeStart = time.Now()
-	var timeout = 120 * time.Second
-	var errInternalRead = errors.New("init error")
-	var count = 0
-
-	for time.Since(timeStart) < timeout && errInternalRead != nil {
-		count += 1
-		errInternalRead = r.internalRead(ctx, createResponse.Data.ClusterId, &currentState)
-		if errInternalRead != nil {
-			tflog.Info(ctx, "err2: "+errInternalRead.Error())
-			time.Sleep(10 * time.Second)
-			continue
+	respType := strings.ToLower(createResponse.Type)
+	switch respType {
+	case "error":
+		msg := createResponse.Message
+		if msg == "" {
+			msg = "unknown error from API"
 		}
-	}
-	if errInternalRead != nil {
-		tflog.Info(ctx, errInternalRead.Error())
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading database currentState", errInternalRead.Error()))
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error creating database", msg))
+		response.State.RemoveResource(ctx)
+		return
+
+	case "success":
+		msg := createResponse.Message
+		if msg == "" {
+			msg = "database created successfully"
+		}
+		tflog.Info(ctx, msg)
+		fmt.Printf("\n✅ %s\n", msg)
+		
+		currentState.Id = types.StringValue(createResponse.Data.ClusterId)
+		if currentState.Id.IsNull() || currentState.Id.ValueString() == "" {
+			currentState.Id = types.StringValue("temp-" + strconv.FormatInt(time.Now().Unix(), 10))
+		}
+		diags = response.State.Set(ctx, &currentState)
+		response.Diagnostics.Append(diags...)
 	}
 
-	// Since this operation doesn't return a value, save the result to state upon creation for later comparison.
-	currentState.Flavor = types.StringValue(f.Flavor)
-	currentState.IsOps = types.StringValue(f.IsOps)
-	currentState.IsPublic = types.StringValue(f.IsPublic)
-	currentState.VhostName = types.StringValue(f.VhostName)
-	currentState.NumberOfShard = types.Int64Value(int64(f.NumberOfShard))
-	currentState.NumberOfNode = types.Int64Value(int64(f.NumberOfNode))
-	tflog.Debug(ctx, fmt.Sprintf("CREATING: number of node is %d (%d master, %d worker)", f.NumberOfNode, f.MasterCount, f.WorkerCount))
-	currentState.Id = types.StringValue(createResponse.Data.ClusterId)
-	diags = response.State.Set(ctx, &currentState)
-	response.Diagnostics.Append(diags...)
-	if response.Diagnostics.HasError() {
-		return
-	}
+	// currentState.Id = types.StringValue(createResponse.Data.ClusterId)
+	// response.State.Set(ctx, &currentState)
+
+	// // Update new state of resource to terraform state
+	// var timeStart = time.Now()
+	// var timeout = 120 * time.Second
+	// var errInternalRead = errors.New("init error")
+	// var count = 0
+	// tflog.Info(ctx, "timeStart: "+timeStart.String())
+	// tflog.Info(ctx, "timeout: "+timeout.String())
+
+	// for time.Since(timeStart) < timeout && errInternalRead != nil {
+	// 	count += 1
+	// 	errInternalRead = r.internalRead(ctx, createResponse.Data.ClusterId, &currentState)
+	// 	if errInternalRead != nil {
+	// 		tflog.Info(ctx, "err2: "+errInternalRead.Error())
+	// 		time.Sleep(10 * time.Second)
+	// 		continue
+	// 	}
+	// }
+	// if errInternalRead != nil {
+	// 	tflog.Info(ctx, errInternalRead.Error())
+	// 	response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading database currentState", errInternalRead.Error()))
+	// }
+
+	// // Since this operation doesn't return a value, save the result to state upon creation for later comparison.
+	// currentState.Flavor = types.StringValue(f.Flavor)
+	// currentState.IsOps = types.StringValue(f.IsOps)
+	// currentState.IsPublic = types.StringValue(f.IsPublic)
+	// currentState.VhostName = types.StringValue(f.VhostName)
+	// currentState.NumberOfShard = types.Int64Value(int64(f.NumberOfShard))
+	// currentState.NumberOfNode = types.Int64Value(int64(f.NumberOfNode))
+	// tflog.Debug(ctx, fmt.Sprintf("CREATING: number of node is %d (%d master, %d worker)", f.NumberOfNode, f.MasterCount, f.WorkerCount))
+	// currentState.Id = types.StringValue(createResponse.Data.ClusterId)
+	// diags = response.State.Set(ctx, &currentState)
+	// response.Diagnostics.Append(diags...)
+	// if response.Diagnostics.HasError() {
+	// 	return
+	// }
 }
 
 func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
@@ -423,7 +453,7 @@ func (r *resourceDatabase) Configure(ctx context.Context, request resource.Confi
 // Get resource data from API, then update to terrafrom state
 func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, state *databaseResourceModel) error {
 	vpcId := state.VpcId.ValueString()
-	tflog.Info(ctx, "Reading state of Database Id "+databaseId+", VPC Id "+vpcId)
+	tflog.Info(ctx, "Reading state of Database Id test "+databaseId+", VPC Id "+vpcId)
 
 	var nodeTotal = 0
 	var timeStart = time.Now()
@@ -644,9 +674,10 @@ type databaseReadResponse struct {
 }
 
 type databaseCreateResponse struct {
-	Message string                     `json:"message"`
-	Type    string                     `json:"type"`
-	Data    databaseCreateResponseData `json:"data"`
+	Message 	string                     	`json:"message"`
+	Type    	string                     	`json:"type"`
+	ErrorCode 	int							`json:"error_code"`
+	Data    	databaseCreateResponseData 	`json:"data"`
 }
 
 // Response from API when creating a database
