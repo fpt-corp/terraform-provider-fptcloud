@@ -140,7 +140,6 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		}
 		tflog.Info(ctx, msg)
 		fmt.Printf("\n✅ %s\n", msg)
-		
 		currentState.Id = types.StringValue(createResponse.Data.ClusterId)
 		if currentState.Id.IsNull() || currentState.Id.ValueString() == "" {
 			currentState.Id = types.StringValue("temp-" + strconv.FormatInt(time.Now().Unix(), 10))
@@ -453,7 +452,7 @@ func (r *resourceDatabase) Configure(ctx context.Context, request resource.Confi
 // Get resource data from API, then update to terrafrom state
 func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, state *databaseResourceModel) error {
 	vpcId := state.VpcId.ValueString()
-	tflog.Info(ctx, "Reading state of Database Id test "+databaseId+", VPC Id "+vpcId)
+	tflog.Info(ctx, "Reading state of Database Id "+databaseId+", VPC Id "+vpcId)
 
 	var nodeTotal = 0
 	var timeStart = time.Now()
