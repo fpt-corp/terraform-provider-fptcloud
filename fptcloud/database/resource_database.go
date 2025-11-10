@@ -147,46 +147,6 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		diags = response.State.Set(ctx, &currentState)
 		response.Diagnostics.Append(diags...)
 	}
-
-	// currentState.Id = types.StringValue(createResponse.Data.ClusterId)
-	// response.State.Set(ctx, &currentState)
-
-	// // Update new state of resource to terraform state
-	// var timeStart = time.Now()
-	// var timeout = 120 * time.Second
-	// var errInternalRead = errors.New("init error")
-	// var count = 0
-	// tflog.Info(ctx, "timeStart: "+timeStart.String())
-	// tflog.Info(ctx, "timeout: "+timeout.String())
-
-	// for time.Since(timeStart) < timeout && errInternalRead != nil {
-	// 	count += 1
-	// 	errInternalRead = r.internalRead(ctx, createResponse.Data.ClusterId, &currentState)
-	// 	if errInternalRead != nil {
-	// 		tflog.Info(ctx, "err2: "+errInternalRead.Error())
-	// 		time.Sleep(10 * time.Second)
-	// 		continue
-	// 	}
-	// }
-	// if errInternalRead != nil {
-	// 	tflog.Info(ctx, errInternalRead.Error())
-	// 	response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading database currentState", errInternalRead.Error()))
-	// }
-
-	// // Since this operation doesn't return a value, save the result to state upon creation for later comparison.
-	// currentState.Flavor = types.StringValue(f.Flavor)
-	// currentState.IsOps = types.StringValue(f.IsOps)
-	// currentState.IsPublic = types.StringValue(f.IsPublic)
-	// currentState.VhostName = types.StringValue(f.VhostName)
-	// currentState.NumberOfShard = types.Int64Value(int64(f.NumberOfShard))
-	// currentState.NumberOfNode = types.Int64Value(int64(f.NumberOfNode))
-	// tflog.Debug(ctx, fmt.Sprintf("CREATING: number of node is %d (%d master, %d worker)", f.NumberOfNode, f.MasterCount, f.WorkerCount))
-	// currentState.Id = types.StringValue(createResponse.Data.ClusterId)
-	// diags = response.State.Set(ctx, &currentState)
-	// response.Diagnostics.Append(diags...)
-	// if response.Diagnostics.HasError() {
-	// 	return
-	// }
 }
 
 func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
