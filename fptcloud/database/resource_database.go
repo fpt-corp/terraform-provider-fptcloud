@@ -673,10 +673,10 @@ type databaseReadResponse struct {
 }
 
 type databaseCreateResponse struct {
-	Message 	string                     	`json:"message"`
-	Type    	string                     	`json:"type"`
-	ErrorCode 	int							`json:"error_code"`
-	Data    	databaseCreateResponseData 	`json:"data"`
+	Message   string                     `json:"message"`
+	Type      string                     `json:"type"`
+	ErrorCode int                        `json:"error_code"`
+	Data      databaseCreateResponseData `json:"data"`
 }
 
 // Response from API when creating a database
