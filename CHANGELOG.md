@@ -1,3 +1,7 @@
+## [0.3.31] - 2025-11-09
+
+- Feat: Update case error create and pending
+
 ## [0.3.30] - 2025-11-03
 
 - Feat: Add Managed FKE storage policy
