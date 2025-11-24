@@ -44,6 +44,11 @@ var ApiPath = struct {
 	Subnet          func(vpcId string) string
 	EdgeGatewayList func(vpcId string) string
 
+	// NIC (Network Interface Card)
+	Nic       func(vpcId string, nicId string) string
+	CreateNic func(vpcId string) string
+	FindNic   func(vpcId string, instanceId string, nicId string) string
+
 	DatabaseGet    func(databaseId string) string
 	DatabaseCreate func() string
 	DatabaseDelete func(databaseId string) string
@@ -269,6 +274,17 @@ var ApiPath = struct {
 
 	EdgeGatewayList: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/edge_gateway/list", vpcId)
+	},
+
+	// NIC (Network Interface Card)
+	Nic: func(vpcId string, nicId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/nic/%s", vpcId, nicId)
+	},
+	CreateNic: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/nic", vpcId)
+	},
+	FindNic: func(vpcId string, instanceId string, nicId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/nic/%s", vpcId, instanceId, nicId)
 	},
 
 	DatabaseGet: func(databaseId string) string {
