@@ -96,6 +96,9 @@ func dataSourceInstanceRead(_ context.Context, d *schema.ResourceData, m interfa
 	if setError = d.Set("created_at", foundInstance.CreatedAt); setError != nil {
 		return diag.FromErr(setError)
 	}
+	if setError = d.Set("tag_ids", foundInstance.TagIds); setError != nil {
+		return diag.FromErr(setError)
+	}
 
 	return nil
 }
