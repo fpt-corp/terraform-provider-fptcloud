@@ -42,10 +42,10 @@ type TagDetail struct {
 
 func ResourceTagging() *schema.Resource {
 	return &schema.Resource{
-		ReadContext: resourceTaggingRead,
-		//CreateContext: resourceTaggingCreate,
-		//UpdateContext: resourceTaggingUpdate,
-		//DeleteContext: resourceTaggingDelete,
+		CreateContext: resourceTaggingCreate,
+		ReadContext:   resourceTaggingRead,
+		UpdateContext: resourceTaggingUpdate,
+		DeleteContext: resourceTaggingDelete,
 
 		Schema: map[string]*schema.Schema{
 			"key": {
@@ -104,4 +104,16 @@ func resourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interfac
 		return diag.FromErr(err)
 	}
 	return diags
+}
+
+func resourceTaggingCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	return diag.Errorf("Create operation is not yet implemented for tagging resource")
+}
+
+func resourceTaggingUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	return diag.Errorf("Update operation is not yet implemented for tagging resource")
+}
+
+func resourceTaggingDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	return diag.Errorf("Delete operation is not yet implemented for tagging resource")
 }
