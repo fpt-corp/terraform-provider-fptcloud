@@ -185,7 +185,7 @@ func providerConfigureContext(_ context.Context, d *schema.ResourceData) (interf
 	}
 
 	userAgent := &common.Component{
-		Name:    "terraform-provider-fptcloud_v0.3.28",
+		Name:    "terraform-provider-fptcloud",
 		Version: ProviderVersion,
 	}
 	client.SetUserAgent(userAgent)
