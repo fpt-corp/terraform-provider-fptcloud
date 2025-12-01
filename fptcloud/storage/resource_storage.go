@@ -2,11 +2,13 @@ package fptcloud_storage
 
 import (
 	"context"
+	"errors"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"log"
+	"strings"
 	common "terraform-provider-fptcloud/commons"
 	"time"
 )
@@ -161,21 +163,68 @@ func resourceStorageRead(_ context.Context, d *schema.ResourceData, m interface{
 
 	findStorageModel := FindStorageDTO{}
 	findStorageModel.ID = d.Id()
-	if vpcId, ok := d.GetOk("vpc_id"); ok {
-		findStorageModel.VpcId = vpcId.(string)
+
+	vpcId, ok := d.GetOk("vpc_id")
+	if !ok {
+		return diag.Errorf("[ERR] vpc_id is required but not found in state. This may indicate a state corruption issue.")
 	}
+	vpcIdStr := vpcId.(string)
+	if vpcIdStr == "" {
+		return diag.Errorf("[ERR] vpc_id is required but is empty in state")
+	}
+	findStorageModel.VpcId = vpcIdStr
 
 	foundStorage, err := storageService.FindStorage(findStorageModel)
 	if err != nil {
-		if foundStorage == nil {
-			d.SetId("")
-			return nil
+		if errors.Is(err, common.TimeoutError) {
+			log.Printf("[WARN] Timeout while retrieving storage %s, keeping in state for retry", d.Id())
+			return diag.Errorf("[ERR] timeout while retrieving the storage: %s", err)
 		}
+
+		var httpErr common.HTTPError
+		if errors.As(err, &httpErr) {
+			if httpErr.Code == 404 {
+				log.Printf("[WARN] Storage %s not found (404), keeping in state for retry", d.Id())
+				return diag.Errorf("[ERR] Storage not found (404). Please try again later: %s", err)
+			}
+			log.Printf("[WARN] HTTP error %d while retrieving storage %s, keeping in state", httpErr.Code, d.Id())
+			return diag.Errorf("[ERR] HTTP error while retrieving the storage: %s", err)
+		}
+
+		if errors.Is(err, common.ZeroMatchesError) {
+			log.Printf("[WARN] Storage %s not found (ZeroMatchesError), keeping in state for retry", d.Id())
+			return diag.Errorf("[ERR] Storage not found. Please try again later: %s", err)
+		}
+
+		errStr := err.Error()
+		if strings.Contains(errStr, "ZeroMatchesError") ||
+			(strings.Contains(errStr, "not found") && !strings.Contains(errStr, "timeout")) {
+			log.Printf("[WARN] Storage %s not found (%s), keeping in state for retry", d.Id(), errStr)
+			return diag.Errorf("[ERR] Storage not found. Please try again later: %s", err)
+		}
+
+		log.Printf("[WARN] Error retrieving storage %s: %s. Keeping in state for retry.", d.Id(), err)
 		return diag.Errorf("[ERR] failed retrieving the storage: %s", err)
 	}
+
+	if foundStorage == nil {
+		log.Printf("[WARN] FindStorage returned nil for storage %s, but no error. Keeping in state for retry.", d.Id())
+		return diag.Errorf("[ERR] Storage API returned empty response. Please try again later: storage %s", d.Id())
+	}
+
+	expectedId := d.Id()
+	if foundStorage.ID == "" {
+		log.Printf("[WARN] Storage %s returned empty ID, keeping in state for retry", expectedId)
+		return diag.Errorf("[ERR] Storage returned empty ID. Please try again later: storage %s", d.Id())
+	}
+
+	if foundStorage.ID != expectedId {
+		log.Printf("[ERR] Storage ID mismatch: expected %s, got %s. This may indicate API query issue.", expectedId, foundStorage.ID)
+		return diag.Errorf("[ERR] storage ID mismatch: expected %s but API returned %s. This may indicate a query parameter issue.", expectedId, foundStorage.ID)
+	}
+
 	if foundStorage.Status != "ENABLED" {
-		d.SetId("")
-		return nil
+		log.Printf("[WARN] Storage %s status is %s (not ENABLED), keeping in state", d.Id(), foundStorage.Status)
 	}
 
 	d.SetId(foundStorage.ID)
