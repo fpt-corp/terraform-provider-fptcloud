@@ -12,7 +12,7 @@ type CreateTagInput struct {
 	Key            string   `json:"key"`
 	Value          string   `json:"value,omitempty"`
 	Color          string   `json:"color,omitempty"`
-	TagLevel       string   `json:"tag_level"`
+	ScopeType      string   `json:"scope_type"`
 	ResourceScopes []string `json:"resource_scopes"`
 }
 
@@ -21,7 +21,7 @@ type UpdateTagInput struct {
 	Key            string   `json:"key"`
 	Value          string   `json:"value,omitempty"`
 	Color          string   `json:"color,omitempty"`
-	TagLevel       string   `json:"tag_level,omitempty"`
+	ScopeType      string   `json:"scope_type,omitempty"`
 	ResourceScopes []string `json:"resource_scopes,omitempty"`
 }
 
@@ -35,8 +35,8 @@ type TagDetail struct {
 	ID             string   `json:"id"`
 	Key            string   `json:"key"`
 	Value          string   `json:"value"`
-	Color          []string `json:"color"`
-	TagLevel       string   `json:"tag_level"`
+	Color          string   `json:"color"`
+	ScopeType      string   `json:"scope_type"`
 	ResourceScopes []string `json:"resource_scopes"`
 }
 
@@ -63,7 +63,7 @@ func ResourceTagging() *schema.Resource {
 				Optional:    true,
 				Description: "The color of the tag. This field is optional. Valid values are: red, green, blue, etc.",
 			},
-			"tag_level": {
+			"scope_type": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "The scope type of the tag (e.g., VPC, PROJECT, ORG).",
@@ -94,12 +94,10 @@ func resourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interfac
 	if err := d.Set("value", tagDetail.Value); err != nil {
 		return diag.FromErr(err)
 	}
-	if len(tagDetail.Color) > 0 {
-		if err := d.Set("color", tagDetail.Color[0]); err != nil {
-			return diag.FromErr(err)
-		}
+	if err := d.Set("color", tagDetail.Color); err != nil {
+		return diag.FromErr(err)
 	}
-	if err := d.Set("tag_level", tagDetail.TagLevel); err != nil {
+	if err := d.Set("scope_type", tagDetail.ScopeType); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("resource_scopes", tagDetail.ResourceScopes); err != nil {
