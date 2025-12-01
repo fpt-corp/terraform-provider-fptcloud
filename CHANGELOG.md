@@ -1,3 +1,9 @@
+## [0.3.32] - 2025-12-01
+
+### Resource
+
+- Fix: Improve error handling in storage resource
+
 ## [0.3.31] - 2025-11-09
 
 - Feat: Update case error create and pending
