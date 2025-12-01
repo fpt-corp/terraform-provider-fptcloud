@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"log"
 	common "terraform-provider-fptcloud/commons"
 )
 
@@ -78,44 +77,6 @@ func ResourceTagging() *schema.Resource {
 		},
 	}
 }
-func resourceTaggingCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*common.Client)
-	service := NewTaggingService(client)
-
-	var resourceScopes []string
-	if v, ok := d.GetOk("resource_scopes"); ok {
-		resourceScopesSet := v.(*schema.Set)
-		resourceScopes = make([]string, resourceScopesSet.Len())
-		for i, resourceScope := range resourceScopesSet.List() {
-			resourceScopes[i] = resourceScope.(string)
-		}
-	}
-
-	input := &CreateTagInput{
-		Key:            d.Get("key").(string),
-		ResourceScopes: resourceScopes,
-	}
-
-	if v, ok := d.GetOk("value"); ok {
-		input.Value = v.(string)
-	}
-	if v, ok := d.GetOk("color"); ok {
-		input.Color = v.(string)
-	}
-	if v, ok := d.GetOk("tag_level"); ok {
-		input.TagLevel = v.(string)
-	}
-	response, err := service.Create(ctx, input)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	d.SetId(response.TagID)
-	log.Printf("[INFO] Created tag with ID: %s", response.TagID)
-
-	return resourceTaggingRead(ctx, d, m)
-}
-
 func resourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*common.Client)
 	service := NewTaggingService(client)
@@ -144,59 +105,5 @@ func resourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interfac
 	if err := d.Set("resource_scopes", tagDetail.ResourceScopes); err != nil {
 		return diag.FromErr(err)
 	}
-	return diags
-}
-
-func resourceTaggingUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*common.Client)
-	service := NewTaggingService(client)
-
-	var resourceScopes []string
-	if v, ok := d.GetOk("resource_scopes"); ok {
-		resourceScopesSet := v.(*schema.Set)
-		resourceScopes = make([]string, resourceScopesSet.Len())
-		for i, resourceScope := range resourceScopesSet.List() {
-			resourceScopes[i] = resourceScope.(string)
-		}
-	}
-
-	input := &UpdateTagInput{
-		Key:            d.Get("key").(string),
-		ResourceScopes: resourceScopes,
-	}
-
-	if v, ok := d.GetOk("value"); ok {
-		input.Value = v.(string)
-	}
-	if v, ok := d.GetOk("color"); ok {
-		input.Color = v.(string)
-	}
-	if v, ok := d.GetOk("tag_level"); ok {
-		input.TagLevel = v.(string)
-	}
-	_, err := service.Update(ctx, d.Id(), input)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	log.Printf("[INFO] Updated tag with ID: %s", d.Id())
-
-	return resourceTaggingRead(ctx, d, m)
-}
-
-func resourceTaggingDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*common.Client)
-	service := NewTaggingService(client)
-
-	var diags diag.Diagnostics
-
-	_, err := service.Delete(ctx, d.Id())
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	log.Printf("[INFO] Deleted tag with ID: %s", d.Id())
-	d.SetId("")
-
 	return diags
 }
