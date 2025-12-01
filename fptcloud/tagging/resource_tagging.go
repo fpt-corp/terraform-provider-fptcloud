@@ -10,19 +10,19 @@ import (
 
 // CreateTagInput represents input parameters for creating a tag
 type CreateTagInput struct {
-	Key      string   `json:"key"`
-	Value    string   `json:"value,omitempty"`
-	Color    string   `json:"color,omitempty"`
-	TagLevel string   `json:"tag_level"`
+	Key            string   `json:"key"`
+	Value          string   `json:"value,omitempty"`
+	Color          string   `json:"color,omitempty"`
+	TagLevel       string   `json:"tag_level"`
 	ResourceScopes []string `json:"resource_scopes"`
 }
 
 // UpdateTagInput represents input parameters for updating a tag
 type UpdateTagInput struct {
-	Key      string   `json:"key"`
-	Value    string   `json:"value,omitempty"`
-	Color    string   `json:"color,omitempty"`
-	TagLevel string   `json:"tag_level,omitempty"`
+	Key            string   `json:"key"`
+	Value          string   `json:"value,omitempty"`
+	Color          string   `json:"color,omitempty"`
+	TagLevel       string   `json:"tag_level,omitempty"`
 	ResourceScopes []string `json:"resource_scopes,omitempty"`
 }
 
@@ -33,20 +33,20 @@ type TagResponse struct {
 
 // TagDetail represents the detailed tag information
 type TagDetail struct {
-	ID        string   `json:"id"`
-	Key       string   `json:"key"`
-	Value     string   `json:"value"`
-	Color     []string `json:"color"`
-	TagLevel string   `json:"tag_level"`
+	ID             string   `json:"id"`
+	Key            string   `json:"key"`
+	Value          string   `json:"value"`
+	Color          []string `json:"color"`
+	TagLevel       string   `json:"tag_level"`
 	ResourceScopes []string `json:"resource_scopes"`
 }
 
 func ResourceTagging() *schema.Resource {
 	return &schema.Resource{
-		CreateContext: resourceTaggingCreate,
-		ReadContext:   resourceTaggingRead,
-		UpdateContext: resourceTaggingUpdate,
-		DeleteContext: resourceTaggingDelete,
+		ReadContext: resourceTaggingRead,
+		//CreateContext: resourceTaggingCreate,
+		//UpdateContext: resourceTaggingUpdate,
+		//DeleteContext: resourceTaggingDelete,
 
 		Schema: map[string]*schema.Schema{
 			"key": {
@@ -72,7 +72,7 @@ func ResourceTagging() *schema.Resource {
 			"resource_scopes": {
 				Type:        schema.TypeSet,
 				Optional:    true,
-				Elem: &schema.Schema{Type: schema.TypeString},
+				Elem:        &schema.Schema{Type: schema.TypeString},
 				Description: "List of resource scopes to associate with this tag.",
 			},
 		},
@@ -92,7 +92,7 @@ func resourceTaggingCreate(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	input := &CreateTagInput{
-		Key:      d.Get("key").(string),
+		Key:            d.Get("key").(string),
 		ResourceScopes: resourceScopes,
 	}
 
@@ -161,7 +161,7 @@ func resourceTaggingUpdate(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	input := &UpdateTagInput{
-		Key:      d.Get("key").(string),
+		Key:            d.Get("key").(string),
 		ResourceScopes: resourceScopes,
 	}
 

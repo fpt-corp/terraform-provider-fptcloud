@@ -104,7 +104,7 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 	},
 	"tag_ids": {
 		Type:        schema.TypeList,
-		Computed:    true,
+		Optional:    true,
 		Elem:        &schema.Schema{Type: schema.TypeString},
 		Description: "List of tag IDs associated with the instance",
 	},
@@ -211,6 +211,7 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	},
 	"tag_ids": {
 		Type:        schema.TypeSet,
+		Computed:    true,
 		Optional:    true,
 		Elem:        &schema.Schema{Type: schema.TypeString},
 		Description: "List of tag IDs to associate with the instance",
