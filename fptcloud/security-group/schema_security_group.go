@@ -95,6 +95,12 @@ var dataSourceSecurityGroup = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The created at of the security group",
 	},
+	"tag_ids": {
+		Type:        schema.TypeList,
+		Computed:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "List of tag IDs associated with the security group",
+	},
 }
 
 var resourceSecurityGroup = map[string]*schema.Schema{
@@ -143,5 +149,12 @@ var resourceSecurityGroup = map[string]*schema.Schema{
 		Type:        schema.TypeString,
 		Computed:    true,
 		Description: "The created at of the security group",
+	},
+	"tag_ids": {
+		Type:        schema.TypeSet,
+		Optional:    true,
+		Computed:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "List of tag IDs associated with the security group",
 	},
 }

@@ -25,6 +25,10 @@ resource "fptcloud_floating_ip" "example" {
 
 - `vpc_id` (String) The vpc id of the floating ip
 
+### Optional
+
+- `tag_ids` (Set of String) List of tag IDs to associate with the floating ip
+
 ### Read-Only
 
 - `created_at` (String)

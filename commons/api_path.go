@@ -8,11 +8,13 @@ var ApiPath = struct {
 	SSH                        string
 	Storage                    func(vpcId string) string
 	StorageUpdateAttached      func(vpcId string, storageId string) string
+	UpdateStorageTags          func(vpcId string, storageId string) string
 	StoragePolicy              func(vpcId string) string
 	Flavor                     func(vpcId string) string
 	GetFlavorByName            func(vpcId string) string
 	Image                      func(vpcId string) string
 	SecurityGroup              func(vpcId string) string
+	UpdateSecurityGroupTags    func(vpcId string, securityGroupId string) string
 	RenameSecurityGroup        func(vpcId string, securityGroupId string) string
 	UpdateApplyToSecurityGroup func(vpcId string, securityGroupId string) string
 	SecurityGroupRule          func(vpcId string, securityGroupRuleId string) string
@@ -33,6 +35,7 @@ var ApiPath = struct {
 	FindFloatingIpByAddress    func(vpcId string) string
 	ListFloatingIp             func(vpcId string) string
 	DeleteFloatingIp           func(vpcId string, floatingIpId string) string
+	UpdateFloatingIpTags       func(vpcId string, floatingIpId string) string
 	ListIpAddress              func(vpcId string) string
 	AssociateFloatingIp        func(vpcId string) string
 	DisassociateFloatingIp     func(vpcId string, floatingIpId string) string
@@ -40,6 +43,7 @@ var ApiPath = struct {
 	DeleteSubnet               func(vpcId string, subnetId string) string
 	FindSubnetByName           func(vpcId string) string
 	FindSubnet                 func(vpcId string, subnetId string) string
+	UpdateSubnetTags           func(vpcId string, subnetId string) string
 	ListSubnets                func(vpcId string) string
 
 	Subnet          func(vpcId string) string
@@ -179,6 +183,9 @@ var ApiPath = struct {
 	StorageUpdateAttached: func(vpcId string, storageId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage/%s/update-attached", vpcId, storageId)
 	},
+	UpdateStorageTags: func(vpcId string, storageId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/storage/%s/tags", vpcId, storageId)
+	},
 	StoragePolicy: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage-policies", vpcId)
 	},
@@ -190,6 +197,9 @@ var ApiPath = struct {
 	},
 	SecurityGroup: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/security-group", vpcId)
+	},
+	UpdateSecurityGroupTags: func(vpcId string, securityGroupId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/security-group/%s/tags", vpcId, securityGroupId)
 	},
 	RenameSecurityGroup: func(vpcId string, securityGroupId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/security-group/%s/rename", vpcId, securityGroupId)
@@ -254,6 +264,9 @@ var ApiPath = struct {
 	DeleteFloatingIp: func(vpcId string, floatingIpId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/floating-ip/%s/release", vpcId, floatingIpId)
 	},
+	UpdateFloatingIpTags: func(vpcId string, floatingIpId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/floating-ip/%s/tags", vpcId, floatingIpId)
+	},
 	AssociateFloatingIp: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/floating-ip/associate", vpcId)
 	},
@@ -271,6 +284,9 @@ var ApiPath = struct {
 	},
 	FindSubnet: func(vpcId string, subnetId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/network/%s", vpcId, subnetId)
+	},
+	UpdateSubnetTags: func(vpcId string, subnetId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/network/%s/tags", vpcId, subnetId)
 	},
 	ListSubnets: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/networks", vpcId)

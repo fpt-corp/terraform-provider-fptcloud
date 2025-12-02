@@ -26,6 +26,7 @@ type StorageDTO struct {
 	StoragePolicyId string  `json:"storage_policy_id"`
 	InstanceId      *string `json:"instance_id"`
 	VpcId           string  `json:"vpc_id"`
+	TagIds          []string `json:"tag_ids,omitempty"`
 }
 
 // UpdateStorageDTO storage dto model to update storage
@@ -37,16 +38,17 @@ type UpdateStorageDTO struct {
 
 // Storage represents a storage model
 type Storage struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Type            string `json:"type"`
-	SizeGb          int    `json:"size_gb"`
-	StoragePolicy   string `json:"storage_policy"`
-	StoragePolicyId string `json:"storage_policy_id"`
-	InstanceId      string `json:"instance_id"`
-	Status          string `json:"status"`
-	VpcId           string `json:"vpc_id"`
-	CreatedAt       string `json:"created_at"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Type            string   `json:"type"`
+	SizeGb          int      `json:"size_gb"`
+	StoragePolicy   string   `json:"storage_policy"`
+	StoragePolicyId string   `json:"storage_policy_id"`
+	InstanceId      string   `json:"instance_id"`
+	Status          string   `json:"status"`
+	VpcId           string   `json:"vpc_id"`
+	CreatedAt       string   `json:"created_at"`
+	TagIds          []string `json:"tag_ids,omitempty"`
 }
 
 // StorageService defines the interface for storage service
@@ -54,6 +56,7 @@ type StorageService interface {
 	FindStorage(searchModel FindStorageDTO) (*Storage, error)
 	CreateStorage(createdModel StorageDTO) (string, error)
 	UpdateStorage(vpcId string, storageId string, updatedModel UpdateStorageDTO) (*common.SimpleResponse, error)
+	UpdateTags(vpcId string, storageId string, tagIds []string) (*common.SimpleResponse, error)
 	UpdateAttachedInstance(vpcId string, storageId string, instanceId *string) (*common.SimpleResponse, error)
 	DeleteStorage(vpcId string, storageId string) (*common.SimpleResponse, error)
 }
@@ -148,6 +151,25 @@ func (s *StorageServiceImpl) UpdateAttachedInstance(vpcId string, storageId stri
 		"instance_id": instanceId,
 	})
 
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data:   "Successfully",
+		Status: "200",
+	}
+
+	return result, nil
+}
+
+// UpdateTags updates the tags associated with a storage
+func (s *StorageServiceImpl) UpdateTags(vpcId string, storageId string, tagIds []string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.UpdateStorageTags(vpcId, storageId)
+	payload := map[string][]string{
+		"tag_ids": tagIds,
+	}
+	_, err := s.client.SendPutRequest(apiPath, payload)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}

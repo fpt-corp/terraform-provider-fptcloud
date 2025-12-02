@@ -13,6 +13,7 @@ type SecurityGroupService interface {
 	Delete(vpcId string, securityGroupId string) (*common.SimpleResponse, error)
 	Rename(vpcId string, securityGroupId string, newName string) (*common.SimpleResponse, error)
 	UpdateApplyTo(vpcId string, securityGroupId string, applyTo []string) (*common.SimpleResponse, error)
+	UpdateTags(vpcId string, securityGroupId string, tagIds []string) (*common.SimpleResponse, error)
 }
 
 // SecurityGroupServiceImpl is the implementation of SecurityGroupService
@@ -99,6 +100,25 @@ func (s *SecurityGroupServiceImpl) Rename(vpcId string, securityGroupId string, 
 func (s *SecurityGroupServiceImpl) UpdateApplyTo(vpcId string, securityGroupId string, applyTo []string) (*common.SimpleResponse, error) {
 	var apiPath = common.ApiPath.UpdateApplyToSecurityGroup(vpcId, securityGroupId)
 	_, err := s.client.SendPutRequest(apiPath, map[string]interface{}{"apply_to": applyTo})
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data:   "Successfully",
+		Status: "200",
+	}
+
+	return result, nil
+}
+
+// UpdateTags updates the tags associated with a security group
+func (s *SecurityGroupServiceImpl) UpdateTags(vpcId string, securityGroupId string, tagIds []string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.UpdateSecurityGroupTags(vpcId, securityGroupId)
+	payload := map[string][]string{
+		"tag_ids": tagIds,
+	}
+	_, err := s.client.SendPutRequest(apiPath, payload)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}

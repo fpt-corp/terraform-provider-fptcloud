@@ -38,6 +38,7 @@ type FloatingIp struct {
 	Instance  FloatingIpInstance `json:"instance"`
 	Status    string             `json:"status"`
 	CreatedAt string             `json:"created_at"`
+	TagIds    []string           `json:"tag_ids,omitempty"`
 }
 
 type FloatingIpInstance struct {
@@ -52,8 +53,9 @@ type FloatingIpService interface {
 	FindFloatingIp(findDto FindFloatingIpDTO) (*FloatingIp, error)
 	FindFloatingIpByAddress(findDto FindFloatingIpDTO) (*FloatingIp, error)
 	ListFloatingIp(vpcId string) (*[]FloatingIp, error)
-	CreateFloatingIp(vpcId string) (*FloatingIp, error)
+	CreateFloatingIp(vpcId string, tagIds []string) (*FloatingIp, error)
 	DeleteFloatingIp(vpcId string, floatingIpId string) (bool, error)
+	UpdateTags(vpcId string, floatingIpId string, tagIds []string) (*common.SimpleResponse, error)
 }
 
 // FloatingIpServiceImpl is the implementation of FloatingIpServiceImpl
@@ -129,8 +131,14 @@ func (s *FloatingIpServiceImpl) ListFloatingIp(vpcId string) (*[]FloatingIp, err
 }
 
 // CreateFloatingIp create a floating ip
-func (s *FloatingIpServiceImpl) CreateFloatingIp(vpcId string) (*FloatingIp, error) {
-	body := map[string]interface{}{"vpc_id": vpcId, "floating_ip_id": "new"}
+func (s *FloatingIpServiceImpl) CreateFloatingIp(vpcId string, tagIds []string) (*FloatingIp, error) {
+	body := map[string]interface{}{
+		"vpc_id":         vpcId,
+		"floating_ip_id": "new",
+	}
+	if len(tagIds) > 0 {
+		body["tag_ids"] = tagIds
+	}
 	var apiPath = common.ApiPath.CreateFloatingIp(vpcId)
 	resp, err := s.client.SendPostRequest(apiPath, body)
 	if err != nil {
@@ -167,4 +175,23 @@ func (s *FloatingIpServiceImpl) DeleteFloatingIp(vpcId string, floatingIpId stri
 	}
 
 	return response.Status, nil
+}
+
+// UpdateTags updates the tags associated with a floating IP
+func (s *FloatingIpServiceImpl) UpdateTags(vpcId string, floatingIpId string, tagIds []string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.UpdateFloatingIpTags(vpcId, floatingIpId)
+	payload := map[string][]string{
+		"tag_ids": tagIds,
+	}
+	_, err := s.client.SendPutRequest(apiPath, payload)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data:   "Successfully",
+		Status: "200",
+	}
+
+	return result, nil
 }

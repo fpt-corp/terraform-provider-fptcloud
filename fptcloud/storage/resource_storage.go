@@ -59,6 +59,13 @@ func ResourceStorage() *schema.Resource {
 				Computed:    true,
 				Description: "The created at of the storage",
 			},
+			"tag_ids": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "List of tag IDs associated with the storage",
+			},
 		},
 		CreateContext: resourceStorageCreate,
 		ReadContext:   resourceStorageRead,
@@ -107,6 +114,10 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 	if okInstanceId {
 		instanceIdValue := instanceId.(string)
 		storageModel.InstanceId = &instanceIdValue
+	}
+
+	if tags, ok := d.GetOk("tag_ids"); ok {
+		storageModel.TagIds = expandTagIDs(tags.(*schema.Set))
 	}
 
 	if storageType == Local && !okInstanceId {
@@ -208,6 +219,10 @@ func resourceStorageRead(_ context.Context, d *schema.ResourceData, m interface{
 		return diag.FromErr(err)
 	}
 
+	if err := d.Set("tag_ids", foundStorage.TagIds); err != nil {
+		return diag.FromErr(err)
+	}
+
 	return nil
 }
 
@@ -227,6 +242,7 @@ func resourceStorageUpdate(ctx context.Context, d *schema.ResourceData, m interf
 	hasChangedStoragePolicy := d.HasChange("storage_policy_id")
 	hasChangedName := d.HasChange("name")
 	hasChangeAttachedInstance := d.HasChange("instance_id")
+	hasChangeTags := d.HasChange("tag_ids")
 
 	if hasChangedSize || hasChangedName || hasChangedStoragePolicy {
 		updateStorageModel.Name = d.Get("name").(string)
@@ -255,6 +271,14 @@ func resourceStorageUpdate(ctx context.Context, d *schema.ResourceData, m interf
 		_, err := storageService.UpdateAttachedInstance(vpcId, d.Id(), instanceIdStr)
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while change attached instance from storage %s", d.Id())
+		}
+	}
+
+	if hasChangeTags {
+		tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
+		_, err := storageService.UpdateTags(vpcId, d.Id(), tagIds)
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while updating storage tags %s", err)
 		}
 	}
 
@@ -304,4 +328,12 @@ func resourceStorageDelete(_ context.Context, d *schema.ResourceData, m interfac
 		return diag.Errorf("[ERR] An error occurred while trying to delete the storage %s", err)
 	}
 	return nil
+}
+
+func expandTagIDs(tagSet *schema.Set) []string {
+	tagIds := make([]string, 0, tagSet.Len())
+	for _, tag := range tagSet.List() {
+		tagIds = append(tagIds, tag.(string))
+	}
+	return tagIds
 }

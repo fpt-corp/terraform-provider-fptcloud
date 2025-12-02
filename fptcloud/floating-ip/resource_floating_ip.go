@@ -30,9 +30,17 @@ func ResourceFloatingIp() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+			"tag_ids": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "List of tag IDs associated with the floating IP",
+			},
 		},
 		CreateContext: resourceFloatingIpCreate,
 		ReadContext:   resourceFloatingIpRead,
+		UpdateContext: resourceFloatingIpUpdate,
 		DeleteContext: resourceFloatingIpDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -48,7 +56,11 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 	if !okVpcId {
 		return diag.Errorf("[ERR] Vpc id is required")
 	}
-	result, err := service.CreateFloatingIp(vpcId.(string))
+	var tagIds []string
+	if tags, ok := d.GetOk("tag_ids"); ok {
+		tagIds = expandTagIDs(tags.(*schema.Set))
+	}
+	result, err := service.CreateFloatingIp(vpcId.(string), tagIds)
 	if err != nil || result == nil {
 		return diag.Errorf("[ERR] Failed to create a new floating ip: %s", err)
 	}
@@ -125,7 +137,29 @@ func resourceFloatingIpRead(_ context.Context, d *schema.ResourceData, m interfa
 		return diag.Errorf("[ERR] Failed to set 'created_at': %s", err)
 	}
 
+	if err := d.Set("tag_ids", result.TagIds); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'tag_ids': %s", err)
+	}
+
 	return nil
+}
+
+func resourceFloatingIpUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	apiClient := m.(*common.Client)
+	service := NewFloatingIpService(apiClient)
+
+	if !d.HasChange("tag_ids") {
+		return resourceFloatingIpRead(ctx, d, m)
+	}
+
+	vpcId := d.Get("vpc_id").(string)
+	tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
+	_, err := service.UpdateTags(vpcId, d.Id(), tagIds)
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while updating floating ip tags %s", err)
+	}
+
+	return resourceFloatingIpRead(ctx, d, m)
 }
 
 func resourceFloatingIpDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -145,4 +179,12 @@ func resourceFloatingIpDelete(_ context.Context, d *schema.ResourceData, m inter
 		return diag.Errorf("[ERR] An error occurred while trying to delete the floating ip %s", err)
 	}
 	return nil
+}
+
+func expandTagIDs(tagSet *schema.Set) []string {
+	tagIds := make([]string, 0, tagSet.Len())
+	for _, tag := range tagSet.List() {
+		tagIds = append(tagIds, tag.(string))
+	}
+	return tagIds
 }

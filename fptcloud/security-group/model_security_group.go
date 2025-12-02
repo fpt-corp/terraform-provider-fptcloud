@@ -29,6 +29,7 @@ type SecurityGroup struct {
 	Rules         []SecurityGroupRule `json:"rules"`
 	CreatedAt     string              `json:"created_at"`
 	Status        string              `json:"status"`
+	TagIds        []string            `json:"tag_ids,omitempty"`
 }
 
 type CreatedSecurityGroupDTO struct {
@@ -37,6 +38,7 @@ type CreatedSecurityGroupDTO struct {
 	SubnetId string   `json:"subnet_id"`
 	Type     string   `json:"type"`
 	ApplyTo  []string `json:"apply_to"`
+	TagIds   []string `json:"tag_ids,omitempty"`
 }
 
 type FindSecurityGroupResponse struct {

@@ -42,7 +42,8 @@ func TestFindSecurityGroup_ReturnsSecurityGroup(t *testing.T) {
 					}
 				],
 				"created_at": "2024-01-01T00:00:00",
-				"status": "active"
+				"status": "active",
+				"tag_ids": ["tag-1"]
 			}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
@@ -115,6 +116,18 @@ func TestUpdateApplyToSecurityGroup_ReturnsSuccess(t *testing.T) {
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
 	response, err := service.UpdateApplyTo("vpc_id", "security_id", []string{"ip"})
+	assert.NoError(t, err)
+	assert.NotNil(t, response)
+	assert.Equal(t, "Successfully", response.Data)
+}
+
+func TestUpdateSecurityGroupTags_ReturnsSuccess(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vpc/vpc_id/security-group/security_group_id/tags": "",
+	})
+	defer server.Close()
+	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
+	response, err := service.UpdateTags("vpc_id", "security_group_id", []string{"tag-1"})
 	assert.NoError(t, err)
 	assert.NotNil(t, response)
 	assert.Equal(t, "Successfully", response.Data)
