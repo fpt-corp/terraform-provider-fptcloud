@@ -21,6 +21,7 @@ import (
 	fptcloud_storage "terraform-provider-fptcloud/fptcloud/storage"
 	fptcloud_storage_policy "terraform-provider-fptcloud/fptcloud/storage-policy"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	fptcloud_tagging "terraform-provider-fptcloud/fptcloud/tagging"
 	fptcloud_vgpu "terraform-provider-fptcloud/fptcloud/vgpu"
 	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
@@ -110,6 +111,7 @@ func Provider() *schema.Provider {
 			"fptcloud_load_balancer_v2_l7_rules":            fptcloud_load_balancer_v2.DataSourceL7Rules(),
 			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.DataSourceL7Rule(),
 			"fptcloud_load_balancer_v2_sizes":               fptcloud_load_balancer_v2.DataSourceSizes(),
+			"fptcloud_tagging":                              fptcloud_tagging.DataSourceTagging(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
@@ -137,6 +139,7 @@ func Provider() *schema.Provider {
 			"fptcloud_load_balancer_v2_certificate":         fptcloud_load_balancer_v2.ResourceCertificate(),
 			"fptcloud_load_balancer_v2_l7_policy":           fptcloud_load_balancer_v2.ResourceL7Policy(),
 			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.ResourceL7Rule(),
+			"fptcloud_tagging":                              fptcloud_tagging.ResourceTagging(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}

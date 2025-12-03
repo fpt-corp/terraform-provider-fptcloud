@@ -102,6 +102,12 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The created at of the security group",
 	},
+	"tag_ids": {
+		Type:        schema.TypeList,
+		Optional:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "List of tag IDs associated with the instance",
+	},
 }
 
 var resourceInstanceSchema = map[string]*schema.Schema{
@@ -202,5 +208,12 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The created at of the security group",
 		ForceNew:    true,
+	},
+	"tag_ids": {
+		Type:        schema.TypeSet,
+		Computed:    true,
+		Optional:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "List of tag IDs to associate with the instance",
 	},
 }

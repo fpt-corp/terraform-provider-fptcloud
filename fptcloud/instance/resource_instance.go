@@ -77,6 +77,15 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 		createdModel.SecurityGroupIds = securityGroupIdsList
 	}
 
+	if tags, ok := d.GetOk("tag_ids"); ok {
+		tagsSet := tags.(*schema.Set)
+		tagIds := make([]string, 0, tagsSet.Len())
+		for _, tag := range tagsSet.List() {
+			tagIds = append(tagIds, tag.(string))
+		}
+		createdModel.TagIds = tagIds
+	}
+
 	if instanceGroupId, ok := d.GetOk("instance_group_id"); ok {
 		instanceGroupIdValue := instanceGroupId.(string)
 		createdModel.InstanceGroupId = &instanceGroupIdValue
@@ -193,6 +202,9 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("created_at", foundInstance.CreatedAt); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("tag_ids", foundInstance.TagIds); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }
@@ -253,6 +265,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	hasChangedName := d.HasChange("name")
 	hasChangeFlavor := d.HasChange("flavor_name")
 	hasChangeStatus := d.HasChange("status")
+	hasChangeTags := d.HasChange("tag_ids")
 
 	if hasChangedName {
 		newName := d.Get("name").(string)
@@ -303,6 +316,19 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		_, err = updateStateConf.WaitForStateContext(ctx)
 		if err != nil {
 			return diag.Errorf("[Error] Waiting for instance (%s) to be resize: %s", d.Id(), err)
+		}
+	}
+
+	if hasChangeTags {
+		tagsSet := d.Get("tag_ids").(*schema.Set)
+		tagIds := make([]string, 0, tagsSet.Len())
+		for _, tag := range tagsSet.List() {
+			tagIds = append(tagIds, tag.(string))
+		}
+
+		_, err := instanceService.UpdateTags(vpcId, d.Id(), tagIds)
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while updating instance tags %s", err)
 		}
 	}
 

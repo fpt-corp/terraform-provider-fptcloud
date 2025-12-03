@@ -21,6 +21,7 @@ var ApiPath = struct {
 	RenameInstance             func(vpcId string, instanceId string) string
 	ChangeStatusInstance       func(vpcId string, instanceId string) string
 	ResizeInstance             func(vpcId string, instanceId string) string
+	UpdateInstanceTags         func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
 	VMGroupPolicies            func(vpcId string) string
@@ -163,6 +164,13 @@ var ApiPath = struct {
 	DeleteL7Rule func(vpcId string, listenerId string, policyId string, ruleId string) string
 	//Size
 	ListSizes func(vpcId string) string
+
+	// Tagging
+	GetTag    func(tenantId, tagId string) string
+	ListTags  func(tenantId string) string
+	CreateTag func(tenantId string) string
+	UpdateTag func(tenantId, tagId string) string
+	DeleteTag func(tenantId, tagId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -206,6 +214,9 @@ var ApiPath = struct {
 	},
 	ResizeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
+	},
+	UpdateInstanceTags: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/instance/%s/tags", vpcId, instanceId)
 	},
 	GetFlavorByName: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavor/find-by-name", vpcId)
@@ -609,5 +620,23 @@ var ApiPath = struct {
 	//Size
 	ListSizes: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/sizes", vpcId)
+	},
+
+	// Tagging
+
+	ListTags: func(tenantId string) string {
+		return fmt.Sprintf("/v2/org/%s/tags", tenantId)
+	},
+	GetTag: func(tenantId, tagId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/%s", tenantId, tagId)
+	},
+	CreateTag: func(tenantId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/create", tenantId)
+	},
+	UpdateTag: func(tenantId, tagId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/%s/update", tenantId, tagId)
+	},
+	DeleteTag: func(tenantId, tagId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/%s/delete", tenantId, tagId)
 	},
 }

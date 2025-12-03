@@ -28,7 +28,8 @@ func TestFindInstance_ReturnsInstance(t *testing.T) {
 			"storage_policy_id": "44444444-dddd-4444-eeee-444444444444",
 			"security_group_ids": [],
 			"instance_group_id": "55555555-eeee-5555-ffff-555555555555",
-			"created_at": "2024-01-01T00:00:00"
+			"created_at": "2024-01-01T00:00:00",
+			"tag_ids": ["tag-id-1","tag-id-2"]
 		}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
@@ -42,6 +43,7 @@ func TestFindInstance_ReturnsInstance(t *testing.T) {
 	assert.NotNil(t, instance)
 	assert.Equal(t, "11111111-aaaa-1111-bbbb-111111111111", instance.ID)
 	assert.Equal(t, "vm-12345678901-xyzxyzxyz", instance.Name)
+	assert.ElementsMatch(t, []string{"tag-id-1", "tag-id-2"}, instance.TagIds)
 }
 
 func TestFindInstance_ReturnsErrorOnRequestFailure(t *testing.T) {
