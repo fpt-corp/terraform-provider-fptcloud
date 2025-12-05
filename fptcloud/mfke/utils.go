@@ -30,7 +30,10 @@ func GenerateRandomSuffix() string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 	result := make([]byte, 8)
 	randomBytes := make([]byte, 8)
-	rand.Read(randomBytes)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback to a simple pattern if crypto/rand fails (should never happen)
+		return "abc12345"
+	}
 	for i := 0; i < 8; i++ {
 		result[i] = alphabet[int(randomBytes[i])%len(alphabet)]
 	}
