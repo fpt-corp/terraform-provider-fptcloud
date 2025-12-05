@@ -98,6 +98,13 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 		return
 	}
 
+	if checkClusterName(f.ClusterName) {
+		originalName := f.ClusterName
+		randomSuffix := GenerateRandomSuffix()
+		f.ClusterName = fmt.Sprintf("%s-%s", f.ClusterName, randomSuffix)
+		tflog.Info(ctx, fmt.Sprintf("Auto-generated random suffix for cluster_name: %s -> %s", originalName, f.ClusterName))
+	}
+
 	if err := validateNetwork(&state, platform); err != nil {
 		response.Diagnostics.Append(err)
 		return
@@ -146,7 +153,15 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 		return
 	}
 
-	slug := fmt.Sprintf("%s-%s", createResponse.Kpi.ClusterName, createResponse.Kpi.ClusterId)
+	// Build slug: if cluster_name already ends with cluster_id, use cluster_name directly
+	// Otherwise, append cluster_id to cluster_name
+	var slug string
+	suffix := "-" + createResponse.Kpi.ClusterId
+	if strings.HasSuffix(createResponse.Kpi.ClusterName, suffix) {
+		slug = createResponse.Kpi.ClusterName
+	} else {
+		slug = fmt.Sprintf("%s-%s", createResponse.Kpi.ClusterName, createResponse.Kpi.ClusterId)
+	}
 
 	tflog.Info(ctx, "Created cluster with id "+slug)
 

@@ -2,10 +2,12 @@ package fptcloud_mfke
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +24,25 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
+
+// GenerateRandomSuffix generates 8 random characters using lowercase letters and digits
+func GenerateRandomSuffix() string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	result := make([]byte, 8)
+	randomBytes := make([]byte, 8)
+	rand.Read(randomBytes)
+	for i := 0; i < 8; i++ {
+		result[i] = alphabet[int(randomBytes[i])%len(alphabet)]
+	}
+	return string(result)
+}
+
+// checkClusterName checks if cluster_name ends with exactly 8 characters after a dash
+// Pattern: *-XXXXXXXX where X is any alphanumeric character (exactly 8 chars after last dash)
+func checkClusterName(clusterName string) bool {
+	pattern := regexp.MustCompile(`-[a-zA-Z0-9]{8}$`)
+	return pattern.MatchString(clusterName)
+}
 
 // getNetworkInfoByPlatform network_id, network name
 func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId, platform string, w *managedKubernetesEngineDataWorker, data *managedKubernetesEngineData) (string, string, error) {
