@@ -45,6 +45,17 @@ func (m *databaseApiClient) sendPost(requestURL string, params interface{}) ([]b
 }
 
 func (m *databaseApiClient) sendRequestWithHeader(request *http.Request) ([]byte, error) {
-	request.Header.Set("fpt-region", m.Client.Region)
+	switch m.Client.Region {
+	case "VN/HAN":
+		request.Header.Set("fpt-region", "hanoi-vn")
+	case "VN/SGN":
+		request.Header.Set("fpt-region", "saigon-vn")
+	case "VN/HAN2":
+		request.Header.Set("fpt-region", "hanoi-2-vn")
+	case "JP/JCSI2":
+		request.Header.Set("fpt-region", "JP/JCSI2")
+	default:
+		request.Header.Set("fpt-region", m.Client.Region)
+	}
 	return m.Client.SendRequest(request)
 }
