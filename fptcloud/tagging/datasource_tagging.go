@@ -127,6 +127,17 @@ type Tag struct {
 	ResourceScopes []string `json:"resource_scopes"`
 }
 
+type TagResponse struct {
+	TagID string `json:"tag_id"`
+}
+
+// TagGetResponse represents the API response structure for GetTag
+type TagGetResponse struct {
+	Status  bool      `json:"status"`
+	Message string    `json:"message"`
+	Data    Tag `json:"data"`
+}
+
 // flattenTags converts the API response into a format suitable for the schema
 func flattenTags(tags []Tag) []interface{} {
 	var result []interface{}

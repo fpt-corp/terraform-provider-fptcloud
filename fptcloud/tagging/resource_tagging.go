@@ -25,20 +25,6 @@ type UpdateTagInput struct {
 	ResourceScopes []string `json:"resource_scopes,omitempty"`
 }
 
-// TagResponse represents the API response for tag operations
-type TagResponse struct {
-	TagID string `json:"tag_id"`
-}
-
-// TagDetail represents the detailed tag information
-type TagDetail struct {
-	ID             string   `json:"id"`
-	Key            string   `json:"key"`
-	Value          string   `json:"value"`
-	Color          string   `json:"color"`
-	ScopeType      string   `json:"scope_type"`
-	ResourceScopes []string `json:"resource_scopes"`
-}
 
 func ResourceTagging() *schema.Resource {
 	return &schema.Resource{
@@ -46,6 +32,9 @@ func ResourceTagging() *schema.Resource {
 		ReadContext:   resourceTaggingRead,
 		UpdateContext: resourceTaggingUpdate,
 		DeleteContext: resourceTaggingDelete,
+		Importer: &schema.ResourceImporter{
+			StateContext: schema.ImportStatePassthroughContext,
+		},
 
 		Schema: map[string]*schema.Schema{
 			"key": {
