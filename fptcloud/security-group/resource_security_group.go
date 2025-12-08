@@ -55,9 +55,9 @@ func resourceSecurityGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 		createdModel.ApplyTo = applyToList
 	}
 
-	if tags, ok := d.GetOk("tag_ids"); ok {
-		createdModel.TagIds = expandTagIDs(tags.(*schema.Set))
-	}
+	//if tags, ok := d.GetOk("tag_ids"); ok {
+	//	createdModel.TagIds = expandTagIDs(tags.(*schema.Set))
+	//}
 
 	if okVpcId {
 		createdModel.VpcId = vpcId.(string)
@@ -173,7 +173,7 @@ func resourceSecurityGroupUpdate(ctx context.Context, d *schema.ResourceData, m 
 	vpcId := d.Get("vpc_id").(string)
 	hasChangedName := d.HasChange("name")
 	hasChangeApplyTo := d.HasChange("apply_to")
-	hasChangeTags := d.HasChange("tag_ids")
+	//hasChangeTags := d.HasChange("tag_ids")
 
 	if hasChangedName {
 		newName := d.Get("name").(string)
@@ -225,13 +225,13 @@ func resourceSecurityGroupUpdate(ctx context.Context, d *schema.ResourceData, m 
 		}
 	}
 
-	if hasChangeTags {
-		tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
-		_, err := securityGroupService.UpdateTags(vpcId, d.Id(), tagIds)
-		if err != nil {
-			return diag.Errorf("[ERR] An error occurred while updating security group tags %s", err)
-		}
-	}
+	//if hasChangeTags {
+	//	tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
+	//	_, err := securityGroupService.UpdateTags(vpcId, d.Id(), tagIds)
+	//	if err != nil {
+	//		return diag.Errorf("[ERR] An error occurred while updating security group tags %s", err)
+	//	}
+	//}
 
 	return resourceSecurityGroupRead(ctx, d, m)
 }
