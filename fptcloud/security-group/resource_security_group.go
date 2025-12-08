@@ -283,10 +283,10 @@ func resourceSecurityGroupDelete(_ context.Context, d *schema.ResourceData, m in
 	return nil
 }
 
-func expandTagIDs(tagSet *schema.Set) []string {
-	tagIds := make([]string, 0, tagSet.Len())
-	for _, tag := range tagSet.List() {
-		tagIds = append(tagIds, tag.(string))
-	}
-	return tagIds
-}
+//func expandTagIDs(tagSet *schema.Set) []string {
+//	tagIds := make([]string, 0, tagSet.Len())
+//	for _, tag := range tagSet.List() {
+//		tagIds = append(tagIds, tag.(string))
+//	}
+//	return tagIds
+//}
