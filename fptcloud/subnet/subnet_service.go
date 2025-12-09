@@ -15,6 +15,7 @@ type CreateSubnetDTO struct {
 	GatewayIp    string `json:"gateway_ip"`
 	IpRangeStart string `json:"ip_range_start"`
 	IpRangeEnd   string `json:"ip_range_end"`
+	TagIds       []string `json:"tag_ids,omitempty"`
 }
 
 type FindSubnetDTO struct {
@@ -38,6 +39,7 @@ type Subnet struct {
 	VpcId       string      `json:"vpc_id"`
 	EdgeGateway EdgeGateway `json:"edge_gateway"`
 	CreatedAt   string      `json:"created_at"`
+	TagIds      []string    `json:"tag_ids,omitempty"`
 }
 
 type EdgeGateway struct {
@@ -64,6 +66,7 @@ type SubnetService interface {
 	ListSubnet(vpcId string) (*[]Subnet, error)
 	CreateSubnet(createDto CreateSubnetDTO) (*Subnet, error)
 	DeleteSubnet(vpcId string, subnetId string) (bool, error)
+	UpdateTags(vpcId string, subnetId string, tagIds []string) (*common.SimpleResponse, error)
 }
 
 // SubnetServiceImpl is the implementation of SubnetServiceImpl
@@ -177,4 +180,23 @@ func (s *SubnetServiceImpl) DeleteSubnet(vpcId string, subnetId string) (bool, e
 	}
 
 	return response.Status, nil
+}
+
+// UpdateTags updates the tags associated with a subnet
+func (s *SubnetServiceImpl) UpdateTags(vpcId string, subnetId string, tagIds []string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.UpdateSubnetTags(vpcId, subnetId)
+	payload := map[string][]string{
+		"tag_ids": tagIds,
+	}
+	_, err := s.client.SendPutRequest(apiPath, payload)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data:   "Successfully",
+		Status: "200",
+	}
+
+	return result, nil
 }

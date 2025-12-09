@@ -68,6 +68,12 @@ func DataSourceStorage() *schema.Resource {
 				Computed:    true,
 				Description: "The created at of the storage",
 			},
+			"tag_ids": {
+				Type:        schema.TypeList,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "List of tag IDs associated with the storage",
+			},
 		},
 	}
 }
@@ -126,6 +132,10 @@ func dataSourceStorageRead(_ context.Context, d *schema.ResourceData, m interfac
 	}
 
 	if err := d.Set("created_at", foundStorage.CreatedAt); err != nil {
+		return diag.FromErr(err)
+	}
+
+	if err := d.Set("tag_ids", foundStorage.TagIds); err != nil {
 		return diag.FromErr(err)
 	}
 

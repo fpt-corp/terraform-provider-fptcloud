@@ -19,7 +19,8 @@ func TestFindStorage_ReturnsStorage(t *testing.T) {
 			"instance_id": "instance_id",
 			"status": "active",
 			"vpc_id": "vpc-123",
-			"created_at": "2023-10-01T00:00:00Z"
+			"created_at": "2023-10-01T00:00:00Z",
+			"tag_ids": ["tag-1","tag-2"]
 		}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
 		"/v2/vpc/vpc_id/storage": mockResponse,
@@ -93,6 +94,18 @@ func TestUpdateAttachedInstance_ReturnsSuccess(t *testing.T) {
 	service := fptcloud_storage.NewStorageService(mockClient)
 	instanceId := "instance-123"
 	response, err := service.UpdateAttachedInstance("vpc-123", "storage_id", &instanceId)
+	assert.NoError(t, err)
+	assert.NotNil(t, response)
+	assert.Equal(t, "Successfully", response.Data)
+}
+
+func TestUpdateStorageTags_ReturnsSuccess(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vpc/vpc_id/storage/storage_id/tags": "",
+	})
+	defer server.Close()
+	service := fptcloud_storage.NewStorageService(mockClient)
+	response, err := service.UpdateTags("vpc_id", "storage_id", []string{"tag-1"})
 	assert.NoError(t, err)
 	assert.NotNil(t, response)
 	assert.Equal(t, "Successfully", response.Data)

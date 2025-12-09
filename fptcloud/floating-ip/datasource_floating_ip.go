@@ -67,6 +67,12 @@ func floatingIpSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The created at of the floating ip",
 		},
+		"tag_ids": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Elem:        &schema.Schema{Type: schema.TypeString},
+			Description: "List of tag IDs associated with the floating ip",
+		},
 	}
 }
 
@@ -79,6 +85,7 @@ func flattenFloatingIp(floatingIp, _ interface{}, _ map[string]interface{}) (map
 	flattened["nat_type"] = s.NatType
 	flattened["status"] = s.Status
 	flattened["created_at"] = s.CreatedAt
+	flattened["tag_ids"] = s.TagIds
 
 	return flattened, nil
 }

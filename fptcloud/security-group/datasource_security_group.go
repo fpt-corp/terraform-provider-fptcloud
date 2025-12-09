@@ -72,6 +72,10 @@ func dataSourceSecurityGroupRead(_ context.Context, d *schema.ResourceData, m in
 		return diag.FromErr(err)
 	}
 
+	if err := d.Set("tag_ids", foundSecurityGroup.TagIds); err != nil {
+		return diag.FromErr(err)
+	}
+
 	rules := make([]interface{}, len(foundSecurityGroup.Rules))
 	for i, rule := range foundSecurityGroup.Rules {
 		ruleMap := map[string]interface{}{

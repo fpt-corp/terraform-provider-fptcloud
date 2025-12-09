@@ -72,6 +72,12 @@ func subnetSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The created at of the subnet",
 		},
+		"tag_ids": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Elem:        &schema.Schema{Type: schema.TypeString},
+			Description: "List of tag IDs associated with the subnet",
+		},
 	}
 }
 
@@ -92,6 +98,7 @@ func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]
 	}
 	flattened["edge_gateway"] = mapEdgeGateway
 	flattened["created_at"] = s.CreatedAt
+	flattened["tag_ids"] = s.TagIds
 	return flattened, nil
 }
 

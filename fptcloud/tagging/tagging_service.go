@@ -11,7 +11,7 @@ import (
 
 // TaggingService defines the interface for tagging service
 type TaggingService interface {
-	Get(ctx context.Context, tagId string) (*TagDetail, error)
+	Get(ctx context.Context, tagId string) (*Tag, error)
 	List(ctx context.Context, key string, value string) (*ListTag, error)
 	Create(ctx context.Context, input *CreateTagInput) (*TagResponse, error)
 	Update(ctx context.Context, tagId string, input *UpdateTagInput) (*TagResponse, error)
@@ -55,7 +55,7 @@ func (s *TaggingServiceImpl) Create(ctx context.Context, input *CreateTagInput) 
 }
 
 // Get retrieves tag details
-func (s *TaggingServiceImpl) Get(ctx context.Context, tagId string) (*TagDetail, error) {
+func (s *TaggingServiceImpl) Get(ctx context.Context, tagId string) (*Tag, error) {
 	tenant, err := s.dependency.GetVPCService().GetTenant(ctx)
 	if err != nil {
 		return nil, err
@@ -67,13 +67,17 @@ func (s *TaggingServiceImpl) Get(ctx context.Context, tagId string) (*TagDetail,
 		return nil, common.DecodeError(err)
 	}
 
-	var tagDetail TagDetail
-	err = json.Unmarshal(resp, &tagDetail)
+	var response TagGetResponse
+	err = json.Unmarshal(resp, &response)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
 
-	return &tagDetail, nil
+	if !response.Status {
+		return nil, errors.New(response.Message)
+	}
+
+	return &response.Data, nil
 }
 
 // Update updates an existing tag

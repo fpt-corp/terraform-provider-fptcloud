@@ -64,6 +64,13 @@ var resourceSubnet = map[string]*schema.Schema{
 		Type:     schema.TypeString,
 		Computed: true,
 	},
+	"tag_ids": {
+		Type:        schema.TypeSet,
+		Optional:    true,
+		Computed:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "List of tag IDs associated with the subnet",
+	},
 }
 
 // validateCIDR is a ValidateFunc that checks if a given value is a valid CIDR block.

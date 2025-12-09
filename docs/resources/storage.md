@@ -38,6 +38,7 @@ resource "fptcloud_storage" "example" {
 ### Optional
 
 - `instance_id` (String) The instance attached the storage (require if storage type is local)
+- `tag_ids` (Set of String) List of tag IDs to associate with the storage
 
 ### Read-Only
 

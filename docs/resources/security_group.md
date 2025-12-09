@@ -35,6 +35,7 @@ resource "fptcloud_security_group" "example" {
 
 - `apply_to` (List of String) The list IP apply to of the security group
 - `subnet_id` (String) The subnet id of the security group (required when creating)
+- `tag_ids` (Set of String) List of tag IDs to associate with the security group
 
 ### Read-Only
 
