@@ -25,7 +25,6 @@ type UpdateTagInput struct {
 	ResourceScopes []string `json:"resource_scopes,omitempty"`
 }
 
-
 func ResourceTagging() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceTaggingCreate,
