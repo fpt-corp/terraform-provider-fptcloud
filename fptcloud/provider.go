@@ -14,6 +14,7 @@ import (
 	fptcloud_load_balancer_v2 "terraform-provider-fptcloud/fptcloud/load_balancer_v2"
 	fptcloud_mfke_storage_policy "terraform-provider-fptcloud/fptcloud/mfke-storage-policy"
 
+	fptcloud_nic "terraform-provider-fptcloud/fptcloud/nic"
 	fptcloud_object_storage "terraform-provider-fptcloud/fptcloud/object-storage"
 	fptcloud_security_group "terraform-provider-fptcloud/fptcloud/security-group"
 	fptcloud_security_group_rule "terraform-provider-fptcloud/fptcloud/security-group-rule"
@@ -122,6 +123,7 @@ func Provider() *schema.Provider {
 			"fptcloud_instance_group":                       fptcloud_instance_group.ResourceInstanceGroup(),
 			"fptcloud_floating_ip":                          fptcloud_floating_ip.ResourceFloatingIp(),
 			"fptcloud_floating_ip_association":              fptcloud_floating_ip_association.ResourceFloatingIpAssociation(),
+			"fptcloud_nic":                                  fptcloud_nic.ResourceNic(),
 			"fptcloud_subnet":                               fptcloud_subnet.ResourceSubnet(),
 			"fptcloud_object_storage_bucket":                fptcloud_object_storage.ResourceBucket(),
 			"fptcloud_object_storage_sub_user":              fptcloud_object_storage.ResourceSubUser(),
