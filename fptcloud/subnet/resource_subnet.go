@@ -119,6 +119,10 @@ func resourceSubnetRead(_ context.Context, d *schema.ResourceData, m interface{}
 		return diag.Errorf("[ERR] Failed to set 'name': %s", err)
 	}
 
+	if err := d.Set("network_id", result.NetworkID); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'network_id': %s", err)
+	}
+
 	if err := d.Set("network_name", result.NetworkName); err != nil {
 		return diag.Errorf("[ERR] Failed to set 'network_name': %s", err)
 	}

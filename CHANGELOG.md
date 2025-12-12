@@ -1,3 +1,9 @@
+## [0.3.37] - 2025-12-12
+
+### Resource
+
+- Feat: Add `network_id` attribute to subnet resource
+
 ## [0.3.32] - 2025-12-01
 
 ### Resource

@@ -52,9 +52,15 @@ var resourceSubnet = map[string]*schema.Schema{
 		Description:  "The static ip pool of the instance. Only if you want to create subnet with static IP pool, enter an valid IP range within provided CIDR.",
 		ForceNew:     true,
 	},
+	"network_id": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "The network id of the subnet",
+	},
 	"network_name": {
-		Type:     schema.TypeString,
-		Computed: true,
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "The network name of the subnet",
 	},
 	"gateway": {
 		Type:     schema.TypeString,
