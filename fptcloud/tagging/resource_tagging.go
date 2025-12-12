@@ -2,8 +2,6 @@ package fptcloud_tagging
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
@@ -75,9 +73,6 @@ func resourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interfac
 	var diags diag.Diagnostics
 
 	tagDetail, err := service.Get(ctx, d.Id())
-	get_, _ := json.Marshal(tagDetail)
-	fmt.Println("Debug: tagDetail ", string(get_))
-	fmt.Println("Debug: err ", err)
 	if err != nil {
 		return diag.FromErr(err)
 	}
