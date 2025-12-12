@@ -40,7 +40,15 @@ func (s *TaggingServiceImpl) Create(ctx context.Context, input *CreateTagInput) 
 	}
 
 	apiPath := common.ApiPath.CreateTag(tenant.Id)
+
+	fmt.Println("Debug: apiPath ", apiPath)
+
+	get_, _ := json.Marshal(input)
+	fmt.Println("Debug: input ", string(get_))
 	resp, err := s.client.SendPostRequest(apiPath, input)
+
+	fmt.Println("Debug: resp ", string(resp))
+	fmt.Println("Debug: err ", err)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
