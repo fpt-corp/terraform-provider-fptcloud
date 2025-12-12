@@ -162,12 +162,11 @@ func resourceTaggingUpdate(ctx context.Context, d *schema.ResourceData, m interf
 	if v, ok := d.GetOk("color"); ok {
 		input.Color = v.(string)
 	}
-	// Only update scope_type if it has changed
-	if d.HasChange("scope_type") {
-		if v, ok := d.GetOk("scope_type"); ok {
-			input.ScopeType = v.(string)
-		}
+
+	if v, ok := d.GetOk("scope_type"); ok {
+		input.ScopeType = v.(string)
 	}
+
 	_, err := service.Update(ctx, d.Id(), input)
 	if err != nil {
 		return diag.FromErr(err)
