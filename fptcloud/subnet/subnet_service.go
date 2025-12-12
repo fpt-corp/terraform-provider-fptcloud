@@ -8,13 +8,13 @@ import (
 )
 
 type CreateSubnetDTO struct {
-	VpcId        string `json:"vpc_id"`
-	Name         string `json:"name"`
-	CIDR         string `json:"cidr"`
-	Type         string `json:"type"`
-	GatewayIp    string `json:"gateway_ip"`
-	IpRangeStart string `json:"ip_range_start"`
-	IpRangeEnd   string `json:"ip_range_end"`
+	VpcId        string   `json:"vpc_id"`
+	Name         string   `json:"name"`
+	CIDR         string   `json:"cidr"`
+	Type         string   `json:"type"`
+	GatewayIp    string   `json:"gateway_ip"`
+	IpRangeStart string   `json:"ip_range_start"`
+	IpRangeEnd   string   `json:"ip_range_end"`
 	TagIds       []string `json:"tag_ids,omitempty"`
 }
 

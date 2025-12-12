@@ -179,11 +179,3 @@ func resourceSubnetDelete(_ context.Context, d *schema.ResourceData, m interface
 	}
 	return nil
 }
-
-func expandTagIDs(tagSet *schema.Set) []string {
-	tagIds := make([]string, 0, tagSet.Len())
-	for _, tag := range tagSet.List() {
-		tagIds = append(tagIds, tag.(string))
-	}
-	return tagIds
-}

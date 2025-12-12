@@ -133,9 +133,9 @@ type TagResponse struct {
 
 // TagGetResponse represents the API response structure for GetTag
 type TagGetResponse struct {
-	Status  bool      `json:"status"`
-	Message string    `json:"message"`
-	Data    Tag `json:"data"`
+	Status  bool   `json:"status"`
+	Message string `json:"message"`
+	Data    Tag    `json:"data"`
 }
 
 // flattenTags converts the API response into a format suitable for the schema

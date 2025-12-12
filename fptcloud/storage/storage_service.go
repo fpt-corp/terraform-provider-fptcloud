@@ -20,12 +20,12 @@ type FindStorageDTO struct {
 
 // StorageDTO storage dto model to create storage
 type StorageDTO struct {
-	Name            string  `json:"name"`
-	Type            string  `json:"type"`
-	SizeGb          int     `json:"size_gb"`
-	StoragePolicyId string  `json:"storage_policy_id"`
-	InstanceId      *string `json:"instance_id"`
-	VpcId           string  `json:"vpc_id"`
+	Name            string   `json:"name"`
+	Type            string   `json:"type"`
+	SizeGb          int      `json:"size_gb"`
+	StoragePolicyId string   `json:"storage_policy_id"`
+	InstanceId      *string  `json:"instance_id"`
+	VpcId           string   `json:"vpc_id"`
 	TagIds          []string `json:"tag_ids,omitempty"`
 }
 
