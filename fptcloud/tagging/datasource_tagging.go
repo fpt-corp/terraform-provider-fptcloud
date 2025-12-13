@@ -55,7 +55,7 @@ func DataSourceTagging() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-						"resource_scopes": {
+						"resource_ids": {
 							Type:     schema.TypeList,
 							Computed: true,
 							Elem: &schema.Schema{
@@ -119,12 +119,12 @@ type ListTag struct {
 
 // Tag represents a single tag in the response
 type Tag struct {
-	ID             string   `json:"id"`
-	Key            *string  `json:"key"`
-	Value          *string  `json:"value"`
-	Color          *string  `json:"color"`
-	ScopeType      string   `json:"scope_type"`
-	ResourceScopes []string `json:"resource_scopes"`
+	ID          string   `json:"id"`
+	Key         *string  `json:"key"`
+	Value       *string  `json:"value"`
+	Color       *string  `json:"color"`
+	ScopeType   string   `json:"scope_type"`
+	ResourceIds []string `json:"resource_ids"`
 }
 
 type TagResponse struct {
@@ -158,12 +158,12 @@ func flattenTags(tags []Tag) []interface{} {
 		}
 
 		t := map[string]interface{}{
-			"id":              tag.ID,
-			"key":             key,
-			"value":           value,
-			"color":           color,
-			"scope_type":      tag.ScopeType,
-			"resource_scopes": tag.ResourceScopes,
+			"id":           tag.ID,
+			"key":          key,
+			"value":        value,
+			"color":        color,
+			"scope_type":   tag.ScopeType,
+			"resource_ids": tag.ResourceIds,
 		}
 		result = append(result, t)
 	}

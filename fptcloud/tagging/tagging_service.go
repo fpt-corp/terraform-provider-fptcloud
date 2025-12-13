@@ -40,7 +40,9 @@ func (s *TaggingServiceImpl) Create(ctx context.Context, input *CreateTagInput) 
 	}
 
 	apiPath := common.ApiPath.CreateTag(tenant.Id)
+
 	resp, err := s.client.SendPostRequest(apiPath, input)
+
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
