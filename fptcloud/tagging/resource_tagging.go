@@ -5,6 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
+	"strings"
 	common "terraform-provider-fptcloud/commons"
 )
 
@@ -25,6 +26,12 @@ type UpdateTagInput struct {
 	ScopeType   string   `json:"scope_type,omitempty"`
 	ResourceIds []string `json:"resource_ids,omitempty"`
 }
+
+type ScopeType string
+
+const (
+	ScopeORG ScopeType = "ORG"
+)
 
 func ResourceTagging() *schema.Resource {
 	return &schema.Resource{
@@ -89,8 +96,11 @@ func resourceTaggingRead(ctx context.Context, d *schema.ResourceData, m interfac
 	if err := d.Set("scope_type", tagDetail.ScopeType); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("resource_ids", tagDetail.ResourceIds); err != nil {
-		return diag.FromErr(err)
+	scopeType := ParseScopeType(tagDetail.ScopeType)
+	if scopeType != ScopeORG {
+		if err := d.Set("resource_ids", tagDetail.ResourceIds); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 	return diags
 }
@@ -187,4 +197,7 @@ func resourceTaggingDelete(ctx context.Context, d *schema.ResourceData, m interf
 	d.SetId("")
 
 	return diags
+}
+func ParseScopeType(v string) ScopeType {
+	return ScopeType(strings.ToUpper(v))
 }
