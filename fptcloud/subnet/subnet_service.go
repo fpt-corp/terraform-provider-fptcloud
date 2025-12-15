@@ -8,14 +8,16 @@ import (
 )
 
 type CreateSubnetDTO struct {
-	VpcId        string   `json:"vpc_id"`
-	Name         string   `json:"name"`
-	CIDR         string   `json:"cidr"`
-	Type         string   `json:"type"`
-	GatewayIp    string   `json:"gateway_ip"`
-	IpRangeStart string   `json:"ip_range_start"`
-	IpRangeEnd   string   `json:"ip_range_end"`
-	TagIds       []string `json:"tag_ids,omitempty"`
+	VpcId          string   `json:"vpc_id"`
+	Name           string   `json:"name"`
+	CIDR           string   `json:"cidr"`
+	Type           string   `json:"type"`
+	GatewayIp      string   `json:"gateway_ip"`
+	IpRangeStart   string   `json:"ip_range_start"`
+	IpRangeEnd     string   `json:"ip_range_end"`
+	TagIds         []string `json:"tag_ids,omitempty"`
+	PrimaryDNSIp   string   `json:"primary_dns_ip,omitempty"`
+	SecondaryDNSIp string   `json:"secondary_dns_ip,omitempty"`
 }
 
 type FindSubnetDTO struct {
@@ -31,15 +33,22 @@ type SubnetResponseDto struct {
 }
 
 type Subnet struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	NetworkID   string      `json:"network_id"`
-	NetworkName string      `json:"network_name"`
-	Gateway     string      `json:"gateway"`
-	VpcId       string      `json:"vpc_id"`
-	EdgeGateway EdgeGateway `json:"edge_gateway"`
-	CreatedAt   string      `json:"created_at"`
-	TagIds      []string    `json:"tag_ids,omitempty"`
+	ID             string      `json:"id"`
+	Name           string      `json:"name"`
+	NetworkID      string      `json:"network_id"`
+	NetworkName    string      `json:"network_name"`
+	Gateway        string      `json:"gateway"`
+	VpcId          string      `json:"vpc_id"`
+	EdgeGateway    EdgeGateway `json:"edge_gateway"`
+	CreatedAt      string      `json:"created_at"`
+	TagIds         []string    `json:"tag_ids,omitempty"`
+	PrimaryDNSIp   string      `json:"primary_dns_ip,omitempty"`
+	SecondaryDNSIp string      `json:"secondary_dns_ip,omitempty"`
+}
+
+type UpdateSubnetDNSDTO struct {
+	PrimaryDNSIp   string `json:"primary_dns_ip"`
+	SecondaryDNSIp string `json:"secondary_dns_ip"`
 }
 
 type EdgeGateway struct {
@@ -67,6 +76,7 @@ type SubnetService interface {
 	CreateSubnet(createDto CreateSubnetDTO) (*Subnet, error)
 	DeleteSubnet(vpcId string, subnetId string) (bool, error)
 	UpdateTags(vpcId string, subnetId string, tagIds []string) (*common.SimpleResponse, error)
+	UpdateDNS(vpcId string, subnetId string, updateDto UpdateSubnetDNSDTO) (*common.SimpleResponse, error)
 }
 
 // SubnetServiceImpl is the implementation of SubnetServiceImpl
@@ -195,6 +205,39 @@ func (s *SubnetServiceImpl) UpdateTags(vpcId string, subnetId string, tagIds []s
 
 	var result = &common.SimpleResponse{
 		Data:   "Successfully",
+		Status: "200",
+	}
+
+	return result, nil
+}
+
+// UpdateDNSResponse represents the response from edit DNS API
+type UpdateDNSResponse struct {
+	Status    bool        `json:"status"`
+	ErrorCode interface{} `json:"error_code"`
+	Data      interface{} `json:"data"`
+	Message   string      `json:"message"`
+}
+
+// UpdateDNS updates the DNS settings of a subnet
+func (s *SubnetServiceImpl) UpdateDNS(vpcId string, subnetId string, updateDto UpdateSubnetDNSDTO) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.EditSubnetDNS(vpcId, subnetId)
+	resp, err := s.client.SendPutRequest(apiPath, updateDto)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	response := UpdateDNSResponse{}
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		return nil, err
+	}
+	if !response.Status {
+		return nil, errors.New(response.Message)
+	}
+
+	var result = &common.SimpleResponse{
+		Data:   response.Message,
 		Status: "200",
 	}
 

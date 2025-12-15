@@ -84,3 +84,5 @@ Read-Only:
 - `network_id` (String)
 - `name` (String)
 - `network_name` (String)
+- `primary_dns_ip` (String) The primary DNS IP address of the subnet
+- `secondary_dns_ip` (String) The secondary DNS IP address of the subnet
