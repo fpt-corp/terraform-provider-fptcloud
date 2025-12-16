@@ -55,6 +55,7 @@ var ApiPath = struct {
 	DatabaseStop   		func() string
 	DatabaseStart  		func() string
 	DatabaseApplyTags	func() string
+	DatabaseFlavor		func(vpcId string, isOSP string) string
 
 	// Dedicated FKE
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
@@ -316,6 +317,9 @@ var ApiPath = struct {
 	},
 	DatabaseApplyTags: func() string {
 		return "/v1/xplat/database/management/tagging/cluster/apply-tag"
+	},
+	DatabaseFlavor: func(vpcId string, isOSP string) string {
+		return fmt.Sprintf("/v1/xplat/database/configure_management/get_list_flavor_v2?vpc_id=%s&is_ops=%s", vpcId, isOSP)
 	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {
