@@ -72,6 +72,7 @@ type databaseResourceModel struct {
 	NumberOfNode   types.Int64  `tfsdk:"number_of_node" json:"number_of_node"`
 	NumberOfShard  types.Int64  `tfsdk:"number_of_shard" json:"number_of_shard"`
 	DomainName     types.String `tfsdk:"domain_name" json:"domain_name"`
+	TagIds 		   types.String `tfsdk:"tag_ids"`
 }
 
 var timeout = 1800 * time.Second
@@ -82,6 +83,17 @@ func NewResourceDatabase() resource.Resource {
 
 func (r *resourceDatabase) Metadata(ctx context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
 	response.TypeName = request.ProviderTypeName + "_database"
+}
+
+func (m *databaseApiClient) applyTagToCluster(clusterId string, tagIds string) error {
+	body := map[string]interface{}{
+		"cluster_id": clusterId,
+		"tag_ids":    tagIds,
+	}
+
+	path := common.ApiPath.DatabaseApplyTags()
+	_, err := m.sendPost(path, body)
+	return err
 }
 
 func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) {
@@ -139,10 +151,35 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 			msg = "database created successfully"
 		}
 		tflog.Info(ctx, msg)
-		fmt.Printf("\n✅ %s\n", msg)
-		currentState.Id = types.StringValue(createResponse.Data.ClusterId)
+		clusterId := createResponse.Data.ClusterId
+  		currentState.Id = types.StringValue(clusterId)
 		if currentState.Id.IsNull() || currentState.Id.ValueString() == "" {
 			currentState.Id = types.StringValue("temp-" + strconv.FormatInt(time.Now().Unix(), 10))
+		}
+		// ===== APPLY TAG AFTER CREATE =====
+		if !currentState.TagIds.IsNull() && !currentState.TagIds.IsUnknown() {
+			tagIds := strings.TrimSpace(currentState.TagIds.ValueString())
+			response.Diagnostics.Append(diags...)
+			if response.Diagnostics.HasError() {
+				return
+			}
+
+			if tagIds != "" {
+				tflog.Info(ctx, "Applying tags to database cluster after create")
+				err = r.dataBaseClient.applyTagToCluster(
+					currentState.Id.ValueString(),
+					tagIds,
+				)
+				if err != nil {
+					response.Diagnostics.Append(
+						diag2.NewErrorDiagnostic(
+							"Error applying tag to database",
+							err.Error(),
+						),
+					)
+					return
+				}
+			}
 		}
 		diags = response.State.Set(ctx, &currentState)
 		response.Diagnostics.Append(diags...)
@@ -162,6 +199,7 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 
 	// Keep the value of number_of_node from the state
 	originalFlavorId := state.FlavorId
+	originalAdminPassword := state.AdminPassword
 	tflog.Info(ctx, "Original FlavorId: "+originalFlavorId.ValueString())
 
 	var timeStart = time.Now()
@@ -189,6 +227,14 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 		state.FlavorId = originalFlavorId
 		tflog.Info(ctx, "Restored original FlavorId from previous state")
 	}
+	if !originalAdminPassword.IsNull() && !originalAdminPassword.IsUnknown() {
+		if state.AdminPassword.IsNull() ||
+			state.AdminPassword.IsUnknown() ||
+			state.AdminPassword.ValueString() == "********" {
+
+			state.AdminPassword = originalAdminPassword
+		}
+	}
 
 	tflog.Debug(ctx, fmt.Sprintf("READING: number of node is %d (%d master, %d worker)", state.NumberOfNode, state.MasterCount, state.WorkerCount))
 	diags = response.State.Set(ctx, &state)
@@ -199,7 +245,38 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 }
 
 func (r *resourceDatabase) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) {
-	panic("implement me")
+	var plan databaseResourceModel
+	var state databaseResourceModel
+
+	response.Diagnostics.Append(request.Plan.Get(ctx, &plan)...)
+	response.Diagnostics.Append(request.State.Get(ctx, &state)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	// Only handle tag_ids update
+	if !plan.TagIds.IsNull() && !plan.TagIds.IsUnknown() {
+		tagIds := strings.TrimSpace(plan.TagIds.ValueString())
+
+		if tagIds != "" {
+			tflog.Info(ctx, "Applying tags to existing database cluster")
+			err := r.dataBaseClient.applyTagToCluster(
+				state.Id.ValueString(),
+				tagIds,
+			)
+			if err != nil {
+				response.Diagnostics.Append(
+					diag2.NewErrorDiagnostic(
+						"Error applying tag to database",
+						err.Error(),
+					),
+				)
+				return
+			}
+		}
+	}
+	plan.Id = state.Id
+	response.State.Set(ctx, &plan)
 }
 
 func (r *resourceDatabase) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
@@ -368,6 +445,10 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				PlanModifiers: forceNewPlanModifiersString,
 				Description:   "The domain name of the database cluster.",
 			},
+			"tag_ids": schema.StringAttribute{
+				Optional:    true,
+				Description: "List of tag IDs applied to the database",
+			},
 		},
 	}
 }
@@ -484,7 +565,6 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 		state.StorageProfile = types.StringValue(cluster.StorageProfile)
 		state.EdgeId = types.StringValue(cluster.EdgeId)
 		state.Edition = types.StringValue(cluster.EngineEdition)
-		state.NumberOfNode = types.Int64Value(int64(cluster.MasterCount) + int64(cluster.WorkerCount))
 		state.DomainName = types.StringValue("")
 		state.VdcName = types.StringValue(node.Items[0].VdcName)
 	}
