@@ -647,7 +647,7 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v2/org/%s/tag/%s", tenantId, tagId)
 	},
 	CreateTag: func(tenantId string) string {
-		return fmt.Sprintf("/v2/org/%s/tag/create", tenantId)
+		return fmt.Sprintf("/v2/org/%s/tag/create_v2", tenantId)
 	},
 	UpdateTag: func(tenantId, tagId string) string {
 		return fmt.Sprintf("/v2/org/%s/tag/%s/update", tenantId, tagId)
