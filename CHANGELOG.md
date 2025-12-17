@@ -1,3 +1,9 @@
+## [0.3.38] - 2025-12-17
+
+### Resource
+
+- Feat: Add datasource flavor database and apply tagging for database
+
 ## [0.3.37] - 2025-12-12
 
 ### Resource

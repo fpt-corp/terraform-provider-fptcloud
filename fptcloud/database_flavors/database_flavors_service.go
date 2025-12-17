@@ -8,12 +8,12 @@ import (
 )
 
 type DatabaseFlavor struct {
-	ID         string  `json:"flavor_id"`
-	Name       string  `json:"flavor_name"`
-	Cpu        int     `json:"flavor_vcpu"`
-	MemoryMb   int     `json:"flavor_ram"`
-	IsScale    *int    `json:"is_scale"`
-	FlavorSite string  `json:"flavor_site"`
+	ID         string `json:"flavor_id"`
+	Name       string `json:"flavor_name"`
+	Cpu        int    `json:"flavor_vcpu"`
+	MemoryMb   int    `json:"flavor_ram"`
+	IsScale    *int   `json:"is_scale"`
+	FlavorSite string `json:"flavor_site"`
 }
 
 type DatabaseFlavorResponse struct {
@@ -34,7 +34,7 @@ func NewDatabaseFlavorService(client *common.Client) DatabaseFlavorService {
 	if client == nil {
 		panic("client cannot be nil")
 	}
-	
+
 	return &DatabaseFlavorServiceImpl{
 		client: client,
 	}
@@ -47,25 +47,25 @@ func (s *DatabaseFlavorServiceImpl) ListDatabaseFlavor(vpcId string, isOps strin
 	if s.client == nil {
 		return nil, fmt.Errorf("database flavor service client is nil")
 	}
-	
+
 	if vpcId == "" {
 		return nil, fmt.Errorf("vpc_id cannot be empty")
 	}
 	if isOps == "" {
 		return nil, fmt.Errorf("is_ops cannot be empty")
 	}
-	
+
 	fmt.Printf("[DEBUG] Calling ListDatabaseFlavor with vpc_id: %s, is_ops: %s\n", vpcId, isOps)
 
 	apiPath := common.ApiPath.DatabaseFlavor(vpcId, isOps)
 	fmt.Printf("[DEBUG] API Path: %s\n", apiPath)
-	
+
 	u := s.client.PrepareClientURL(apiPath)
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
-	
+
 	switch s.client.Region {
 	case "VN/HAN":
 		req.Header.Set("fpt-region", "hanoi-vn")
@@ -78,16 +78,16 @@ func (s *DatabaseFlavorServiceImpl) ListDatabaseFlavor(vpcId string, isOps strin
 	default:
 		req.Header.Set("fpt-region", s.client.Region)
 	}
-	
+
 	resp, err := s.client.SendRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %v", err)
 	}
-	
+
 	if resp == nil {
 		return nil, fmt.Errorf("empty response from API")
 	}
-	
+
 	fmt.Printf("[DEBUG] Raw API response: %s\n", string(resp))
 
 	var responseModel DatabaseFlavorResponse
@@ -101,6 +101,6 @@ func (s *DatabaseFlavorServiceImpl) ListDatabaseFlavor(vpcId string, isOps strin
 	}
 
 	fmt.Printf("[DEBUG] Found %d database flavors\n", len(responseModel.Data))
-	
+
 	return &responseModel.Data, nil
 }

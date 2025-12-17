@@ -89,7 +89,7 @@ func getDatabaseFlavors(m interface{}, extra map[string]interface{}) ([]interfac
 	if m == nil {
 		return nil, fmt.Errorf("[ERR] provider configuration is nil")
 	}
-	
+
 	apiClient, ok := m.(*common.Client)
 	if !ok {
 		return nil, fmt.Errorf("[ERR] invalid provider configuration type")

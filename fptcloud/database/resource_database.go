@@ -72,7 +72,7 @@ type databaseResourceModel struct {
 	NumberOfNode   types.Int64  `tfsdk:"number_of_node" json:"number_of_node"`
 	NumberOfShard  types.Int64  `tfsdk:"number_of_shard" json:"number_of_shard"`
 	DomainName     types.String `tfsdk:"domain_name" json:"domain_name"`
-	TagIds 		   types.String `tfsdk:"tag_ids"`
+	TagIds         types.String `tfsdk:"tag_ids"`
 }
 
 var timeout = 1800 * time.Second
@@ -152,7 +152,7 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		}
 		tflog.Info(ctx, msg)
 		clusterId := createResponse.Data.ClusterId
-  		currentState.Id = types.StringValue(clusterId)
+		currentState.Id = types.StringValue(clusterId)
 		if currentState.Id.IsNull() || currentState.Id.ValueString() == "" {
 			currentState.Id = types.StringValue("temp-" + strconv.FormatInt(time.Now().Unix(), 10))
 		}

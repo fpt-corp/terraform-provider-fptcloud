@@ -49,13 +49,13 @@ var ApiPath = struct {
 	Subnet          func(vpcId string) string
 	EdgeGatewayList func(vpcId string) string
 
-	DatabaseGet    		func(databaseId string) string
-	DatabaseCreate 		func() string
-	DatabaseDelete 		func(databaseId string) string
-	DatabaseStop   		func() string
-	DatabaseStart  		func() string
-	DatabaseApplyTags	func() string
-	DatabaseFlavor		func(vpcId string, isOSP string) string
+	DatabaseGet       func(databaseId string) string
+	DatabaseCreate    func() string
+	DatabaseDelete    func(databaseId string) string
+	DatabaseStop      func() string
+	DatabaseStart     func() string
+	DatabaseApplyTags func() string
+	DatabaseFlavor    func(vpcId string, isOSP string) string
 
 	// Dedicated FKE
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
