@@ -164,21 +164,19 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 				return
 			}
 
-			if tagIds != "" {
-				tflog.Info(ctx, "Applying tags to database cluster after create")
-				err = r.dataBaseClient.applyTagToCluster(
-					currentState.Id.ValueString(),
-					tagIds,
+			tflog.Info(ctx, "Applying tags to database cluster after create")
+			err = r.dataBaseClient.applyTagToCluster(
+				currentState.Id.ValueString(),
+				tagIds,
+			)
+			if err != nil {
+				response.Diagnostics.Append(
+					diag2.NewErrorDiagnostic(
+						"Error applying tag to database",
+						err.Error(),
+					),
 				)
-				if err != nil {
-					response.Diagnostics.Append(
-						diag2.NewErrorDiagnostic(
-							"Error applying tag to database",
-							err.Error(),
-						),
-					)
-					return
-				}
+				return
 			}
 		}
 		diags = response.State.Set(ctx, &currentState)
@@ -258,21 +256,19 @@ func (r *resourceDatabase) Update(ctx context.Context, request resource.UpdateRe
 	if !plan.TagIds.IsNull() && !plan.TagIds.IsUnknown() {
 		tagIds := strings.TrimSpace(plan.TagIds.ValueString())
 
-		if tagIds != "" {
-			tflog.Info(ctx, "Applying tags to existing database cluster")
-			err := r.dataBaseClient.applyTagToCluster(
-				state.Id.ValueString(),
-				tagIds,
+		tflog.Info(ctx, "Applying tags to existing database cluster")
+		err := r.dataBaseClient.applyTagToCluster(
+			state.Id.ValueString(),
+			tagIds,
+		)
+		if err != nil {
+			response.Diagnostics.Append(
+				diag2.NewErrorDiagnostic(
+					"Error applying tag to database",
+					err.Error(),
+				),
 			)
-			if err != nil {
-				response.Diagnostics.Append(
-					diag2.NewErrorDiagnostic(
-						"Error applying tag to database",
-						err.Error(),
-					),
-				)
-				return
-			}
+			return
 		}
 	}
 	plan.Id = state.Id
