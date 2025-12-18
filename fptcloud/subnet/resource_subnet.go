@@ -2,12 +2,13 @@ package fptcloud_subnet
 
 import (
 	"context"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
 	common "terraform-provider-fptcloud/commons"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 // ResourceSubnet function returns a schema.Resource that represents a subnet.
@@ -34,12 +35,14 @@ func resourceSubnetCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	ipRange := d.Get("static_ip_pool").(string)
 	ipRangeStart, ipRangeEnd := parseIPRange(ipRange)
 	createModel := CreateSubnetDTO{
-		Name:         d.Get("name").(string),
-		CIDR:         d.Get("cidr").(string),
-		Type:         d.Get("type").(string),
-		GatewayIp:    d.Get("gateway_ip").(string),
-		IpRangeStart: ipRangeStart,
-		IpRangeEnd:   ipRangeEnd,
+		Name:           d.Get("name").(string),
+		CIDR:           d.Get("cidr").(string),
+		Type:           d.Get("type").(string),
+		GatewayIp:      d.Get("gateway_ip").(string),
+		IpRangeStart:   ipRangeStart,
+		IpRangeEnd:     ipRangeEnd,
+		PrimaryDNSIp:   d.Get("primary_dns_ip").(string),
+		SecondaryDNSIp: d.Get("secondary_dns_ip").(string),
 	}
 	//if tags, ok := d.GetOk("tag_ids"); ok {
 	//	createModel.TagIds = expandTagIDs(tags.(*schema.Set))
@@ -139,26 +142,41 @@ func resourceSubnetRead(_ context.Context, d *schema.ResourceData, m interface{}
 		return diag.Errorf("[ERR] Failed to set 'tag_ids': %s", err)
 	}
 
+	if result.PrimaryDNSIp != "" {
+		if err := d.Set("primary_dns_ip", result.PrimaryDNSIp); err != nil {
+			return diag.Errorf("[ERR] Failed to set 'primary_dns_ip': %s", err)
+		}
+	}
+
+	if result.SecondaryDNSIp != "" {
+		if err := d.Set("secondary_dns_ip", result.SecondaryDNSIp); err != nil {
+			return diag.Errorf("[ERR] Failed to set 'secondary_dns_ip': %s", err)
+		}
+	}
+
 	return nil
 }
 
 func resourceSubnetUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	return diag.Errorf("Update operation is not yet implemented for tagging resource")
-	//apiClient := m.(*common.Client)
-	//service := NewSubnetService(apiClient)
-	//
-	//if !d.HasChange("tag_ids") {
-	//	return resourceSubnetRead(ctx, d, m)
-	//}
-	//
-	//vpcId := d.Get("vpc_id").(string)
-	//tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
-	//_, err := service.UpdateTags(vpcId, d.Id(), tagIds)
-	//if err != nil {
-	//	return diag.Errorf("[ERR] An error occurred while updating subnet tags %s", err)
-	//}
-	//
-	//return resourceSubnetRead(ctx, d, m)
+	apiClient := m.(*common.Client)
+	service := NewSubnetService(apiClient)
+
+	vpcId := d.Get("vpc_id").(string)
+
+	// Handle DNS update
+	if d.HasChange("primary_dns_ip") || d.HasChange("secondary_dns_ip") {
+		updateDNSDto := UpdateSubnetDNSDTO{
+			PrimaryDNSIp:   d.Get("primary_dns_ip").(string),
+			SecondaryDNSIp: d.Get("secondary_dns_ip").(string),
+		}
+
+		_, err := service.UpdateDNS(vpcId, d.Id(), updateDNSDto)
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while updating subnet DNS: %s", err)
+		}
+	}
+
+	return resourceSubnetRead(ctx, d, m)
 }
 
 func resourceSubnetDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {

@@ -1,3 +1,9 @@
+## [0.3.40] - 2025-12-17
+
+### Resource
+
+- Support configuring primary and secondary DNS when creating a subnet
+
 ## [0.3.37] - 2025-12-12
 
 ### Resource

@@ -14,12 +14,14 @@ Provides a FPT cloud instance group which can be attached to an instance in orde
 
 ```terraform
 resource "fptcloud_subnet" "example" {
-  vpc_id="your_vpc_id"
-  name = "subnet_name"
-  type = "ISOLATED | NAT_ROUTED"
-  cidr = "your_cidr"
-  gateway_ip = "your_gateway_ip"
-  static_ip_pool = "static_ip_pool_of_instance"
+  vpc_id           = "your_vpc_id"
+  name             = "subnet_name"
+  type             = "ISOLATED | NAT_ROUTED"
+  cidr             = "your_cidr"
+  gateway_ip       = "your_gateway_ip"
+  static_ip_pool   = "static_ip_pool_of_instance"
+  primary_dns_ip   = "8.8.8.8"
+  secondary_dns_ip = "8.8.4.4"
 }
 ```
 
@@ -36,6 +38,8 @@ resource "fptcloud_subnet" "example" {
 
 ### Optional
 
+- `primary_dns_ip` (String) The primary DNS IP address of the subnet (e.g., "8.8.8.8")
+- `secondary_dns_ip` (String) The secondary DNS IP address of the subnet (e.g., "8.8.4.4")
 - `static_ip_pool` (String) The static ip pool of the instance. Only if you want to create subnet with static IP pool, enter an valid IP range within provided CIDR.
 - `tag_ids` (Set of String) List of tag IDs to associate with the subnet
 
@@ -44,4 +48,5 @@ resource "fptcloud_subnet" "example" {
 - `created_at` (String)
 - `gateway` (String)
 - `id` (String) The ID of this resource.
-- `network_name` (String)
+- `network_id` (String) The network id of the subnet
+- `network_name` (String) The network name of the subnet
