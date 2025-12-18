@@ -1,8 +1,14 @@
-## [0.3.40] - 2025-12-17
+## [0.3.41] - 2025-12-18
 
 ### Resource
 
 - Feat: Add datasource flavor database and apply tagging for database
+
+## [0.3.40] - 2025-12-17
+
+### Resource
+
+- Support configuring primary and secondary DNS when creating a subnet
 
 ## [0.3.37] - 2025-12-12
 

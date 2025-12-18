@@ -77,6 +77,20 @@ var resourceSubnet = map[string]*schema.Schema{
 		Elem:        &schema.Schema{Type: schema.TypeString},
 		Description: "List of tag IDs associated with the subnet",
 	},
+	"primary_dns_ip": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		Computed:     true,
+		ValidateFunc: validateIPv4Address,
+		Description:  "The primary DNS IP address of the subnet",
+	},
+	"secondary_dns_ip": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		Computed:     true,
+		ValidateFunc: validateIPv4Address,
+		Description:  "The secondary DNS IP address of the subnet",
+	},
 }
 
 // validateCIDR is a ValidateFunc that checks if a given value is a valid CIDR block.
