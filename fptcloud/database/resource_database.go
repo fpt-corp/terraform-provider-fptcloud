@@ -392,9 +392,9 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description:   "Whether the database is public or not.",
 			},
 			"admin_password": schema.StringAttribute{
-				Required:      true,
-				Sensitive:     true,
-				Description:   "The admin password of the database cluster.",
+				Required:    true,
+				Sensitive:   true,
+				Description: "The admin password of the database cluster.",
 			},
 			"storage_profile": schema.StringAttribute{
 				Required:      true,
