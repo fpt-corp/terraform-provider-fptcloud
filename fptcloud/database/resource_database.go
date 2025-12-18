@@ -393,7 +393,7 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 			},
 			"admin_password": schema.StringAttribute{
 				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
+				Sensitive:     true,
 				Description:   "The admin password of the database cluster.",
 			},
 			"storage_profile": schema.StringAttribute{
