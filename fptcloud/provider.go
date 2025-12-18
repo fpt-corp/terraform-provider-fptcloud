@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	common "terraform-provider-fptcloud/commons"
+	fptcloud_database_flavors "terraform-provider-fptcloud/fptcloud/database_flavors"
 	fptcloud_flavor "terraform-provider-fptcloud/fptcloud/flavor"
 	fptcloud_floating_ip "terraform-provider-fptcloud/fptcloud/floating-ip"
 	fptcloud_floating_ip_association "terraform-provider-fptcloud/fptcloud/floating-ip-association"
@@ -79,6 +80,7 @@ func Provider() *schema.Provider {
 			"fptcloud_ssh_key":                              fptcloud_ssh.DataSourceSSHKey(),
 			"fptcloud_vpc":                                  fptcloud_vpc.NewDataSource(),
 			"fptcloud_flavor":                               fptcloud_flavor.DataSourceFlavor(),
+			"fptcloud_database_flavors":                     fptcloud_database_flavors.DataSourceDatabaseFlavor(),
 			"fptcloud_image":                                fptcloud_image.DataSourceImage(),
 			"fptcloud_security_group":                       fptcloud_security_group.DataSourceSecurityGroup(),
 			"fptcloud_instance":                             fptcloud_instance.DataSourceInstance(),

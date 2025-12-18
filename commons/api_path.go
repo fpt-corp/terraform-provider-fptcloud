@@ -50,11 +50,13 @@ var ApiPath = struct {
 	Subnet          func(vpcId string) string
 	EdgeGatewayList func(vpcId string) string
 
-	DatabaseGet    func(databaseId string) string
-	DatabaseCreate func() string
-	DatabaseDelete func(databaseId string) string
-	DatabaseStop   func() string
-	DatabaseStart  func() string
+	DatabaseGet       func(databaseId string) string
+	DatabaseCreate    func() string
+	DatabaseDelete    func(databaseId string) string
+	DatabaseStop      func() string
+	DatabaseStart     func() string
+	DatabaseApplyTags func() string
+	DatabaseFlavor    func(vpcId string, isOSP string) string
 
 	// Dedicated FKE
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
@@ -316,6 +318,12 @@ var ApiPath = struct {
 	},
 	DatabaseStart: func() string {
 		return "/v1/xplat/database/management/cluster/start"
+	},
+	DatabaseApplyTags: func() string {
+		return "/v1/xplat/database/management/tagging/cluster/apply-tag"
+	},
+	DatabaseFlavor: func(vpcId string, isOSP string) string {
+		return fmt.Sprintf("/v1/xplat/database/configure_management/get_list_flavor_v2?vpc_id=%s&is_ops=%s", vpcId, isOSP)
 	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {
