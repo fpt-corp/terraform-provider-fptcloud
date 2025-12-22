@@ -639,6 +639,14 @@ var dataSourceListeners = map[string]*schema.Schema{
 					Computed:    true,
 					Description: "The allowed CIDRs of the listener",
 				},
+				"denied_cidrs": {
+					Type: schema.TypeList,
+					Elem: &schema.Schema{
+						Type: schema.TypeString,
+					},
+					Computed:    true,
+					Description: "The denied CIDRs of the listener",
+				},
 				"tags": {
 					Type: schema.TypeList,
 					Elem: &schema.Schema{
@@ -661,6 +669,11 @@ var dataSourceListener = map[string]*schema.Schema{
 		Type:        schema.TypeString,
 		Required:    true,
 		Description: "The ID of the istener",
+	},
+	"load_balancer_id": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "The ID of the load balancer that this listener belongs to",
 	},
 	"name": {
 		Type:        schema.TypeString,
@@ -840,6 +853,14 @@ var dataSourceListener = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The allowed CIDRs of the listener",
 	},
+	"denied_cidrs": {
+		Type: schema.TypeList,
+		Elem: &schema.Schema{
+			Type: schema.TypeString,
+		},
+		Computed:    true,
+		Description: "The denied CIDRs of the listener",
+	},
 	"tags": {
 		Type: schema.TypeList,
 		Elem: &schema.Schema{
@@ -978,6 +999,14 @@ var resourceListener = map[string]*schema.Schema{
 		},
 		Optional:    true,
 		Description: "The allowed CIDRs of the listener",
+	},
+	"denied_cidrs": {
+		Type: schema.TypeList,
+		Elem: &schema.Schema{
+			Type: schema.TypeString,
+		},
+		Optional:    true,
+		Description: "The denied CIDRs of the listener",
 	},
 }
 

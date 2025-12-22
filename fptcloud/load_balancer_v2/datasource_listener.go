@@ -70,10 +70,17 @@ func listListeners(ctx context.Context, d *schema.ResourceData, m interface{}) d
 		for _, v := range listener.Tags {
 			tags = append(tags, v)
 		}
+
 		var allowedCidrs []interface{}
 		for _, v := range listener.AllowedCidrs {
 			allowedCidrs = append(allowedCidrs, v)
 		}
+
+		var deniedCidrs []interface{}
+		for _, v := range listener.DeniedCidrs {
+			deniedCidrs = append(deniedCidrs, v)
+		}
+
 		var alpnProtocols []interface{}
 		for _, v := range listener.AlpnProtocols {
 			alpnProtocols = append(alpnProtocols, v)
@@ -100,6 +107,7 @@ func listListeners(ctx context.Context, d *schema.ResourceData, m interface{}) d
 			"alpn_protocols":          alpnProtocols,
 			"created_at":              listener.CreatedAt,
 			"allowed_cidrs":           allowedCidrs,
+			"denied_cidrs":            deniedCidrs,
 			"tags":                    tags,
 		})
 	}
@@ -214,6 +222,9 @@ func getListener(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	}
 	if err := d.Set("allowed_cidrs", listener.AllowedCidrs); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting listener allowed cidrs: %v", err))
+	}
+	if err := d.Set("denied_cidrs", listener.DeniedCidrs); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting listener denied cidrs: %v", err))
 	}
 	if err := d.Set("created_at", listener.CreatedAt); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting listener create date: %v", err))

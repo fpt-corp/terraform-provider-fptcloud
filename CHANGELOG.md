@@ -1,3 +1,7 @@
+## [0.3.42] - 2025-12-22
+
+- Feature: Managing denied CIDRs of LBaaS listener resource
+
 ## [0.3.41] - 2025-12-18
 
 ### Resource
