@@ -403,7 +403,8 @@ func TestListListenersSuccessfully(t *testing.T) {
 				"tcp_inspect_timeout": 0,
 				"alpn_protocols": null,
 				"created_at": "2025-09-23T08:16:54",
-				"allowed_cidrs": null
+				"allowed_cidrs": ["192.168.1.0/24"],
+				"denied_cidrs": ["192.168.2.0/24"]
 			}
 		],
 		"message": "Get listeners successfully",
@@ -444,7 +445,8 @@ func TestListListenersSuccessfully(t *testing.T) {
 	assert.Equal(t, 0, response.Listeners[0].TcpInspectTimeout)
 	assert.Nil(t, response.Listeners[0].AlpnProtocols)
 	assert.Equal(t, "2025-09-23T08:16:54", response.Listeners[0].CreatedAt)
-	assert.Nil(t, response.Listeners[0].AllowedCidrs)
+	assert.Equal(t, []string{"192.168.1.0/24"}, response.Listeners[0].AllowedCidrs)
+	assert.Equal(t, []string{"192.168.2.0/24"}, response.Listeners[0].DeniedCidrs)
 }
 
 func TestGetListenerSuccessfully(t *testing.T) {
@@ -480,7 +482,8 @@ func TestGetListenerSuccessfully(t *testing.T) {
 			"tcp_inspect_timeout": 0,
 			"alpn_protocols": null,
 			"created_at": "2025-09-16T04:15:40",
-			"allowed_cidrs": null
+			"allowed_cidrs": ["192.168.1.0/24"],
+			"denied_cidrs": ["192.168.2.0/24"]
 		}
 	}`
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
@@ -522,7 +525,8 @@ func TestGetListenerSuccessfully(t *testing.T) {
 	assert.Equal(t, 0, response.Listener.TcpInspectTimeout)
 	assert.Nil(t, response.Listener.AlpnProtocols)
 	assert.Equal(t, "2025-09-16T04:15:40", response.Listener.CreatedAt)
-	assert.Nil(t, response.Listener.AllowedCidrs)
+	assert.Equal(t, []string{"192.168.1.0/24"}, response.Listener.AllowedCidrs)
+	assert.Equal(t, []string{"192.168.2.0/24"}, response.Listener.DeniedCidrs)
 }
 
 func TestCreateListenerSuccessfully(t *testing.T) {
@@ -553,7 +557,8 @@ func TestCreateListenerSuccessfully(t *testing.T) {
 			"member_connect_timeout": 5000,
 			"member_data_timeout": 50000,
 			"tcp_inspect_timeout": 0,
-			"allowed_cidrs": null,
+			"allowed_cidrs": ["192.168.1.0/24"],
+			"denied_cidrs": ["192.168.2.0/24"],
 			"alpn_protocols": null,
 			"created_at": "2025-10-14T03:59:06",
 			"updated_at": null,
@@ -590,7 +595,8 @@ func TestCreateListenerSuccessfully(t *testing.T) {
 		HstsMaxAge:            0,
 		HstsIncludeSubdomains: false,
 		HstsPreload:           false,
-		AllowedCidrs:          []string{},
+		AllowedCidrs:          []string{"192.168.1.0/24"},
+		DeniedCidrs:           []string{"192.168.2.0/24"},
 		AlpnProtocols:         []string{},
 	}
 
@@ -623,7 +629,8 @@ func TestCreateListenerSuccessfully(t *testing.T) {
 	assert.Equal(t, 5000, response.Data.MemberConnectionTimeout)
 	assert.Equal(t, 50000, response.Data.MemberDataTimeout)
 	assert.Equal(t, 0, response.Data.TcpInspectTimeout)
-	assert.Empty(t, response.Data.AllowedCidrs)
+	assert.Equal(t, []string{"192.168.1.0/24"}, response.Data.AllowedCidrs)
+	assert.Equal(t, []string{"192.168.2.0/24"}, response.Data.DeniedCidrs)
 	assert.Empty(t, response.Data.AlpnProtocols)
 	assert.Equal(t, "2025-10-14T03:59:06", response.Data.CreatedAt)
 	assert.Equal(t, "", response.Data.UpdatedAt)
@@ -658,7 +665,8 @@ func TestUpdateListenerSuccessfully(t *testing.T) {
 			"member_connect_timeout": 5000,
 			"member_data_timeout": 50000,
 			"tcp_inspect_timeout": 0,
-			"allowed_cidrs": null,
+			"allowed_cidrs": ["192.168.1.0/24"],
+			"denied_cidrs": ["192.168.2.0/24"],
 			"alpn_protocols": null,
 			"created_at": "2025-10-14T03:59:06",
 			"updated_at": null,
@@ -692,7 +700,8 @@ func TestUpdateListenerSuccessfully(t *testing.T) {
 		HstsMaxAge:            0,
 		HstsIncludeSubdomains: false,
 		HstsPreload:           false,
-		AllowedCidrs:          []string{},
+		AllowedCidrs:          []string{"192.168.1.0/24"},
+		DeniedCidrs:           []string{"192.168.2.0/24"},
 		AlpnProtocols:         []string{},
 	}
 
@@ -724,7 +733,8 @@ func TestUpdateListenerSuccessfully(t *testing.T) {
 	assert.Equal(t, 5000, response.Data.MemberConnectionTimeout)
 	assert.Equal(t, 50000, response.Data.MemberDataTimeout)
 	assert.Equal(t, 0, response.Data.TcpInspectTimeout)
-	assert.Empty(t, response.Data.AllowedCidrs)
+	assert.Equal(t, []string{"192.168.1.0/24"}, response.Data.AllowedCidrs)
+	assert.Equal(t, []string{"192.168.2.0/24"}, response.Data.DeniedCidrs)
 	assert.Empty(t, response.Data.AlpnProtocols)
 	assert.Equal(t, "2025-10-14T03:59:06", response.Data.CreatedAt)
 	assert.Equal(t, "", response.Data.UpdatedAt)

@@ -48,6 +48,7 @@ Read-Only:
 - `connection_limit` (Number)
 - `created_at` (String)
 - `default_pool` (List of Object) (see [below for nested schema](#nestedobjatt--listeners--default_pool))
+- `denied_cidrs` (List of String) The denied CIDRs of the listener
 - `description` (String)
 - `hsts_include_subdomains` (Boolean)
 - `hsts_max_age` (Number)

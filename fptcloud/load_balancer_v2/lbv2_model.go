@@ -260,6 +260,7 @@ type Listener struct {
 	AlpnProtocols         []string               `json:"alpn_protocols"`
 	CreatedAt             string                 `json:"created_at"`
 	AllowedCidrs          []string               `json:"allowed_cidrs"`
+	DeniedCidrs           []string               `json:"denied_cidrs"`
 	Tags                  []string               `json:"tags"`
 }
 
@@ -291,6 +292,7 @@ type ListenerResponse struct {
 		MemberDataTimeout       int               `json:"member_data_timeout"`
 		TcpInspectTimeout       int               `json:"tcp_inspect_timeout"`
 		AllowedCidrs            []string          `json:"allowed_cidrs"`
+		DeniedCidrs             []string          `json:"denied_cidrs"`
 		AlpnProtocols           []string          `json:"alpn_protocols"`
 		CreatedAt               string            `json:"created_at"`
 		UpdatedAt               string            `json:"updated_at"`
@@ -323,6 +325,7 @@ type ListenerCreateModel struct {
 	HstsIncludeSubdomains bool            `json:"hsts_include_subdomains"`
 	HstsPreload           bool            `json:"hsts_preload"`
 	AllowedCidrs          []string        `json:"allowed_cidrs"`
+	DeniedCidrs           []string        `json:"denied_cidrs"`
 	AlpnProtocols         []string        `json:"alpn_protocols"`
 }
 
@@ -342,6 +345,7 @@ type ListenerUpdateModel struct {
 	HstsIncludeSubdomains bool            `json:"hsts_include_subdomains"`
 	HstsPreload           bool            `json:"hsts_preload"`
 	AllowedCidrs          []string        `json:"allowed_cidrs"`
+	DeniedCidrs           []string        `json:"denied_cidrs"`
 	AlpnProtocols         []string        `json:"alpn_protocols"`
 }
 

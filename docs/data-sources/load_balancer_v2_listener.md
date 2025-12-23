@@ -40,6 +40,7 @@ output "listener" {
 - `connection_limit` (Number) The connection limit of the listener
 - `created_at` (String) The creation timestamp of the listener
 - `default_pool` (List of Object) The default pool of the listener (see [below for nested schema](#nestedatt--default_pool))
+- `denied_cidrs` (List of String) The denied CIDRs of the listener
 - `description` (String) The description of the listener
 - `hsts_include_subdomains` (Boolean) Defines whether the include sub domains directive should be added to the Strict-Transport-Security HTTP response header
 - `hsts_max_age` (Number) The HSTS max age of the listener
