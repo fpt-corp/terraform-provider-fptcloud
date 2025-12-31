@@ -112,6 +112,9 @@ func readListener(ctx context.Context, d *schema.ResourceData, m interface{}) di
 	if err := d.Set("allowed_cidrs", listener.AllowedCidrs); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting allowed cidrs: %v", err))
 	}
+	if err := d.Set("denied_cidrs", listener.DeniedCidrs); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting denied cidrs: %v", err))
+	}
 	return nil
 }
 
@@ -133,6 +136,11 @@ func createListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	allowedCidrs := []string{}
 	for _, v := range d.Get("allowed_cidrs").([]interface{}) {
 		allowedCidrs = append(allowedCidrs, v.(string))
+	}
+
+	deniedCidrs := []string{}
+	for _, v := range d.Get("denied_cidrs").([]interface{}) {
+		deniedCidrs = append(deniedCidrs, v.(string))
 	}
 
 	alpnProtocols := []string{}
@@ -163,6 +171,7 @@ func createListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	payload.HstsPreload = d.Get("hsts_preload").(bool)
 	payload.AlpnProtocols = alpnProtocols
 	payload.AllowedCidrs = allowedCidrs
+	payload.DeniedCidrs = deniedCidrs
 
 	response, err := service.CreateListener(vpcId, loadBalancerId, payload)
 	if err != nil {
@@ -183,6 +192,11 @@ func updateListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	allowedCidrs := []string{}
 	for _, v := range d.Get("allowed_cidrs").([]interface{}) {
 		allowedCidrs = append(allowedCidrs, v.(string))
+	}
+
+	deniedCidrs := []string{}
+	for _, v := range d.Get("denied_cidrs").([]interface{}) {
+		deniedCidrs = append(deniedCidrs, v.(string))
 	}
 
 	alpnProtocols := []string{}
@@ -216,6 +230,7 @@ func updateListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	payload.HstsPreload = d.Get("hsts_preload").(bool)
 	payload.AlpnProtocols = alpnProtocols
 	payload.AllowedCidrs = allowedCidrs
+	payload.DeniedCidrs = deniedCidrs
 
 	_, err := service.UpdateListener(vpcId, listenerId, payload)
 	if err != nil {

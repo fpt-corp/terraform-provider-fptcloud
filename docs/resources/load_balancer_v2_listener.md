@@ -39,7 +39,8 @@ resource "fptcloud_load_balancer_v2_listener" "example" {
   hsts_max_age = 31536000
   hsts_include_subdomains = true
   hsts_preload = true
-  allowed_cidrs = []
+  allowed_cidrs = ["192.168.1.0/24"]
+  denied_cidrs = ["192.168.2.0/24"]
   alpn_protocols = [
     "http/1.0",
     "http/1.1",
@@ -71,6 +72,7 @@ resource "fptcloud_load_balancer_v2_listener" "example" {
 - `allowed_cidrs` (List of String) The allowed CIDRs of the listener
 - `alpn_protocols` (List of String) The ALPN protocols of the listener
 - `default_pool_id` (String) The default pool ID of the listener
+- `denied_cidrs` (List of String) The denied CIDRs of the listener
 - `description` (String) The description of the listener
 - `hsts_include_subdomains` (Boolean) Defines whether the include sub domains directive should be added to the Strict-Transport-Security HTTP response header
 - `hsts_max_age` (Number) The HSTS max age of the listener
@@ -95,7 +97,6 @@ Required:
 ```terraform
 resource "fptcloud_load_balancer_v2_listener" "example" {
   vpc_id = "<vpc_id>"
-  load_balancer_id = "<load_balancer_id>"
   description = "terraform_listener"
   name = "cac1-terraform_listener"
   protocol = "TERMINATED_HTTPS"
@@ -119,7 +120,8 @@ resource "fptcloud_load_balancer_v2_listener" "example" {
   hsts_max_age = 31536000
   hsts_include_subdomains = true
   hsts_preload = true
-  allowed_cidrs = []
+  allowed_cidrs = ["192.168.1.0/24"]
+  denied_cidrs = ["192.168.2.0/24"]
   alpn_protocols = [
     "http/1.0",
     "http/1.1",
