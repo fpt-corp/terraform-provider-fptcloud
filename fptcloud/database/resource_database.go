@@ -5,6 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	common "terraform-provider-fptcloud/commons"
+
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -13,10 +20,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"strconv"
-	"strings"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 var (
@@ -73,6 +76,7 @@ type databaseResourceModel struct {
 	NumberOfShard  types.Int64  `tfsdk:"number_of_shard" json:"number_of_shard"`
 	DomainName     types.String `tfsdk:"domain_name" json:"domain_name"`
 	TagIds         types.String `tfsdk:"tag_ids"`
+	Nodes          types.List   `tfsdk:"nodes"`
 }
 
 var timeout = 1800 * time.Second
@@ -179,6 +183,10 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 				return
 			}
 		}
+
+		// Initialize nodes to empty list (will be populated on Read/Refresh)
+		currentState.Nodes = emptyNodesList()
+
 		diags = response.State.Set(ctx, &currentState)
 		response.Diagnostics.Append(diags...)
 	}
@@ -445,6 +453,35 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Optional:    true,
 				Description: "List of tag IDs applied to the database",
 			},
+			"nodes": schema.ListAttribute{
+				Computed:    true,
+				Description: "List of nodes (VMs) in the database cluster",
+				ElementType: types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"id":             types.StringType,
+						"name":           types.StringType,
+						"cluster_name":   types.StringType,
+						"cluster_id":     types.StringType,
+						"vpc_id":         types.StringType,
+						"vdc_name":       types.StringType,
+						"vmw_id":         types.StringType,
+						"status":         types.StringType,
+						"platform":       types.StringType,
+						"org_name":       types.StringType,
+						"ip_address":     types.StringType,
+						"ip_private":     types.StringType,
+						"network_name":   types.StringType,
+						"database_role":  types.StringType,
+						"guest_os":       types.StringType,
+						"number_of_cpus": types.Int64Type,
+						"memory_mb":      types.Int64Type,
+						"data_disk_size": types.Int64Type,
+						"is_deployed":    types.BoolType,
+						"created_at":     types.StringType,
+						"updated_at":     types.StringType,
+					},
+				},
+			},
 		},
 	}
 }
@@ -563,8 +600,101 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 		state.Edition = types.StringValue(cluster.EngineEdition)
 		state.DomainName = types.StringValue("")
 		state.VdcName = types.StringValue(node.Items[0].VdcName)
+
+		// Build nodes list (returns empty list if data is null or parsing fails)
+		state.Nodes = r.buildNodesList(ctx, node.Items)
 	}
 	return nil
+}
+
+// nodeAttrTypes returns the attribute types for a database node object
+func nodeAttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"id":             types.StringType,
+		"name":           types.StringType,
+		"cluster_name":   types.StringType,
+		"cluster_id":     types.StringType,
+		"vpc_id":         types.StringType,
+		"vdc_name":       types.StringType,
+		"vmw_id":         types.StringType,
+		"status":         types.StringType,
+		"platform":       types.StringType,
+		"org_name":       types.StringType,
+		"ip_address":     types.StringType,
+		"ip_private":     types.StringType,
+		"network_name":   types.StringType,
+		"database_role":  types.StringType,
+		"guest_os":       types.StringType,
+		"number_of_cpus": types.Int64Type,
+		"memory_mb":      types.Int64Type,
+		"data_disk_size": types.Int64Type,
+		"is_deployed":    types.BoolType,
+		"created_at":     types.StringType,
+		"updated_at":     types.StringType,
+	}
+}
+
+// emptyNodesList returns an empty list of nodes
+func emptyNodesList() types.List {
+	return types.ListValueMust(types.ObjectType{AttrTypes: nodeAttrTypes()}, []attr.Value{})
+}
+
+// buildNodesList converts the API response node items to a types.List for Terraform state
+// Returns an empty list if items is nil/empty or if parsing fails
+func (r *resourceDatabase) buildNodesList(ctx context.Context, items []databaseNodeItem) types.List {
+	attrTypes := nodeAttrTypes()
+
+	// Return empty list if items is empty
+	if len(items) == 0 {
+		tflog.Debug(ctx, "No node items to build, returning empty list")
+		return emptyNodesList()
+	}
+
+	nodeObjects := make([]attr.Value, 0, len(items))
+	for _, item := range items {
+		guestOs := types.StringNull()
+		if item.GuestOs != nil {
+			guestOs = types.StringValue(*item.GuestOs)
+		}
+
+		nodeObj, diags := types.ObjectValue(attrTypes, map[string]attr.Value{
+			"id":             types.StringValue(item.Id),
+			"name":           types.StringValue(item.Name),
+			"cluster_name":   types.StringValue(item.ClusterName),
+			"cluster_id":     types.StringValue(item.ClusterId),
+			"vpc_id":         types.StringValue(item.VpcId),
+			"vdc_name":       types.StringValue(item.VdcName),
+			"vmw_id":         types.StringValue(item.VmwId),
+			"status":         types.StringValue(item.Status),
+			"platform":       types.StringValue(item.Platform),
+			"org_name":       types.StringValue(item.OrgName),
+			"ip_address":     types.StringValue(item.IpAddress),
+			"ip_private":     types.StringValue(item.IpPrivate),
+			"network_name":   types.StringValue(item.NetworkName),
+			"database_role":  types.StringValue(item.DatabaseRole),
+			"guest_os":       guestOs,
+			"number_of_cpus": types.Int64Value(int64(item.NumberOfCpus)),
+			"memory_mb":      types.Int64Value(int64(item.MemoryMb)),
+			"data_disk_size": types.Int64Value(int64(item.DataDiskSize)),
+			"is_deployed":    types.BoolValue(item.IsDeployed),
+			"created_at":     types.StringValue(item.CreatedAt),
+			"updated_at":     types.StringValue(item.UpdatedAt),
+		})
+		if diags.HasError() {
+			// Log warning and skip this item instead of failing
+			tflog.Warn(ctx, fmt.Sprintf("Failed to build node object for item %s, skipping: %v", item.Id, diags.Errors()))
+			continue
+		}
+		nodeObjects = append(nodeObjects, nodeObj)
+	}
+
+	result, diags := types.ListValue(types.ObjectType{AttrTypes: attrTypes}, nodeObjects)
+	if diags.HasError() {
+		tflog.Warn(ctx, fmt.Sprintf("Failed to build nodes list, returning empty list: %v", diags.Errors()))
+		return emptyNodesList()
+	}
+
+	return result
 }
 
 // Map data from databaseResourceModel to databaseJson
@@ -695,7 +825,27 @@ type databaseNode struct {
 }
 
 type databaseNodeItem struct {
-	VdcName string `json:"vdc_name"`
+	Id           string  `json:"id"`
+	Name         string  `json:"name"`
+	ClusterName  string  `json:"cluster_name"`
+	ClusterId    string  `json:"cluster_id"`
+	VpcId        string  `json:"vpc_id"`
+	VdcName      string  `json:"vdc_name"`
+	VmwId        string  `json:"vmw_id"`
+	Status       string  `json:"status"`
+	Platform     string  `json:"platform"`
+	OrgName      string  `json:"org_name"`
+	IpAddress    string  `json:"ip_address"`
+	IpPrivate    string  `json:"ip_private"`
+	NetworkName  string  `json:"network_name"`
+	DatabaseRole string  `json:"database_role"`
+	GuestOs      *string `json:"guest_os"`
+	NumberOfCpus int     `json:"number_of_cpus"`
+	MemoryMb     int     `json:"memory_mb"`
+	DataDiskSize int     `json:"data_disk_size"`
+	IsDeployed   bool    `json:"is_deployed"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 // Response from API when requesting a database's detail
