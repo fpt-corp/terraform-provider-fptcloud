@@ -1,3 +1,9 @@
+## [0.3.43] - 2025-12-31
+
+### Resource
+
+- Feat: Add `nodes` computed attribute to `fptcloud_database` resource to expose VM nodes information
+
 ## [0.3.42] - 2025-12-22
 
 - Feature: Managing denied CIDRs of LBaaS listener resource
