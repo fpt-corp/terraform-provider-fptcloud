@@ -10,6 +10,7 @@ import (
 	"log"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
+	"terraform-provider-fptcloud/commons/utils"
 	"time"
 )
 
@@ -119,7 +120,7 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	if tags, ok := d.GetOk("tag_ids"); ok {
-		storageModel.TagIds = expandTagIDs(tags.(*schema.Set))
+		storageModel.TagIds = utils.ExpandTagIDs(tags.(*schema.Set))
 	}
 
 	if storageType == Local && !okInstanceId {
@@ -324,7 +325,7 @@ func resourceStorageUpdate(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	if hasChangeTags {
-		tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
+		tagIds := utils.ExpandTagIDs(d.Get("tag_ids").(*schema.Set))
 		_, err := storageService.UpdateTags(vpcId, d.Id(), tagIds)
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while updating storage tags %s", err)
@@ -377,12 +378,4 @@ func resourceStorageDelete(_ context.Context, d *schema.ResourceData, m interfac
 		return diag.Errorf("[ERR] An error occurred while trying to delete the storage %s", err)
 	}
 	return nil
-}
-
-func expandTagIDs(tagSet *schema.Set) []string {
-	tagIds := make([]string, 0, tagSet.Len())
-	for _, tag := range tagSet.List() {
-		tagIds = append(tagIds, tag.(string))
-	}
-	return tagIds
 }

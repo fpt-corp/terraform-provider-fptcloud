@@ -99,16 +99,42 @@ func instanceGroupSchema() map[string]*schema.Schema {
 func flattenInstanceGroup(instanceGroup, _ interface{}, _ map[string]interface{}) (map[string]interface{}, error) {
 	s := instanceGroup.(InstanceGroup)
 
-	flattened := map[string]interface{}{}
-	flattened["id"] = s.ID
-	flattened["name"] = s.Name
-	flattened["policy"] = []interface{}{s.Policy}
-	flattened["vms"] = s.Vms
-	flattened["created_at"] = s.CreatedAt
+	flattened := map[string]interface{}{
+		"id":         s.ID,
+		"name":       s.Name,
+		"created_at": s.CreatedAt,
+		"policy":     flattenPolicy(s.Policy),
+		"vms":        flattenVms(s.Vms),
+	}
 
 	return flattened, nil
 }
 
+func flattenPolicy(p PolicyInfo) []interface{} {
+	if p.ID == "" {
+		return []interface{}{}
+	}
+
+	return []interface{}{
+		map[string]interface{}{
+			"id":        p.ID,
+			"name":      p.Name,
+			"is_active": p.IsActive,
+		},
+	}
+}
+
+func flattenVms(vms []VmInfo) []interface{} {
+	result := make([]interface{}, 0, len(vms))
+
+	for _, vm := range vms {
+		result = append(result, map[string]interface{}{
+			"id":   vm.ID,
+			"name": vm.Name,
+		})
+	}
+	return result
+}
 func getInstanceGroups(m interface{}, extra map[string]interface{}) ([]interface{}, error) {
 	apiClient := m.(*common.Client)
 	service := NewInstanceGroupService(apiClient)
@@ -128,8 +154,11 @@ func getInstanceGroups(m interface{}, extra map[string]interface{}) ([]interface
 	}
 
 	result, err := service.FindInstanceGroup(findModel)
-	if err != nil || len(*result) == 0 {
+	if err != nil {
 		return nil, fmt.Errorf("[ERR] Failed to retrieve instance group: %s", err)
+	}
+	if len(*result) == 0 {
+		return nil, fmt.Errorf("[ERR] No instance group found")
 	}
 
 	var templates []interface{}

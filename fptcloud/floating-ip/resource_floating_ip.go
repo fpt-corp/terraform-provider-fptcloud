@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
 	common "terraform-provider-fptcloud/commons"
+	"terraform-provider-fptcloud/commons/utils"
 	"time"
 )
 
@@ -58,7 +59,7 @@ func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m int
 	}
 	var tagIds []string
 	if tags, ok := d.GetOk("tag_ids"); ok {
-		tagIds = expandTagIDs(tags.(*schema.Set))
+		tagIds = utils.ExpandTagIDs(tags.(*schema.Set))
 	}
 	result, err := service.CreateFloatingIp(vpcId.(string), tagIds)
 	if err != nil || result == nil {
@@ -153,7 +154,7 @@ func resourceFloatingIpUpdate(ctx context.Context, d *schema.ResourceData, m int
 	}
 
 	vpcId := d.Get("vpc_id").(string)
-	tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
+	tagIds := utils.ExpandTagIDs(d.Get("tag_ids").(*schema.Set))
 	_, err := service.UpdateTags(vpcId, d.Id(), tagIds)
 	if err != nil {
 		return diag.Errorf("[ERR] An error occurred while updating floating ip tags %s", err)
@@ -179,12 +180,4 @@ func resourceFloatingIpDelete(_ context.Context, d *schema.ResourceData, m inter
 		return diag.Errorf("[ERR] An error occurred while trying to delete the floating ip %s", err)
 	}
 	return nil
-}
-
-func expandTagIDs(tagSet *schema.Set) []string {
-	tagIds := make([]string, 0, tagSet.Len())
-	for _, tag := range tagSet.List() {
-		tagIds = append(tagIds, tag.(string))
-	}
-	return tagIds
 }

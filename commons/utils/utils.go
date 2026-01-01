@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func ValidateName(v interface{}, _ string) (ws []string, es []error) {
@@ -92,4 +94,13 @@ func ParseBoolSafe(s string) bool {
 		return false
 	}
 	return b
+}
+
+// ExpandTagIDs converts a schema.Set of tag IDs to a slice of strings
+func ExpandTagIDs(tagSet *schema.Set) []string {
+	tagIds := make([]string, 0, tagSet.Len())
+	for _, tag := range tagSet.List() {
+		tagIds = append(tagIds, tag.(string))
+	}
+	return tagIds
 }

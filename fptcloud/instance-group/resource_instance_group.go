@@ -2,13 +2,15 @@ package fptcloud_instance_group
 
 import (
 	"context"
+	"log"
+	common "terraform-provider-fptcloud/commons"
+	"terraform-provider-fptcloud/commons/utils"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"log"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceInstanceGroup function returns a schema. Resource that represents an instance group.
@@ -50,25 +52,26 @@ func ResourceInstanceGroup() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				ForceNew:    true,
 			},
-			"policy": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"policy_name": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"vms": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "The name of the policy",
 			},
 			"created_at": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+			"tag_ids": {
+				Type:        schema.TypeSet,
+				Optional:    true,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: "List of tag IDs associated with the instance group",
+			},
 		},
 		CreateContext: resourceInstanceGroupCreate,
 		ReadContext:   resourceInstanceGroupRead,
+		UpdateContext: resourceInstanceGroupUpdate,
 		DeleteContext: resourceInstanceGroupDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -101,6 +104,9 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 			vmIdsList = append(vmIdsList, v.(string))
 		}
 		createModel.VmIds = vmIdsList
+	}
+	if tags, ok := d.GetOk("tag_ids"); ok {
+		createModel.TagIds = utils.ExpandTagIDs(tags.(*schema.Set))
 	}
 
 	isSuccess, err := service.CreateInstanceGroup(createModel)
@@ -186,14 +192,6 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("[ERR] Failed to set 'name': %s", err)
 	}
 
-	if err := d.Set("policy", data.Policy); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'policy': %s", err)
-	}
-
-	if err := d.Set("vms", data.Vms); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'vms': %s", err)
-	}
-
 	if err := d.Set("vpc_id", data.VpcId); err != nil {
 		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
 	}
@@ -202,7 +200,32 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("[ERR] Failed to set 'created_at': %s", err)
 	}
 
+	if err := d.Set("tag_ids", data.TagIds); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'tag_ids': %s", err)
+	}
+
 	return nil
+}
+
+// function to update the instance group
+func resourceInstanceGroupUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	apiClient := m.(*common.Client)
+	service := NewInstanceGroupService(apiClient)
+
+	vpcId := d.Get("vpc_id").(string)
+
+	if !d.HasChange("tag_ids") {
+		// No changes to update, just refresh state
+		return resourceInstanceGroupRead(ctx, d, m)
+	}
+
+	tagIds := utils.ExpandTagIDs(d.Get("tag_ids").(*schema.Set))
+	_, err := service.UpdateTags(vpcId, d.Id(), tagIds)
+	if err != nil {
+		return diag.Errorf("[ERR] Failed to update instance group tags: %s", err)
+	}
+
+	return resourceInstanceGroupRead(ctx, d, m)
 }
 
 // function to delete the instance group

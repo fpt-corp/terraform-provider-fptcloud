@@ -13,6 +13,7 @@ type CreateInstanceGroupDTO struct {
 	Name     string   `json:"name"`
 	PolicyId string   `json:"policy_id"`
 	VmIds    []string `json:"vm_ids"`
+	TagIds   []string `json:"tag_ids,omitempty"`
 }
 
 // FindInstanceGroupDTO find instance group model defined
@@ -23,13 +24,25 @@ type FindInstanceGroupDTO struct {
 }
 
 // InstanceGroup represents a instance group model
+type PolicyInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	IsActive bool   `json:"is_active"`
+}
+
+type VmInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type InstanceGroup struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
-	Policy    interface{}   `json:"policy"`
-	Vms       []interface{} `json:"vms"`
-	VpcId     string        `json:"vpc_id"`
-	CreatedAt string        `json:"created_at"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Policy    PolicyInfo `json:"policy"`
+	Vms       []VmInfo   `json:"vms"`
+	VpcId     string     `json:"vpc_id"`
+	CreatedAt string     `json:"created_at"`
+	TagIds    []string   `json:"tag_ids"`
 }
 
 // InstanceGroupService defines the interface for the instance group service
@@ -37,6 +50,7 @@ type InstanceGroupService interface {
 	FindInstanceGroup(searchModel FindInstanceGroupDTO) (*[]InstanceGroup, error)
 	CreateInstanceGroup(createdModel CreateInstanceGroupDTO) (bool, error)
 	DeleteInstanceGroup(vpcId string, instanceGroupId string) (bool, error)
+	UpdateTags(vpcId string, instanceGroupId string, tagIds []string) (*common.SimpleResponse, error)
 }
 
 // InstanceGroupServiceImpl is the implementation of InstanceGroupServiceImpl
@@ -69,7 +83,6 @@ func (s *InstanceGroupServiceImpl) FindInstanceGroup(searchModel FindInstanceGro
 	if !instanceGroupResponse.Status || len(instanceGroupResponse.Data) == 0 {
 		return nil, errors.New(instanceGroupResponse.Message)
 	}
-
 	return &instanceGroupResponse.Data, nil
 }
 
@@ -109,4 +122,25 @@ func (s *InstanceGroupServiceImpl) DeleteInstanceGroup(vpcId string, instanceGro
 	}
 
 	return result.Status, nil
+}
+
+// UpdateTags updates the tags associated with an instance group
+func (s *InstanceGroupServiceImpl) UpdateTags(vpcId string, instanceGroupId string, tagIds []string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.UpdateInstanceGroupTags(vpcId, instanceGroupId)
+
+	payload := map[string][]string{
+		"tag_ids": tagIds,
+	}
+
+	_, err := s.client.SendPutRequest(apiPath, payload)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data:   "Successfully",
+		Status: "200",
+	}
+
+	return result, nil
 }
