@@ -163,4 +163,3 @@ type edgeGatewaysModel struct {
 	Name         types.String `tfsdk:"name"`
 	EdgeGateways types.List   `tfsdk:"edge_gateways"`
 }
-
