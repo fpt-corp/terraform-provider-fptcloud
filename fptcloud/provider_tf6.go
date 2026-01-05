@@ -165,6 +165,7 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		fptcloud_dfke.NewDataSourceDedicatedKubernetesEngine,
 		fptcloud_mfke.NewDataSourceManagedKubernetesEngine,
 		fptcloud_edge_gateway.NewDataSourceEdgeGateway,
+		fptcloud_edge_gateway.NewDataSourceEdgeGateways,
 	}
 }
 
