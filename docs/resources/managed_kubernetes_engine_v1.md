@@ -60,15 +60,15 @@ resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
     # GPU Configuration
     vgpu_id               = data.fptcloud_vgpu.vgpu.vgpus[0].id
     max_client            = 2
-    gpu_sharing_client    = "timeSlicing"
+    gpu_sharing_client    = ""
     driver_installation_type = "pre-install"
-    gpu_driver_version    = "default"
+    gpu_driver_version    = "latest"
     
     # Required KV labels for GPU pools
     kv = [
       {
         name  = "nvidia.com/mig.config"
-        value = "all-1g.6gb"  # One of: "all-1g.6gb", "all-2g.12gb", "all-4g.24gb", ...
+        value = "None with Operator"
       },
       {
         name  = "worker.fptcloud/type"
