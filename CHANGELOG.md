@@ -1,3 +1,9 @@
+## [0.3.44] - 2026-01-12
+
+### Resource
+
+- Update: Update docs for Managed Kubernetes with GPU
+
 ## [0.3.43] - 2025-12-31
 
 ### Resource
