@@ -95,17 +95,23 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 				}
 			}
 
-			// Validate max_client only when gpu_sharing_client = "timeSlicing"
+			// Validate max_client based on gpu_sharing_client value
 			if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
-				// Only validate max_client if gpu_sharing_client is "timeSlicing"
 				gpuSharingClientValue := ""
 				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
 					gpuSharingClientValue = pool.GpuSharingClient.ValueString()
 				}
 
-				// If gpu_sharing_client = "" (empty), skip validation
+				maxClient := pool.MaxClient.ValueInt64()
+
+				// If gpu_sharing_client = "" (empty), max_client must be 0
+				if gpuSharingClientValue == "" && maxClient != 0 {
+					d := diag2.NewErrorDiagnostic("Invalid max_client", fmt.Sprintf("max_client must be 0 for pool '%s' when gpu_sharing_client is empty, got: %d", name, maxClient))
+					return &d
+				}
+
+				// If gpu_sharing_client = "timeSlicing", max_client must be between 2 and 48
 				if gpuSharingClientValue == "timeSlicing" {
-					maxClient := pool.MaxClient.ValueInt64()
 					if maxClient < 2 || maxClient > 48 {
 						d := diag2.NewErrorDiagnostic("Invalid max_client", fmt.Sprintf("max_client must be between 2 and 48 for pool '%s' when gpu_sharing_client = 'timeSlicing', got: %d", name, maxClient))
 						return &d
@@ -601,27 +607,91 @@ func validateImmutableInt64Field(fieldName string, plan, state types.Int64) diag
 	return nil
 }
 
+// Helper function to check if a string field is immutable
+func checkImmutablePoolString(fieldName string, planVal, stateVal types.String, poolName string) diag2.Diagnostic {
+	if !planVal.IsNull() && !planVal.IsUnknown() && planVal.ValueString() != "" &&
+		!stateVal.IsNull() && !stateVal.IsUnknown() && stateVal.ValueString() != "" &&
+		planVal.ValueString() != stateVal.ValueString() {
+		return diag2.NewErrorDiagnostic(
+			fmt.Sprintf("%s cannot be changed in worker pool", fieldName),
+			fmt.Sprintf("The '%s' field in worker pool '%s' is immutable and cannot be updated.", fieldName, poolName),
+		)
+	}
+	return nil
+}
+
+// Helper function to check if an int64 field is immutable
+func checkImmutablePoolInt64(fieldName string, planVal, stateVal types.Int64, poolName string) diag2.Diagnostic {
+	if !planVal.IsNull() && !planVal.IsUnknown() &&
+		!stateVal.IsNull() && !stateVal.IsUnknown() &&
+		planVal.ValueInt64() != stateVal.ValueInt64() {
+		return diag2.NewErrorDiagnostic(
+			fmt.Sprintf("%s cannot be changed in worker pool", fieldName),
+			fmt.Sprintf("The '%s' field in worker pool '%s' is immutable and cannot be updated.", fieldName, poolName),
+		)
+	}
+	return nil
+}
+
 func validateImmutablePoolStringField(planPools, statePools []*managedKubernetesEnginePool) diag2.Diagnostic {
-	// if len(planPools) != len(statePools) {
-	// 	return diag2.NewErrorDiagnostic(
-	// 		"Pool count mismatch",
-	// 		"The number of pools in plan and state do not match.",
-	// 	)
-	// }
-	for i := range planPools {
-		if i >= len(statePools) {
-			// New pool, nothing to check
+	// Build a map of state pools by name for accurate comparison
+	// Note: We match by name, not by index, because ListNestedBlock in Terraform
+	// matches by index which can cause false positives when adding/removing pools
+	statePoolMap := make(map[string]*managedKubernetesEnginePool)
+	for _, pool := range statePools {
+		if pool != nil && !pool.WorkerPoolID.IsNull() && !pool.WorkerPoolID.IsUnknown() {
+			statePoolMap[pool.WorkerPoolID.ValueString()] = pool
+		}
+	}
+
+	// Check immutable fields by matching pool names
+	// Note: We don't validate pool name changes here because ListNestedBlock
+	// uses index-based matching, which makes it impossible to distinguish between
+	// "rename pool" vs "delete old pool and add new pool"
+	for _, planPool := range planPools {
+		if planPool == nil {
 			continue
 		}
-		planVal := planPools[i].ContainerRuntime
-		stateVal := statePools[i].ContainerRuntime
-		if !planVal.IsNull() && !planVal.IsUnknown() && planVal.ValueString() != "" &&
-			!stateVal.IsNull() && !stateVal.IsUnknown() && stateVal.ValueString() != "" &&
-			planVal.ValueString() != stateVal.ValueString() {
-			return diag2.NewErrorDiagnostic(
-				"container_runtime cannot be changed in worker pool",
-				"The 'container_runtime' field in worker pool is immutable and cannot be updated.",
-			)
+		poolName := planPool.WorkerPoolID.ValueString()
+		statePool, exists := statePoolMap[poolName]
+		if !exists {
+			// New pool or pool with changed name, nothing to check
+			continue
+		}
+
+		// Check immutable string fields
+		immutableStringFields := []struct {
+			name     string
+			planVal  types.String
+			stateVal types.String
+		}{
+			{"container_runtime", planPool.ContainerRuntime, statePool.ContainerRuntime},
+			{"worker_type", planPool.WorkerType, statePool.WorkerType},
+			{"storage_profile", planPool.StorageProfile, statePool.StorageProfile},
+			{"vgpu_id", planPool.VGpuID, statePool.VGpuID},
+			{"driver_installation_type", planPool.DriverInstallationType, statePool.DriverInstallationType},
+			{"gpu_driver_version", planPool.GpuDriverVersion, statePool.GpuDriverVersion},
+		}
+
+		for _, field := range immutableStringFields {
+			if diag := checkImmutablePoolString(field.name, field.planVal, field.stateVal, poolName); diag != nil {
+				return diag
+			}
+		}
+
+		// Check immutable int64 fields
+		immutableInt64Fields := []struct {
+			name     string
+			planVal  types.Int64
+			stateVal types.Int64
+		}{
+			{"worker_disk_size", planPool.WorkerDiskSize, statePool.WorkerDiskSize},
+		}
+
+		for _, field := range immutableInt64Fields {
+			if diag := checkImmutablePoolInt64(field.name, field.planVal, field.stateVal, poolName); diag != nil {
+				return diag
+			}
 		}
 	}
 	return nil
@@ -756,21 +826,26 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 				}
 			}
 
-			// Validate max_client only when gpu_sharing_client = "timeSlicing"
+			// Validate max_client based on gpu_sharing_client value
 			if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
-				// Only validate max_client if gpu_sharing_client is "timeSlicing"
 				gpuSharingClientValue := ""
 				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
 					gpuSharingClientValue = pool.GpuSharingClient.ValueString()
 				}
 
-				// Debug logging
-				fmt.Printf("DEBUG: Pool '%s' - gpu_sharing_client: '%s', max_client: %d\n",
-					pool.WorkerPoolID.ValueString(), gpuSharingClientValue, pool.MaxClient.ValueInt64())
+				maxClient := pool.MaxClient.ValueInt64()
 
-				// If gpu_sharing_client = "" (empty), skip validation
+				// If gpu_sharing_client = "" (empty), max_client must be 0
+				if gpuSharingClientValue == "" && maxClient != 0 {
+					response.Diagnostics.AddError(
+						"Invalid max_client",
+						fmt.Sprintf("max_client must be 0 for pool '%s' when gpu_sharing_client is empty, got: %d", pool.WorkerPoolID.ValueString(), maxClient),
+					)
+					return false
+				}
+
+				// If gpu_sharing_client = "timeSlicing", max_client must be between 2 and 48
 				if gpuSharingClientValue == "timeSlicing" {
-					maxClient := pool.MaxClient.ValueInt64()
 					if maxClient < 2 || maxClient > 48 {
 						response.Diagnostics.AddError(
 							"Invalid max_client",

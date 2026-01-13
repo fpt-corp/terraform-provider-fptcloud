@@ -1,3 +1,10 @@
+## [0.3.45] - 2026-01-13
+
+### Resource
+
+- Update: Update default value for Managed Kubernetes with GPU
+- Update: Update immutable field in worker pool
+
 ## [0.3.44] - 2026-01-12
 
 ### Resource

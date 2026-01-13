@@ -854,6 +854,11 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 		f := fromPool[pool.WorkerPoolID.ValueString()]
 		t := toPool[pool.WorkerPoolID.ValueString()]
 
+		// If pool doesn't exist in toPool (deleted or renamed), it's a change
+		if t == nil {
+			return true
+		}
+
 		// Debug logging for MaxClient comparison
 		if f.MaxClient.ValueInt64() != t.MaxClient.ValueInt64() {
 			fmt.Printf("DEBUG: MaxClient changed from %d to %d for pool %s\n",

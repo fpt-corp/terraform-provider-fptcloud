@@ -59,7 +59,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "gpu_cluster" {
     
     # GPU Configuration
     vgpu_id               = data.fptcloud_vgpu.vgpu.vgpus[0].id
-    max_client            = 2
+    max_client            = 0
     gpu_sharing_client    = ""
     driver_installation_type = "pre-install"
     gpu_driver_version    = "latest"
