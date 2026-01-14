@@ -61,7 +61,6 @@ resource "fptcloud_load_balancer_v2_listener" "example" {
 - `certificate_id` (String) The certificate of the listener
 - `client_data_timeout` (Number) The client data timeout of the listener
 - `connection_limit` (Number) The connection limit of the listener
-- `insert_headers` (Block List) The headers to insert into the listener, set headers to false if listener protocol is not TERMINATED_HTTPS (see [below for nested schema](#nestedblock--insert_headers))
 - `member_connect_timeout` (Number) The member connect timeout of the listener
 - `member_data_timeout` (Number) The member data timeout of the listener
 - `tcp_inspect_timeout` (Number) The TCP inspect timeout of the listener
@@ -77,6 +76,7 @@ resource "fptcloud_load_balancer_v2_listener" "example" {
 - `hsts_include_subdomains` (Boolean) Defines whether the include sub domains directive should be added to the Strict-Transport-Security HTTP response header
 - `hsts_max_age` (Number) The HSTS max age of the listener
 - `hsts_preload` (Boolean) Defines whether the preload directive should be added to the Strict-Transport-Security HTTP response header.
+- `insert_headers` (Block List) The headers to insert into the listener (see [below for nested schema](#nestedblock--insert_headers))
 - `sni_certificate_ids` (List of String) The SNI certificate IDs of the listener
 
 ### Read-Only
