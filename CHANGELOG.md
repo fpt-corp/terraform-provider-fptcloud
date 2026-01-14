@@ -1,3 +1,9 @@
+## [0.3.45] - 2026-01-14
+
+### Resource
+
+- Fix: Fix creating/updating TCP listener without insert headers options
+
 ## [0.3.44] - 2026-01-12
 
 ### Resource

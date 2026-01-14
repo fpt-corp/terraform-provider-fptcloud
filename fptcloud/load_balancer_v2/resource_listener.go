@@ -126,11 +126,19 @@ func createListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 
 	var payload ListenerCreateModel
 
-	headers := d.Get("insert_headers").([]interface{})[0].(map[string]interface{})
 	insertHeaders := map[string]bool{
-		"X-Forwarded-For":   headers["x_forwarded_for"].(bool),
-		"X-Forwarded-Port":  headers["x_forwarded_port"].(bool),
-		"X-Forwarded-Proto": headers["x_forwarded_proto"].(bool),
+		"X-Forwarded-For":   false,
+		"X-Forwarded-Port":  false,
+		"X-Forwarded-Proto": false,
+	}
+	headersList := d.Get("insert_headers").([]interface{})
+	if len(headersList) > 0 {
+		headers := headersList[0].(map[string]interface{})
+		insertHeaders = map[string]bool{
+			"X-Forwarded-For":   headers["x_forwarded_for"].(bool),
+			"X-Forwarded-Port":  headers["x_forwarded_port"].(bool),
+			"X-Forwarded-Proto": headers["x_forwarded_proto"].(bool),
+		}
 	}
 
 	allowedCidrs := []string{}
@@ -208,11 +216,19 @@ func updateListener(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	for _, v := range d.Get("sni_certificate_ids").([]interface{}) {
 		sniCertificateIds = append(sniCertificateIds, v.(string))
 	}
-	headers := d.Get("insert_headers").([]interface{})[0].(map[string]interface{})
 	insertHeaders := map[string]bool{
-		"X-Forwarded-For":   headers["x_forwarded_for"].(bool),
-		"X-Forwarded-Port":  headers["x_forwarded_port"].(bool),
-		"X-Forwarded-Proto": headers["x_forwarded_proto"].(bool),
+		"X-Forwarded-For":   false,
+		"X-Forwarded-Port":  false,
+		"X-Forwarded-Proto": false,
+	}
+	headersList := d.Get("insert_headers").([]interface{})
+	if len(headersList) > 0 {
+		headers := headersList[0].(map[string]interface{})
+		insertHeaders = map[string]bool{
+			"X-Forwarded-For":   headers["x_forwarded_for"].(bool),
+			"X-Forwarded-Port":  headers["x_forwarded_port"].(bool),
+			"X-Forwarded-Proto": headers["x_forwarded_proto"].(bool),
+		}
 	}
 	payload.Name = d.Get("name").(string)
 	payload.Description = d.Get("description").(string)
