@@ -16,6 +16,7 @@ import (
 	fptcloud_mfke_storage_policy "terraform-provider-fptcloud/fptcloud/mfke-storage-policy"
 
 	fptcloud_object_storage "terraform-provider-fptcloud/fptcloud/object-storage"
+	fptcloud_project "terraform-provider-fptcloud/fptcloud/project"
 	fptcloud_security_group "terraform-provider-fptcloud/fptcloud/security-group"
 	fptcloud_security_group_rule "terraform-provider-fptcloud/fptcloud/security-group-rule"
 	fptcloud_ssh "terraform-provider-fptcloud/fptcloud/ssh"
@@ -23,6 +24,7 @@ import (
 	fptcloud_storage_policy "terraform-provider-fptcloud/fptcloud/storage-policy"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	fptcloud_tagging "terraform-provider-fptcloud/fptcloud/tagging"
+	fptcloud_user "terraform-provider-fptcloud/fptcloud/user"
 	fptcloud_vgpu "terraform-provider-fptcloud/fptcloud/vgpu"
 	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
@@ -114,6 +116,8 @@ func Provider() *schema.Provider {
 			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.DataSourceL7Rule(),
 			"fptcloud_load_balancer_v2_sizes":               fptcloud_load_balancer_v2.DataSourceSizes(),
 			"fptcloud_tagging":                              fptcloud_tagging.DataSourceTagging(),
+			"fptcloud_project":                              fptcloud_project.NewDataSource(),
+			"fptcloud_user":                                 fptcloud_user.NewDataSource(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
@@ -125,6 +129,7 @@ func Provider() *schema.Provider {
 			"fptcloud_floating_ip":                          fptcloud_floating_ip.ResourceFloatingIp(),
 			"fptcloud_floating_ip_association":              fptcloud_floating_ip_association.ResourceFloatingIpAssociation(),
 			"fptcloud_subnet":                               fptcloud_subnet.ResourceSubnet(),
+			"fptcloud_vpc":                                  fptcloud_vpc.NewResource(),
 			"fptcloud_object_storage_bucket":                fptcloud_object_storage.ResourceBucket(),
 			"fptcloud_object_storage_sub_user":              fptcloud_object_storage.ResourceSubUser(),
 			"fptcloud_object_storage_access_key":            fptcloud_object_storage.ResourceAccessKey(),

@@ -25,7 +25,10 @@ var ApiPath = struct {
 	ResizeInstance             func(vpcId string, instanceId string) string
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
+	UsersByOrg                 func(orgId string) string
+	Projects                   func(tenantId string) string
 	Vpc                        func(tenantId string) string
+	CreateVpc                  func(orgId string) string
 	VMGroupPolicies            func(vpcId string) string
 	CreateInstanceGroup        func(vpcId string) string
 	FindInstanceGroup          func(vpcId string) string
@@ -237,8 +240,17 @@ var ApiPath = struct {
 	Tenant: func(tenantName string) string {
 		return fmt.Sprintf("/v2/tenant/%s", tenantName)
 	},
+	UsersByOrg: func(orgId string) string {
+		return fmt.Sprintf("/v2/org/%s/users?page=1&page_size=1000", orgId)
+	},
+	Projects: func(tenantId string) string {
+		return fmt.Sprintf("/v1/vmware/org/%s/projects", tenantId)
+	},
 	Vpc: func(tenantId string) string {
 		return fmt.Sprintf("/v2/org/%s/vpc", tenantId)
+	},
+	CreateVpc: func(orgId string) string {
+		return fmt.Sprintf("/v2/org/%s/vpc", orgId)
 	},
 	VMGroupPolicies: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/vm-group-policies", vpcId)
