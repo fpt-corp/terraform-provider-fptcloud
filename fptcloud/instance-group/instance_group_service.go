@@ -16,6 +16,12 @@ type CreateInstanceGroupDTO struct {
 	TagIds   []string `json:"tag_ids,omitempty"`
 }
 
+// UpdateInstanceGroupDTO payload for updating instance group (name, vm_ids)
+type UpdateInstanceGroupDTO struct {
+	Name  string   `json:"name,omitempty"`
+	VmIds []string `json:"vm_ids,omitempty"`
+}
+
 // FindInstanceGroupDTO find instance group model defined
 type FindInstanceGroupDTO struct {
 	ID    string `json:"id"`
@@ -51,6 +57,7 @@ type InstanceGroupService interface {
 	CreateInstanceGroup(createdModel CreateInstanceGroupDTO) (bool, error)
 	DeleteInstanceGroup(vpcId string, instanceGroupId string) (bool, error)
 	UpdateTags(vpcId string, instanceGroupId string, tagIds []string) (*common.SimpleResponse, error)
+	UpdateInstanceGroup(vpcId string, instanceGroupId string, payload UpdateInstanceGroupDTO) error
 }
 
 // InstanceGroupServiceImpl is the implementation of InstanceGroupServiceImpl
@@ -143,4 +150,15 @@ func (s *InstanceGroupServiceImpl) UpdateTags(vpcId string, instanceGroupId stri
 	}
 
 	return result, nil
+}
+
+// UpdateInstanceGroup updates name, vm_ids, or tag_ids (BE will validate platform permissions)
+func (s *InstanceGroupServiceImpl) UpdateInstanceGroup(vpcId string, instanceGroupId string, payload UpdateInstanceGroupDTO) error {
+	apiPath := common.ApiPath.UpdateInstanceGroup(vpcId, instanceGroupId)
+
+	_, err := s.client.SendPutRequest(apiPath, payload)
+	if err != nil {
+		return common.DecodeError(err)
+	}
+	return nil
 }

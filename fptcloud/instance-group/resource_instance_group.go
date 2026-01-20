@@ -36,7 +36,7 @@ func ResourceInstanceGroup() *schema.Resource {
 				Required:     true,
 				ValidateFunc: validation.NoZeroValues,
 				Description:  "The name of the instance group",
-				ForceNew:     true,
+				ForceNew:     false,
 			},
 			"policy_id": {
 				Type:         schema.TypeString,
@@ -50,7 +50,7 @@ func ResourceInstanceGroup() *schema.Resource {
 				Optional:    true,
 				Description: "The list of instances in the instance group",
 				Elem:        &schema.Schema{Type: schema.TypeString},
-				ForceNew:    true,
+				ForceNew:    false,
 			},
 			"policy_name": {
 				Type:        schema.TypeString,
@@ -214,15 +214,36 @@ func resourceInstanceGroupUpdate(ctx context.Context, d *schema.ResourceData, m 
 
 	vpcId := d.Get("vpc_id").(string)
 
-	if !d.HasChange("tag_ids") {
-		// No changes to update, just refresh state
-		return resourceInstanceGroupRead(ctx, d, m)
+	hasNameChange := d.HasChange("name")
+	hasVmChange := d.HasChange("vm_ids")
+	hasTagChange := d.HasChange("tag_ids")
+
+	// Update name/vm_ids via main update endpoint (BE handles platform validation)
+	if hasNameChange || hasVmChange {
+
+		payload := UpdateInstanceGroupDTO{
+			Name:  d.Get("name").(string),
+		}
+		if hasVmChange {
+			vmIdsSet := d.Get("vm_ids").(*schema.Set)
+			vmIdsList := make([]string, 0, len(vmIdsSet.List()))
+			for _, v := range vmIdsSet.List() {
+				vmIdsList = append(vmIdsList, v.(string))
+			}
+			payload.VmIds = vmIdsList
+		}
+
+		if err := service.UpdateInstanceGroup(vpcId, d.Id(), payload); err != nil {
+			return diag.Errorf("[ERR] Failed to update instance group: %s", err)
+		}
 	}
 
-	tagIds := utils.ExpandTagIDs(d.Get("tag_ids").(*schema.Set))
-	_, err := service.UpdateTags(vpcId, d.Id(), tagIds)
-	if err != nil {
-		return diag.Errorf("[ERR] Failed to update instance group tags: %s", err)
+	// Update tags via dedicated endpoint
+	if hasTagChange {
+		tagIds := utils.ExpandTagIDs(d.Get("tag_ids").(*schema.Set))
+		if _, err := service.UpdateTags(vpcId, d.Id(), tagIds); err != nil {
+			return diag.Errorf("[ERR] Failed to update instance group tags: %s", err)
+		}
 	}
 
 	return resourceInstanceGroupRead(ctx, d, m)

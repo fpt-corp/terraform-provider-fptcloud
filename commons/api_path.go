@@ -31,6 +31,7 @@ var ApiPath = struct {
 	FindInstanceGroup          func(vpcId string) string
 	DeleteInstanceGroup        func(vpcId string, instanceGroupId string) string
 	UpdateInstanceGroupTags    func(vpcId string, instanceGroupId string) string
+	UpdateInstanceGroup        func(vpcId string, instanceGroupId string) string
 	CreateFloatingIp           func(vpcId string) string
 	FindFloatingIp             func(vpcId string, floatingIpId string) string
 	FindFloatingIpByAddress    func(vpcId string) string
@@ -255,6 +256,9 @@ var ApiPath = struct {
 	},
 	UpdateInstanceGroupTags: func(vpcId string, instanceGroupId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/vm-group/%s/tags", vpcId, instanceGroupId)
+	},
+	UpdateInstanceGroup: func(vpcId string, instanceGroupId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/vm-group/%s", vpcId, instanceGroupId)
 	},
 	CreateFloatingIp: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/floating-ip", vpcId)
