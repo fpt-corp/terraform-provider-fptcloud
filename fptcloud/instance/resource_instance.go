@@ -2,12 +2,16 @@ package fptcloud_instance
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	common "terraform-provider-fptcloud/commons"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"log"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceInstance function returns a schema.Resource that represents an instance.
@@ -21,12 +25,29 @@ func ResourceInstance() *schema.Resource {
 		ReadContext:   resourceInstanceRead,
 		DeleteContext: resourceInstanceDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceInstanceImportState,
 		},
 	}
 }
 
-// function to create a new instance
+// resourceInstanceImportState parses import id as vpc_id/instance_id.
+func resourceInstanceImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/instance_id, got %q", d.Id())
+	}
+	vpcId := parts[0]
+	instanceId := parts[1]
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, fmt.Errorf("[ERR] Failed to set 'vpc_id': %w", err)
+	}
+	d.SetId(instanceId)
+
+	return []*schema.ResourceData{d}, nil
+}
+
+// resourceInstanceCreate creates a new instance.
 func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	instanceService := NewInstanceService(apiClient)
@@ -120,7 +141,7 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 		return diag.Errorf("[ERR] Failed to create instance")
 	}
 
-	// Waiting for status active
+	// Wait until instance is active.
 	createStateConf := &retry.StateChangeConf{
 		Pending: []string{"CREATING"},
 		Target:  []string{"POWERED_ON", "POWERED_OFF"},
@@ -148,7 +169,7 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 	return resourceInstanceRead(ctx, d, m)
 }
 
-// function to read an instance
+// resourceInstanceRead reads instance from API and updates state.
 func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	instanceService := NewInstanceService(apiClient)
@@ -193,6 +214,12 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("subnet_id", foundInstance.SubnetId); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("storage_size_gb", foundInstance.StorageSizeGb); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("storage_policy_id", foundInstance.StoragePolicyId); err != nil {
+		return diag.FromErr(err)
+	}
 	if err := d.Set("security_group_ids", foundInstance.SecurityGroupIds); err != nil {
 		return diag.FromErr(err)
 	}
@@ -209,7 +236,7 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	return nil
 }
 
-// function to delete an instance
+// resourceInstanceDelete deletes the instance.
 func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	instanceService := NewInstanceService(apiClient)
@@ -237,7 +264,7 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 			}
 			resp, err := instanceService.Find(findInstanceModel)
 			if err != nil {
-				// If the security group is not found, consider it deleted
+				// If the instance is not found, consider it deleted
 				return 1, "SUCCESS", nil
 			}
 
@@ -256,7 +283,7 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 	return nil
 }
 
-// function to update an instance
+// resourceInstanceUpdate updates instance attributes.
 func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	instanceService := NewInstanceService(apiClient)

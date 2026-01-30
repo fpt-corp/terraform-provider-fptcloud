@@ -31,6 +31,12 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 		Computed:    true,
 		Description: "The guest os of the instance",
 	},
+	"image_name": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Optional:    true,
+		Description: "The image name of the instance (get from API or data source)",
+	},
 	"host_name": {
 		Type:        schema.TypeString,
 		Computed:    true,
@@ -83,6 +89,12 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 		Computed:    true,
 		Optional:    true,
 		Description: "The root storage policy of the instance",
+	},
+	"storage_policy_id": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Optional:    true,
+		Description: "The root storage policy id of the instance",
 	},
 	"security_group_ids": {
 		Type:        schema.TypeList,
@@ -157,25 +169,21 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		Type:        schema.TypeString,
 		Required:    true,
 		Description: "The image name of the instance (get from API or data source)",
-		ForceNew:    true,
 	},
 	"subnet_id": {
 		Type:        schema.TypeString,
 		Required:    true,
 		Description: "The subnet id of the instance",
-		ForceNew:    true,
 	},
 	"storage_size_gb": {
 		Type:        schema.TypeInt,
 		Required:    true,
 		Description: "The root storage size of the instance",
-		ForceNew:    true,
 	},
 	"storage_policy_id": {
 		Type:        schema.TypeString,
 		Required:    true,
 		Description: "The root storage policy of the instance",
-		ForceNew:    true,
 	},
 	"security_group_ids": {
 		Type:        schema.TypeSet,
@@ -193,21 +201,18 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		Type:         schema.TypeString,
 		Optional:     true,
 		Description:  "The ssh key of the instance",
-		ForceNew:     true,
 		ExactlyOneOf: []string{"ssh_key", "password"},
 	},
 	"password": {
 		Type:         schema.TypeString,
 		Optional:     true,
 		Description:  "The password of the instance",
-		ForceNew:     true,
 		ExactlyOneOf: []string{"ssh_key", "password"},
 	},
 	"created_at": {
 		Type:        schema.TypeString,
 		Computed:    true,
 		Description: "The created at of the security group",
-		ForceNew:    true,
 	},
 	"tag_ids": {
 		Type:        schema.TypeSet,

@@ -57,6 +57,9 @@ func dataSourceInstanceRead(_ context.Context, d *schema.ResourceData, m interfa
 	if setError = d.Set("guest_os", foundInstance.GuestOs); setError != nil {
 		return diag.FromErr(setError)
 	}
+	if setError = d.Set("image_name", foundInstance.GuestOs); setError != nil {
+		return diag.FromErr(setError)
+	}
 	if setError = d.Set("host_name", foundInstance.HostName); setError != nil {
 		return diag.FromErr(setError)
 	}
@@ -85,6 +88,9 @@ func dataSourceInstanceRead(_ context.Context, d *schema.ResourceData, m interfa
 		return diag.FromErr(setError)
 	}
 	if setError = d.Set("storage_policy", foundInstance.StoragePolicy); setError != nil {
+		return diag.FromErr(setError)
+	}
+	if setError = d.Set("storage_policy_id", foundInstance.StoragePolicyId); setError != nil {
 		return diag.FromErr(setError)
 	}
 	if setError = d.Set("security_group_ids", foundInstance.SecurityGroupIds); setError != nil {
