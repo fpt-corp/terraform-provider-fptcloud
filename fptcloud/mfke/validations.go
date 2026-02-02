@@ -44,10 +44,28 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 			return &d
 		}
 
-		// Validate: if worker_base = true, taints must be empty
+		// Validate: if worker_base = true and has taints: only allowed when >= 2 pools, and only taint allowed is CriticalAddonsOnly=true:NoSchedule
 		if pool.WorkerBase.ValueBool() && !pool.Taints.IsNull() && !pool.Taints.IsUnknown() && len(pool.Taints.Elements()) > 0 {
-			d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker pool '"+name+"' has worker_base = true, but taints are not allowed for base worker pools")
-			return &d
+			if len(pools) < 2 {
+				d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker base pool '"+name+"' may only have taints when there are 2 or more worker pools")
+				return &d
+			}
+			if len(pool.Taints.Elements()) != 1 {
+				d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker pool '"+name+"' has worker_base = true; base worker pools may only have exactly one taint: CriticalAddonsOnly=true:NoSchedule")
+				return &d
+			}
+			taintElement := pool.Taints.Elements()[0]
+			if taintObj, ok := taintElement.(types.Object); ok {
+				taintAttrs := taintObj.Attributes()
+				key := taintAttrs["key"].(types.String)
+				value := taintAttrs["value"].(types.String)
+				effect := taintAttrs["effect"].(types.String)
+				k, v, e := key.ValueString(), value.ValueString(), effect.ValueString()
+				if k != "CriticalAddonsOnly" || (v != "true" && v != "True") || e != "NoSchedule" {
+					d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker pool '"+name+"' has worker_base = true; the only allowed taint is key=CriticalAddonsOnly, value=true, effect=NoSchedule")
+					return &d
+				}
+			}
 		}
 
 		// Validate taint effect values
@@ -700,12 +718,37 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 			return false
 		}
 
+		// Validate: if worker_base = true and has taints: only allowed when >= 2 pools, and only taint allowed is CriticalAddonsOnly=true:NoSchedule
 		if pool.WorkerBase.ValueBool() && !pool.Taints.IsNull() && !pool.Taints.IsUnknown() && len(pool.Taints.Elements()) > 0 {
-			response.Diagnostics.AddError(
-				"Invalid taints configuration",
-				fmt.Sprintf("Worker pool '%s' has worker_base = true, but taints are not allowed for base worker pools", pool.WorkerPoolID.ValueString()),
-			)
-			return false
+			if len(plan.Pools) < 2 {
+				response.Diagnostics.AddError(
+					"Invalid taints configuration",
+					fmt.Sprintf("Worker base pool '%s' may only have taints when there are 2 or more worker pools", pool.WorkerPoolID.ValueString()),
+				)
+				return false
+			}
+			if len(pool.Taints.Elements()) != 1 {
+				response.Diagnostics.AddError(
+					"Invalid taints configuration",
+					fmt.Sprintf("Worker pool '%s' has worker_base = true; base worker pools may only have exactly one taint: CriticalAddonsOnly=true:NoSchedule", pool.WorkerPoolID.ValueString()),
+				)
+				return false
+			}
+			taintElement := pool.Taints.Elements()[0]
+			if taintObj, ok := taintElement.(types.Object); ok {
+				taintAttrs := taintObj.Attributes()
+				key := taintAttrs["key"].(types.String)
+				value := taintAttrs["value"].(types.String)
+				effect := taintAttrs["effect"].(types.String)
+				k, v, e := key.ValueString(), value.ValueString(), effect.ValueString()
+				if k != "CriticalAddonsOnly" || (v != "true" && v != "True") || e != "NoSchedule" {
+					response.Diagnostics.AddError(
+						"Invalid taints configuration",
+						fmt.Sprintf("Worker pool '%s' has worker_base = true; the only allowed taint is key=CriticalAddonsOnly, value=true, effect=NoSchedule", pool.WorkerPoolID.ValueString()),
+					)
+					return false
+				}
+			}
 		}
 		// Validate taint effect values
 		if !pool.Taints.IsNull() && !pool.Taints.IsUnknown() {
