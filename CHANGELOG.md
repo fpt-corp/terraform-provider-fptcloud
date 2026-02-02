@@ -1,3 +1,9 @@
+## [0.3.46] - 2026-02-02
+
+### Resource
+
+- Feat: Update creating/updating taints on worker base MFKE
+
 ## [0.3.45] - 2026-01-14
 
 ### Resource
