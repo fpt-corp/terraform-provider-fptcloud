@@ -3,14 +3,16 @@ package fptcloud_storage
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"log"
-	"strings"
 	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceStorage function returns a schema.Resource that represents a storage.
@@ -74,12 +76,29 @@ func ResourceStorage() *schema.Resource {
 		UpdateContext: resourceStorageUpdate,
 		DeleteContext: resourceStorageDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceStorageImportState,
 		},
 	}
 }
 
-// function to create the new Storage
+// resourceStorageImportState parses import id as vpc_id/storage_id.
+func resourceStorageImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import id: expected format vpc_id/storage_id, got %q", d.Id())
+	}
+	vpcId := parts[0]
+	storageId := parts[1]
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, fmt.Errorf("[ERR] Error setting vpc_id: %w", err)
+	}
+	d.SetId(storageId)
+
+	return []*schema.ResourceData{d}, nil
+}
+
+// resourceStorageCreate creates a new storage.
 func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	storageService := NewStorageService(apiClient)
