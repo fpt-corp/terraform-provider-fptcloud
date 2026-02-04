@@ -42,6 +42,9 @@ resource "fptcloud_database" "example" {
   domain_name = ""
   is_public = "no | yes" # is your database public or not
   vhost_name = "VHostDefault"
+  maintenance_email = "example@gmail.com"
+  day_of_week_maintenance= 6 # day of week, monday = 1, tuesday = 2,..., sunday = 7
+  time_maintenance= "23:00"
 }
 ```
 
@@ -78,6 +81,9 @@ resource "fptcloud_database" "example" {
 - `vm_network` (String) The VM network of the database cluster.
 - `vpc_id` (String) The VPC Id of the database cluster.
 - `worker_count` (Number) The number of worker nodes in the database cluster.
+- `maintenance_email` (String) Email to receive maintenance notifications 
+- `day_of_week_maintenance` (Number) # Maintenance day (1->7), monday = 1, tuesday = 2,..., sunday = 7
+- `time_maintenance` (String) Maintenance time, "00:00" -> "23:59"
 
 ### Read-Only
 
