@@ -113,6 +113,16 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		return
 	}
 
+	if currentState.MaintenanceEmail.IsNull() ||
+		currentState.DayOfWeekMaintenance.IsNull() ||
+		currentState.TimeMaintenance.IsNull() {
+		response.Diagnostics.AddError(
+			"Missing maintenance configuration",
+			"maintenance_email, day_of_week_maintenance, time_maintenance are required when creating database",
+		)
+		return
+	}
+
 	f := databaseJson{}
 	r.remap(&currentState, &f)
 	_, err := json.Marshal(f)
@@ -282,6 +292,11 @@ func (r *resourceDatabase) Update(ctx context.Context, request resource.UpdateRe
 			return
 		}
 	}
+
+	plan.MaintenanceEmail = state.MaintenanceEmail
+	plan.DayOfWeekMaintenance = state.DayOfWeekMaintenance
+	plan.TimeMaintenance = state.TimeMaintenance
+
 	plan.Id = state.Id
 	response.State.Set(ctx, &plan)
 }
@@ -453,15 +468,15 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description:   "The domain name of the database cluster.",
 			},
 			"maintenance_email": schema.StringAttribute{
-				Required:    true,
+				Optional:    true,
 				Description: "Email used for maintenance notification",
 			},
 			"day_of_week_maintenance": schema.Int64Attribute{
-				Required:    true,
+				Optional:    true,
 				Description: "Maintenance day of week (0-6)",
 			},
 			"time_maintenance": schema.StringAttribute{
-				Required:    true,
+				Optional:    true,
 				Description: "Maintenance time (HH:mm)",
 			},
 			"tag_ids": schema.StringAttribute{
