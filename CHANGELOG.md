@@ -1,3 +1,9 @@
+## [0.3.47] - 2026-02-02
+
+### Resource
+
+- Feat: add key required in create database
+
 ## [0.3.46] - 2026-02-02
 
 ### Resource

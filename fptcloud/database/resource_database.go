@@ -46,37 +46,40 @@ type resourceDatabase struct {
 }
 
 type databaseResourceModel struct {
-	Id             types.String `tfsdk:"id" json:"id,omitempty"`
-	VpcId          types.String `tfsdk:"vpc_id" json:"vpc_id"`
-	NetworkId      types.String `tfsdk:"network_id" json:"network_id"`
-	VmNetwork      types.String `tfsdk:"vm_network" json:"vm_network"`
-	TypeConfig     types.String `tfsdk:"type_config" json:"type_config"`
-	TypeDb         types.String `tfsdk:"type_db" json:"type_db"`
-	Version        types.String `tfsdk:"version" json:"version"`
-	VdcName        types.String `tfsdk:"vdc_name" json:"vdc_name"`
-	IsCluster      types.String `tfsdk:"is_cluster" json:"is_cluster"`
-	MasterCount    types.Int64  `tfsdk:"master_count" json:"master_count"`
-	WorkerCount    types.Int64  `tfsdk:"worker_count" json:"worker_count"`
-	NodeCpu        types.Int64  `tfsdk:"node_cpu" json:"node_cpu"`
-	NodeCore       types.Int64  `tfsdk:"node_core" json:"node_core"`
-	NodeRam        types.Int64  `tfsdk:"node_ram" json:"node_ram"`
-	DataDiskSize   types.Int64  `tfsdk:"data_disk_size" json:"data_disk_size"`
-	ClusterName    types.String `tfsdk:"cluster_name" json:"cluster_name"`
-	DatabaseName   types.String `tfsdk:"database_name" json:"database_name"`
-	VhostName      types.String `tfsdk:"vhost_name" json:"vhost_name"`
-	IsPublic       types.String `tfsdk:"is_public" json:"is_public"`
-	AdminPassword  types.String `tfsdk:"admin_password" json:"admin_password"`
-	StorageProfile types.String `tfsdk:"storage_profile" json:"storage_profile"`
-	EdgeId         types.String `tfsdk:"edge_id" json:"edge_id"`
-	Edition        types.String `tfsdk:"edition" json:"edition"`
-	FlavorId       types.String `tfsdk:"flavor_id" json:"flavor_id"`
-	IsOps          types.String `tfsdk:"is_ops" json:"is_ops"`
-	Flavor         types.String `tfsdk:"flavor" json:"flavor"`
-	NumberOfNode   types.Int64  `tfsdk:"number_of_node" json:"number_of_node"`
-	NumberOfShard  types.Int64  `tfsdk:"number_of_shard" json:"number_of_shard"`
-	DomainName     types.String `tfsdk:"domain_name" json:"domain_name"`
-	TagIds         types.String `tfsdk:"tag_ids"`
-	Nodes          types.List   `tfsdk:"nodes"`
+	Id                   types.String `tfsdk:"id" json:"id,omitempty"`
+	VpcId                types.String `tfsdk:"vpc_id" json:"vpc_id"`
+	NetworkId            types.String `tfsdk:"network_id" json:"network_id"`
+	VmNetwork            types.String `tfsdk:"vm_network" json:"vm_network"`
+	TypeConfig           types.String `tfsdk:"type_config" json:"type_config"`
+	TypeDb               types.String `tfsdk:"type_db" json:"type_db"`
+	Version              types.String `tfsdk:"version" json:"version"`
+	VdcName              types.String `tfsdk:"vdc_name" json:"vdc_name"`
+	IsCluster            types.String `tfsdk:"is_cluster" json:"is_cluster"`
+	MasterCount          types.Int64  `tfsdk:"master_count" json:"master_count"`
+	WorkerCount          types.Int64  `tfsdk:"worker_count" json:"worker_count"`
+	NodeCpu              types.Int64  `tfsdk:"node_cpu" json:"node_cpu"`
+	NodeCore             types.Int64  `tfsdk:"node_core" json:"node_core"`
+	NodeRam              types.Int64  `tfsdk:"node_ram" json:"node_ram"`
+	DataDiskSize         types.Int64  `tfsdk:"data_disk_size" json:"data_disk_size"`
+	ClusterName          types.String `tfsdk:"cluster_name" json:"cluster_name"`
+	DatabaseName         types.String `tfsdk:"database_name" json:"database_name"`
+	VhostName            types.String `tfsdk:"vhost_name" json:"vhost_name"`
+	IsPublic             types.String `tfsdk:"is_public" json:"is_public"`
+	AdminPassword        types.String `tfsdk:"admin_password" json:"admin_password"`
+	StorageProfile       types.String `tfsdk:"storage_profile" json:"storage_profile"`
+	EdgeId               types.String `tfsdk:"edge_id" json:"edge_id"`
+	Edition              types.String `tfsdk:"edition" json:"edition"`
+	FlavorId             types.String `tfsdk:"flavor_id" json:"flavor_id"`
+	IsOps                types.String `tfsdk:"is_ops" json:"is_ops"`
+	Flavor               types.String `tfsdk:"flavor" json:"flavor"`
+	NumberOfNode         types.Int64  `tfsdk:"number_of_node" json:"number_of_node"`
+	NumberOfShard        types.Int64  `tfsdk:"number_of_shard" json:"number_of_shard"`
+	DomainName           types.String `tfsdk:"domain_name" json:"domain_name"`
+	MaintenanceEmail     types.String `tfsdk:"maintenance_email"`
+	DayOfWeekMaintenance types.Int64  `tfsdk:"day_of_week_maintenance"`
+	TimeMaintenance      types.String `tfsdk:"time_maintenance"`
+	TagIds               types.String `tfsdk:"tag_ids"`
+	Nodes                types.List   `tfsdk:"nodes"`
 }
 
 var timeout = 1800 * time.Second
@@ -449,6 +452,18 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				PlanModifiers: forceNewPlanModifiersString,
 				Description:   "The domain name of the database cluster.",
 			},
+			"maintenance_email": schema.StringAttribute{
+				Required:    true,
+				Description: "Email used for maintenance notification",
+			},
+			"day_of_week_maintenance": schema.Int64Attribute{
+				Required:    true,
+				Description: "Maintenance day of week (0-6)",
+			},
+			"time_maintenance": schema.StringAttribute{
+				Required:    true,
+				Description: "Maintenance time (HH:mm)",
+			},
 			"tag_ids": schema.StringAttribute{
 				Optional:    true,
 				Description: "List of tag IDs applied to the database",
@@ -727,6 +742,9 @@ func (r *resourceDatabase) remap(from *databaseResourceModel, to *databaseJson) 
 	to.NumberOfNode = int(from.NumberOfNode.ValueInt64())
 	to.NumberOfShard = int(from.NumberOfShard.ValueInt64())
 	to.DomainName = from.DomainName.ValueString()
+	to.MaintenanceEmail = from.MaintenanceEmail.ValueString()
+	to.DayOfWeekMaintenance = int(from.DayOfWeekMaintenance.ValueInt64())
+	to.TimeMaintenance = from.TimeMaintenance.ValueString()
 }
 
 // Check if the response contains an error
@@ -745,35 +763,38 @@ func (r *resourceDatabase) checkForError(a []byte) *diag2.ErrorDiagnostic {
 }
 
 type databaseJson struct {
-	Id             string `json:"id,omitempty"`
-	VpcId          string `json:"vpc_id"`
-	NetworkId      string `json:"network_id"`
-	VmNetwork      string `json:"vm_network"`
-	TypeConfig     string `json:"type_config"`
-	TypeDb         string `json:"type_db"`
-	Version        string `json:"version"`
-	VdcName        string `json:"vdc_name"`
-	IsCluster      string `json:"is_cluster"`
-	MasterCount    int    `json:"master_count"`
-	WorkerCount    int    `json:"worker_count"`
-	NodeCpu        int    `json:"node_cpu"`
-	NodeCore       int    `json:"node_core"`
-	NodeRam        int    `json:"node_ram"`
-	DataDiskSize   int    `json:"data_disk_size"`
-	ClusterName    string `json:"cluster_name"`
-	DatabaseName   string `json:"database_name"`
-	VhostName      string `json:"vhost_name"`
-	IsPublic       string `json:"is_public"`
-	AdminPassword  string `json:"admin_password"`
-	StorageProfile string `json:"storage_profile"`
-	EdgeId         string `json:"edge_id"`
-	Edition        string `json:"edition"`
-	FlavorId       string `json:"flavor_id"`
-	IsOps          string `json:"is_ops"`
-	Flavor         string `json:"flavor"`
-	NumberOfNode   int    `json:"number_of_node"`
-	NumberOfShard  int    `json:"number_of_shard"`
-	DomainName     string `json:"domain_name"`
+	Id                   string `json:"id,omitempty"`
+	VpcId                string `json:"vpc_id"`
+	NetworkId            string `json:"network_id"`
+	VmNetwork            string `json:"vm_network"`
+	TypeConfig           string `json:"type_config"`
+	TypeDb               string `json:"type_db"`
+	Version              string `json:"version"`
+	VdcName              string `json:"vdc_name"`
+	IsCluster            string `json:"is_cluster"`
+	MasterCount          int    `json:"master_count"`
+	WorkerCount          int    `json:"worker_count"`
+	NodeCpu              int    `json:"node_cpu"`
+	NodeCore             int    `json:"node_core"`
+	NodeRam              int    `json:"node_ram"`
+	DataDiskSize         int    `json:"data_disk_size"`
+	ClusterName          string `json:"cluster_name"`
+	DatabaseName         string `json:"database_name"`
+	VhostName            string `json:"vhost_name"`
+	IsPublic             string `json:"is_public"`
+	AdminPassword        string `json:"admin_password"`
+	StorageProfile       string `json:"storage_profile"`
+	EdgeId               string `json:"edge_id"`
+	Edition              string `json:"edition"`
+	FlavorId             string `json:"flavor_id"`
+	IsOps                string `json:"is_ops"`
+	Flavor               string `json:"flavor"`
+	NumberOfNode         int    `json:"number_of_node"`
+	NumberOfShard        int    `json:"number_of_shard"`
+	DomainName           string `json:"domain_name"`
+	MaintenanceEmail     string `json:"maintenance_email"`
+	DayOfWeekMaintenance int    `json:"day_of_week_maintenance"`
+	TimeMaintenance      string `json:"time_maintenance"`
 }
 
 type databaseData struct {
