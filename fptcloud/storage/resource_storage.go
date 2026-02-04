@@ -85,13 +85,13 @@ func ResourceStorage() *schema.Resource {
 func resourceStorageImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
 	parts := strings.SplitN(d.Id(), "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return nil, fmt.Errorf("[ERR] Invalid import id: expected format vpc_id/storage_id, got %q", d.Id())
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/storage_id, got %q", d.Id())
 	}
 	vpcId := parts[0]
 	storageId := parts[1]
 
 	if err := d.Set("vpc_id", vpcId); err != nil {
-		return nil, fmt.Errorf("[ERR] Error setting vpc_id: %w", err)
+		return nil, fmt.Errorf("[ERR] Failed to set 'vpc_id': %w", err)
 	}
 	d.SetId(storageId)
 
