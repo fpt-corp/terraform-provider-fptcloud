@@ -96,25 +96,25 @@ data "fptcloud_vpc" "main" {
 }
 
 # Look up instance by name to get id for import
-data "fptcloud_instance" "vm_import" {
+data "fptcloud_instance" "existing" {
   vpc_id = data.fptcloud_vpc.main.id
-  name   = "my-instance-import"
+  name   = "my-instance-name"
 }
 
 import {
   to = fptcloud_instance.imported_vm
-  id = "${data.fptcloud_vpc.main.id}/${data.fptcloud_instance.vm_import.id}"
+  id = "${data.fptcloud_vpc.main.id}/${data.fptcloud_instance.existing.id}"
 }
 
 resource "fptcloud_instance" "imported_vm" {
   vpc_id             = data.fptcloud_vpc.main.id
-  name               = data.fptcloud_instance.vm_import.name
-  image_name         = data.fptcloud_instance.vm_import.image_name
-  flavor_name        = data.fptcloud_instance.vm_import.flavor_name
-  subnet_id          = data.fptcloud_instance.vm_import.subnet_id
-  storage_size_gb    = data.fptcloud_instance.vm_import.storage_size_gb
-  storage_policy_id  = data.fptcloud_instance.vm_import.storage_policy_id
-  status             = data.fptcloud_instance.vm_import.status
+  name               = data.fptcloud_instance.existing.name
+  image_name         = data.fptcloud_instance.existing.image_name
+  flavor_name        = data.fptcloud_instance.existing.flavor_name
+  subnet_id          = data.fptcloud_instance.existing.subnet_id
+  storage_size_gb    = data.fptcloud_instance.existing.storage_size_gb
+  storage_policy_id  = data.fptcloud_instance.existing.storage_policy_id
+  status             = data.fptcloud_instance.existing.status
   ssh_key            = ""
 }
 ```
