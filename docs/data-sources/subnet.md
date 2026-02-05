@@ -77,12 +77,17 @@ Optional:
 
 Read-Only:
 
-- `created_at` (String)
-- `edge_gateway` (Map of String)
-- `gateway` (String)
-- `id` (String)
-- `network_id` (String)
-- `name` (String)
-- `network_name` (String)
-- `primary_dns_ip` (String) The primary DNS IP address of the subnet
-- `secondary_dns_ip` (String) The secondary DNS IP address of the subnet
+- `cidr` (String) The CIDR block of the subnet (e.g. gateway/prefix_length such as 172.28.22.1/24).
+- `created_at` (String) Creation timestamp of the subnet.
+- `edge_gateway` (Map of String) Edge gateway associated with the subnet.
+- `gateway` (String) Gateway IP of the subnet.
+- `gateway_ip` (String) Gateway IP of the subnet (same as gateway).
+- `id` (String) The ID of the subnet.
+- `name` (String) The name of the subnet.
+- `network_id` (String) The network ID of the subnet.
+- `network_name` (String) The network name of the subnet.
+- `prefix_length` (Number) The CIDR prefix length (e.g. 24 for /24).
+- `primary_dns_ip` (String) The primary DNS server IP address used by the subnet (e.g. 8.8.8.8).
+- `secondary_dns_ip` (String) The secondary DNS server IP address used by the subnet (e.g. 8.8.4.4).
+- `tag_ids` (List of String) List of tag IDs associated with the subnet.
+- `type` (String) The type of the subnet: `ISOLATED` (no Internet) or `NAT_ROUTED` (Internet via NAT gateway).

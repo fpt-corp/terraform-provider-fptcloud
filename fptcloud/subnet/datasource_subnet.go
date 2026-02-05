@@ -2,11 +2,12 @@ package fptcloud_subnet
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
-	"terraform-provider-fptcloud/commons/data-list"
+	data_list "terraform-provider-fptcloud/commons/data-list"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 // DataSourceSubnet function returns a schema.Resource that represents a subnet.
@@ -56,10 +57,20 @@ func subnetSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The network name of the subnet",
 		},
+		"cidr": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The CIDR block of the subnet (e.g. gateway/prefix_length such as 172.28.22.1/24).",
+		},
 		"gateway": {
 			Type:        schema.TypeString,
 			Computed:    true,
 			Description: "The gateway of the subnet",
+		},
+		"gateway_ip": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The gateway ip of the subnet",
 		},
 		"edge_gateway": {
 			Type:        schema.TypeMap,
@@ -78,7 +89,41 @@ func subnetSchema() map[string]*schema.Schema {
 			Elem:        &schema.Schema{Type: schema.TypeString},
 			Description: "List of tag IDs associated with the subnet",
 		},
+		"prefix_length": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "The CIDR length of the subnet",
+		},
+		"type": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The type of the subnet. One of ISOLATED (no Internet) or NAT_ROUTED (Internet via NAT gateway).",
+		},
+		"primary_dns_ip": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The primary DNS server IP address used by the subnet (e.g. 8.8.8.8).",
+		},
+		"secondary_dns_ip": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The secondary DNS server IP address used by the subnet (e.g. 8.8.4.4).",
+		},
 	}
+}
+
+// extractTagIdsFromSubnet returns tag IDs from response. Prefer tags[].id (list API); fallback to tag_ids (get API). Handles tags nil, [], and items without id.
+func extractTagIdsFromSubnet(s Subnet) []string {
+	if len(s.Tags) > 0 {
+		ids := make([]string, 0, len(s.Tags))
+		for _, t := range s.Tags {
+			if t.ID != "" {
+				ids = append(ids, t.ID)
+			}
+		}
+		return ids
+	}
+	return s.TagIds
 }
 
 func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]interface{}, error) {
@@ -89,7 +134,10 @@ func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]
 	flattened["network_id"] = s.NetworkID
 	flattened["name"] = s.Name
 	flattened["network_name"] = s.NetworkName
+	flattened["cidr"] = fmt.Sprintf("%s/%d", s.Gateway, s.PrefixLength)
+	flattened["prefix_length"] = s.PrefixLength
 	flattened["gateway"] = s.Gateway
+	flattened["gateway_ip"] = s.Gateway
 	edgeGateways := s.EdgeGateway
 	mapEdgeGateway := map[string]interface{}{
 		"id":              edgeGateways.ID,
@@ -98,7 +146,10 @@ func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]
 	}
 	flattened["edge_gateway"] = mapEdgeGateway
 	flattened["created_at"] = s.CreatedAt
-	flattened["tag_ids"] = s.TagIds
+	flattened["tag_ids"] = extractTagIdsFromSubnet(s)
+	flattened["type"] = s.Type
+	flattened["primary_dns_ip"] = s.PrimaryDNSIp
+	flattened["secondary_dns_ip"] = s.SecondaryDNSIp
 	return flattened, nil
 }
 

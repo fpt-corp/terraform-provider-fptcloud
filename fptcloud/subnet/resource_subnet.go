@@ -2,9 +2,12 @@ package fptcloud_subnet
 
 import (
 	"context"
+	"fmt"
 	"log"
-	common "terraform-provider-fptcloud/commons"
+	"strings"
 	"time"
+
+	common "terraform-provider-fptcloud/commons"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
@@ -22,9 +25,26 @@ func ResourceSubnet() *schema.Resource {
 		UpdateContext: resourceSubnetUpdate,
 		DeleteContext: resourceSubnetDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceSubnetImportState,
 		},
 	}
+}
+
+// resourceSubnetImportState parses import id as vpc_id/subnet_id.
+func resourceSubnetImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/subnet_id, got %q", d.Id())
+	}
+	vpcId := parts[0]
+	subnetId := parts[1]
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, fmt.Errorf("[ERR] Failed to set 'vpc_id': %w", err)
+	}
+	d.SetId(subnetId)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func resourceSubnetCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -120,6 +140,10 @@ func resourceSubnetRead(_ context.Context, d *schema.ResourceData, m interface{}
 
 	if err := d.Set("name", result.Name); err != nil {
 		return diag.Errorf("[ERR] Failed to set 'name': %s", err)
+	}
+
+	if err := d.Set("type", result.Type); err != nil {
+		return diag.Errorf("[ERR] Failed to set 'type': %s", err)
 	}
 
 	if err := d.Set("network_id", result.NetworkID); err != nil {

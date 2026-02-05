@@ -32,9 +32,15 @@ type SubnetResponseDto struct {
 	Data    Subnet `json:"data"`
 }
 
+// SubnetTag is the tag object returned by the list API (response.tags).
+type SubnetTag struct {
+	ID string `json:"id"`
+}
+
 type Subnet struct {
 	ID             string      `json:"id"`
 	Name           string      `json:"name"`
+	Type           string      `json:"type"`
 	NetworkID      string      `json:"network_id"`
 	NetworkName    string      `json:"network_name"`
 	Gateway        string      `json:"gateway"`
@@ -42,8 +48,10 @@ type Subnet struct {
 	EdgeGateway    EdgeGateway `json:"edge_gateway"`
 	CreatedAt      string      `json:"created_at"`
 	TagIds         []string    `json:"tag_ids,omitempty"`
+	Tags           []SubnetTag `json:"tags,omitempty"`
 	PrimaryDNSIp   string      `json:"primary_dns_ip,omitempty"`
 	SecondaryDNSIp string      `json:"secondary_dns_ip,omitempty"`
+	PrefixLength   int         `json:"prefix_length"`
 }
 
 type UpdateSubnetDNSDTO struct {

@@ -20,13 +20,11 @@ var resourceSubnet = map[string]*schema.Schema{
 		Required:     true,
 		ValidateFunc: validation.NoZeroValues,
 		Description:  "The name of the subnet",
-		ForceNew:     true,
 	},
 	"type": {
 		Type:        schema.TypeString,
 		Required:    true,
 		Description: "The type of the subnet. `NAT_ROUTED`: To the Internet via a NAT gateway. `ISOLATED`: Subnet won't route to the Internet",
-		ForceNew:    true,
 		ValidateFunc: validation.StringInSlice([]string{
 			"ISOLATED", "NAT_ROUTED",
 		}, false)},
@@ -36,21 +34,18 @@ var resourceSubnet = map[string]*schema.Schema{
 		Required:     true,
 		ValidateFunc: validateCIDR,
 		Description:  "The network address (CIDR) of the subnet. CIDR block format: 10.0.0.1/24",
-		ForceNew:     true,
 	},
 	"gateway_ip": {
 		Type:         schema.TypeString,
 		Required:     true,
 		ValidateFunc: validateIPv4Address,
 		Description:  "The gateway ip of the subnet",
-		ForceNew:     true,
 	},
 	"static_ip_pool": {
 		Type:         schema.TypeString,
 		Optional:     true,
 		ValidateFunc: validateIPv4Range,
 		Description:  "The static ip pool of the instance. Only if you want to create subnet with static IP pool, enter an valid IP range within provided CIDR.",
-		ForceNew:     true,
 	},
 	"network_id": {
 		Type:        schema.TypeString,
