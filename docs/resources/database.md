@@ -42,6 +42,9 @@ resource "fptcloud_database" "example" {
   domain_name = ""
   is_public = "no | yes" # is your database public or not
   vhost_name = "VHostDefault"
+  maintenance_email = "example@gmail.com" # Email to receive maintenance notifications
+  day_of_week_maintenance= 6 # day of week, monday = 1, tuesday = 2,..., sunday = 7
+  time_maintenance= "23:00" # Maintenance time, "00:00" -> "23:59"
 }
 ```
 
