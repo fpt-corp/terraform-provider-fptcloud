@@ -2,12 +2,16 @@ package fptcloud_floating_ip
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	common "terraform-provider-fptcloud/commons"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"log"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceFloatingIp function returns a schema.Resource that represents a floating ip.
@@ -43,9 +47,26 @@ func ResourceFloatingIp() *schema.Resource {
 		UpdateContext: resourceFloatingIpUpdate,
 		DeleteContext: resourceFloatingIpDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceFloatingIpImportState,
 		},
 	}
+}
+
+// resourceFloatingIpImportState parses import id as vpc_id/floating_ip_id.
+func resourceFloatingIpImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/floating_ip_id, got %q", d.Id())
+	}
+	vpcId := parts[0]
+	floatingIpId := parts[1]
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, fmt.Errorf("[ERR] Failed to set 'vpc_id': %w", err)
+	}
+	d.SetId(floatingIpId)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func resourceFloatingIpCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -182,9 +203,16 @@ func resourceFloatingIpDelete(_ context.Context, d *schema.ResourceData, m inter
 }
 
 func expandTagIDs(tagSet *schema.Set) []string {
+	if tagSet == nil || tagSet.Len() == 0 {
+		return []string{}
+	}
 	tagIds := make([]string, 0, tagSet.Len())
 	for _, tag := range tagSet.List() {
-		tagIds = append(tagIds, tag.(string))
+		id, ok := tag.(string)
+		if !ok || id == "" {
+			continue
+		}
+		tagIds = append(tagIds, id)
 	}
 	return tagIds
 }

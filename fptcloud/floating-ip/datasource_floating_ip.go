@@ -67,6 +67,11 @@ func floatingIpSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "The created at of the floating ip",
 		},
+		"instance_id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The id of the instance associated with the floating IP; empty when instance is null or not associated",
+		},
 		"tag_ids": {
 			Type:        schema.TypeList,
 			Computed:    true,
@@ -74,6 +79,20 @@ func floatingIpSchema() map[string]*schema.Schema {
 			Description: "List of tag IDs associated with the floating ip",
 		},
 	}
+}
+
+// extractTagIdsFromFloatingIp returns tag IDs from response. Prefer tags[].id (list API); fallback to tag_ids. Handles tags nil, [], and items without id.
+func extractTagIdsFromFloatingIp(s FloatingIp) []string {
+	if len(s.Tags) > 0 {
+		ids := make([]string, 0, len(s.Tags))
+		for _, t := range s.Tags {
+			if t.ID != "" {
+				ids = append(ids, t.ID)
+			}
+		}
+		return ids
+	}
+	return s.TagIds
 }
 
 func flattenFloatingIp(floatingIp, _ interface{}, _ map[string]interface{}) (map[string]interface{}, error) {
@@ -85,7 +104,8 @@ func flattenFloatingIp(floatingIp, _ interface{}, _ map[string]interface{}) (map
 	flattened["nat_type"] = s.NatType
 	flattened["status"] = s.Status
 	flattened["created_at"] = s.CreatedAt
-	flattened["tag_ids"] = s.TagIds
+	flattened["tag_ids"] = extractTagIdsFromFloatingIp(s)
+	flattened["instance_id"] = s.Instance.ID
 
 	return flattened, nil
 }

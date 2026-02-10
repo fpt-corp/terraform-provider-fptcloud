@@ -30,6 +30,11 @@ type ListFloatingIpData struct {
 	Total int16        `json:"total"`
 }
 
+// FloatingIpTag is the tag object returned by the list API (response.tags).
+type FloatingIpTag struct {
+	ID string `json:"id"`
+}
+
 // FloatingIp represents a floating ip model
 type FloatingIp struct {
 	ID        string             `json:"id"`
@@ -39,6 +44,7 @@ type FloatingIp struct {
 	Status    string             `json:"status"`
 	CreatedAt string             `json:"created_at"`
 	TagIds    []string           `json:"tag_ids,omitempty"`
+	Tags      []FloatingIpTag    `json:"tags,omitempty"`
 }
 
 type FloatingIpInstance struct {

@@ -2,13 +2,17 @@ package fptcloud_floating_ip_association
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	common "terraform-provider-fptcloud/commons"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"log"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceFloatingIpAssociation function returns a schema.Resource that represents a floating ip association.
@@ -57,9 +61,29 @@ func ResourceFloatingIpAssociation() *schema.Resource {
 		ReadContext:   resourceFloatingIpAssociationRead,
 		DeleteContext: resourceFloatingIpAssociationDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceFloatingIpAssociationImportState,
 		},
 	}
+}
+
+// resourceFloatingIpAssociationImportState parses import id as vpc_id/floating_ip_id.
+func resourceFloatingIpAssociationImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/floating_ip_id, got %q", d.Id())
+	}
+	vpcId := parts[0]
+	floatingIpId := parts[1]
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, fmt.Errorf("[ERR] Failed to set 'vpc_id': %w", err)
+	}
+	if err := d.Set("floating_ip_id", floatingIpId); err != nil {
+		return nil, fmt.Errorf("[ERR] Failed to set 'floating_ip_id': %w", err)
+	}
+	d.SetId(floatingIpId)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 func resourceFloatingIpAssociationCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
