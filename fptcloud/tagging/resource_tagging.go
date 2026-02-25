@@ -2,11 +2,12 @@ package fptcloud_tagging
 
 import (
 	"context"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 // CreateTagInput represents input parameters for creating a tag
@@ -61,8 +62,8 @@ func ResourceTagging() *schema.Resource {
 			},
 			"scope_type": {
 				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "The scope type of the tag (e.g., VPC, PROJECT, ORG).",
+				Required:    true,
+				Description: "The scope type of the tag (e.g., VPC, PROJECT, ORG). This field is required.",
 			},
 			"resource_ids": {
 				Type:        schema.TypeSet,
@@ -120,6 +121,7 @@ func resourceTaggingCreate(ctx context.Context, d *schema.ResourceData, m interf
 
 	input := &CreateTagInput{
 		Key:         d.Get("key").(string),
+		ScopeType:   d.Get("scope_type").(string),
 		ResourceIds: resourceScopes,
 	}
 
@@ -128,9 +130,6 @@ func resourceTaggingCreate(ctx context.Context, d *schema.ResourceData, m interf
 	}
 	if v, ok := d.GetOk("color"); ok {
 		input.Color = v.(string)
-	}
-	if v, ok := d.GetOk("scope_type"); ok {
-		input.ScopeType = v.(string)
 	}
 	response, err := service.Create(ctx, input)
 	if err != nil {
@@ -158,6 +157,7 @@ func resourceTaggingUpdate(ctx context.Context, d *schema.ResourceData, m interf
 
 	input := &UpdateTagInput{
 		Key:         d.Get("key").(string),
+		ScopeType:   d.Get("scope_type").(string),
 		ResourceIds: resourceIds,
 	}
 
@@ -166,10 +166,6 @@ func resourceTaggingUpdate(ctx context.Context, d *schema.ResourceData, m interf
 	}
 	if v, ok := d.GetOk("color"); ok {
 		input.Color = v.(string)
-	}
-
-	if v, ok := d.GetOk("scope_type"); ok {
-		input.ScopeType = v.(string)
 	}
 
 	_, err := service.Update(ctx, d.Id(), input)

@@ -173,11 +173,12 @@ var ApiPath = struct {
 	ListSizes func(vpcId string) string
 
 	// Tagging
-	GetTag    func(tenantId, tagId string) string
-	ListTags  func(tenantId string) string
-	CreateTag func(tenantId string) string
-	UpdateTag func(tenantId, tagId string) string
-	DeleteTag func(tenantId, tagId string) string
+	GetTag             func(tenantId, tagId string) string
+	ListTags           func(tenantId string) string
+	ListTagProjectVpc  func(orgId string) string
+	CreateTag          func(tenantId string) string
+	UpdateTag          func(tenantId, tagId string) string
+	DeleteTag          func(tenantId, tagId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -654,6 +655,9 @@ var ApiPath = struct {
 
 	ListTags: func(tenantId string) string {
 		return fmt.Sprintf("/v2/org/%s/tags", tenantId)
+	},
+	ListTagProjectVpc: func(orgId string) string {
+		return fmt.Sprintf("/v2/org/%s/tag/list-project-vpc", orgId)
 	},
 	GetTag: func(tenantId, tagId string) string {
 		return fmt.Sprintf("/v2/org/%s/tag/%s", tenantId, tagId)
