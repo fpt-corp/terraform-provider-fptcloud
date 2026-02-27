@@ -21,17 +21,16 @@ func ResourceSSHKey() *schema.Resource {
 				Required:     true,
 				Description:  "a string that will be the reference for the SSH key.",
 				ValidateFunc: utils.ValidateName,
-				ForceNew:     true,
 			},
 			"public_key": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "a string containing the SSH public key.",
-				ForceNew:    true,
 			},
 		},
 		CreateContext: resourceSSHKeyCreate,
 		ReadContext:   resourceSSHKeyRead,
+		UpdateContext: resourceSSHKeyUpdate,
 		DeleteContext: resourceSSHKeyDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -60,7 +59,7 @@ func resourceSSHKeyRead(_ context.Context, d *schema.ResourceData, m interface{}
 	apiClient := m.(*common.Client)
 	sshService := NewSSHKeyService(apiClient)
 
-	log.Printf("[INFO] retrieving the new ssh key %s", d.Get("name").(string))
+	log.Printf("[INFO] retrieving ssh key %s", d.Id())
 	sshKey, err := sshService.FindSSHKey(d.Id())
 	if err != nil {
 		if sshKey == nil {
@@ -72,8 +71,19 @@ func resourceSSHKeyRead(_ context.Context, d *schema.ResourceData, m interface{}
 	}
 
 	if err := d.Set("name", sshKey.Name); err != nil {
+		return diag.Errorf("[ERR] error retrieving ssh name: %s", err)
+	}
+	if err := d.Set("public_key", sshKey.PublicKey); err != nil {
+		return diag.Errorf("[ERR] error retrieving ssh public key: %s", err)
+	}
+	return nil
+}
 
-		return diag.Errorf("[ERR] error retrieving ssh key: %s", err)
+// resourceSSHKeyUpdate the API does not support updating
+// SSH key name or public_key; any change to those returns an error.
+func resourceSSHKeyUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	if d.HasChange("name") || d.HasChange("public_key") {
+		return diag.Errorf("[ERR] changing name or public_key of an existing SSH key is not supported by the API; create a new SSH key or re-import the existing one")
 	}
 	return nil
 }
