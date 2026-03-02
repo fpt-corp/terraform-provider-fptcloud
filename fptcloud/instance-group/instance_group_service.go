@@ -32,10 +32,17 @@ type InstanceGroup struct {
 	CreatedAt string        `json:"created_at"`
 }
 
+// UpdateInstanceGroupDTO payload for updating instance group (name, vm_ids)
+type UpdateInstanceGroupDTO struct {
+	Name  string   `json:"name"`
+	VmIds []string `json:"vm_ids"`
+}
+
 // InstanceGroupService defines the interface for the instance group service
 type InstanceGroupService interface {
 	FindInstanceGroup(searchModel FindInstanceGroupDTO) (*[]InstanceGroup, error)
 	CreateInstanceGroup(createdModel CreateInstanceGroupDTO) (bool, error)
+	UpdateInstanceGroup(vpcId string, instanceGroupId string, payload UpdateInstanceGroupDTO) (bool, error)
 	DeleteInstanceGroup(vpcId string, instanceGroupId string) (bool, error)
 }
 
@@ -89,6 +96,24 @@ func (s *InstanceGroupServiceImpl) CreateInstanceGroup(createdModel CreateInstan
 		return false, err
 	}
 
+	return result.Status, nil
+}
+
+// UpdateInstanceGroup updates an instance group (name and/or vm_ids) via PUT
+func (s *InstanceGroupServiceImpl) UpdateInstanceGroup(vpcId string, instanceGroupId string, payload UpdateInstanceGroupDTO) (bool, error) {
+	apiPath := common.ApiPath.UpdateInstanceGroup(vpcId, instanceGroupId)
+	resp, err := s.client.SendPutRequest(apiPath, payload)
+	if err != nil {
+		return false, common.DecodeError(err)
+	}
+
+	var result struct {
+		Status bool `json:"status"`
+	}
+	err = json.Unmarshal(resp, &result)
+	if err != nil {
+		return false, err
+	}
 	return result.Status, nil
 }
 

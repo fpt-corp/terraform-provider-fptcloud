@@ -2,13 +2,17 @@ package fptcloud_instance_group
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+	common "terraform-provider-fptcloud/commons"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"log"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceInstanceGroup function returns a schema. Resource that represents an instance group.
@@ -27,28 +31,24 @@ func ResourceInstanceGroup() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "The id of the instance group",
-				ForceNew:    true,
 			},
 			"name": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validation.NoZeroValues,
 				Description:  "The name of the instance group",
-				ForceNew:     true,
 			},
 			"policy_id": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validation.NoZeroValues,
 				Description:  "The policy of the instance group",
-				ForceNew:     true,
 			},
 			"vm_ids": {
 				Type:        schema.TypeSet,
 				Optional:    true,
 				Description: "The list of instances in the instance group",
 				Elem:        &schema.Schema{Type: schema.TypeString},
-				ForceNew:    true,
 			},
 			"policy": {
 				Type:     schema.TypeString,
@@ -69,9 +69,10 @@ func ResourceInstanceGroup() *schema.Resource {
 		},
 		CreateContext: resourceInstanceGroupCreate,
 		ReadContext:   resourceInstanceGroupRead,
+		UpdateContext: resourceInstanceGroupUpdate,
 		DeleteContext: resourceInstanceGroupDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceInstanceGroupImportState,
 		},
 	}
 }
@@ -149,6 +150,17 @@ func resourceInstanceGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 	return resourceInstanceGroupRead(ctx, d, m)
 }
 
+// resourceInstanceGroupImportState supports import id format vpc_id/instance_group_id.
+func resourceInstanceGroupImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/instance_group_id, got %q", d.Id())
+	}
+	d.Set("vpc_id", parts[0])
+	d.SetId(parts[1])
+	return []*schema.ResourceData{d}, nil
+}
+
 // function to read the instance group
 func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
@@ -167,14 +179,10 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 
 	result, err := service.FindInstanceGroup(findModel)
 	if err != nil {
-		if result == nil {
-			d.SetId("")
-			return nil
-		}
-		return diag.Errorf("[ERR] Failed retrieving the instance group: %s", err)
+		return diag.Errorf("[ERR] Failed retrieving the instance group (%s): %s", d.Id(), err)
 	}
+
 	if result == nil || len(*result) == 0 {
-		d.SetId("")
 		return nil
 	}
 
@@ -186,23 +194,89 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("[ERR] Failed to set 'name': %s", err)
 	}
 
-	if err := d.Set("policy", data.Policy); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'policy': %s", err)
+	// Schema "policy" is TypeString; API returns object or slice — convert to string before set
+	if data.Policy != nil {
+		if s, ok := data.Policy.(string); ok {
+			_ = d.Set("policy", s)
+		} else if b, err := json.Marshal(data.Policy); err == nil {
+			_ = d.Set("policy", string(b))
+		}
 	}
 
-	if err := d.Set("vms", data.Vms); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'vms': %s", err)
+	// Schema "vms" is TypeString; API returns list — convert to string before set
+	if data.Vms != nil {
+		if b, err := json.Marshal(data.Vms); err == nil {
+			_ = d.Set("vms", string(b))
+		}
 	}
 
-	if err := d.Set("vpc_id", data.VpcId); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+	if data.VpcId != "" {
+		if err := d.Set("vpc_id", data.VpcId); err != nil {
+			return diag.Errorf("[ERR] Failed to set 'vpc_id': %s", err)
+		}
 	}
 
 	if err := d.Set("created_at", data.CreatedAt); err != nil {
 		return diag.Errorf("[ERR] Failed to set 'created_at': %s", err)
 	}
 
+	if data.Policy != nil {
+		if policyMap, ok := data.Policy.(map[string]interface{}); ok && policyMap["id"] != nil {
+			_ = d.Set("policy_id", policyMap["id"])
+		} else if list, ok := data.Policy.([]interface{}); ok && len(list) > 0 {
+			if m, ok := list[0].(map[string]interface{}); ok && m["id"] != nil {
+				_ = d.Set("policy_id", m["id"])
+			}
+		}
+	}
+	if data.Vms != nil {
+		vmIds := make([]interface{}, 0, len(data.Vms))
+		for _, v := range data.Vms {
+			if m, ok := v.(map[string]interface{}); ok && m["id"] != nil {
+				vmIds = append(vmIds, m["id"])
+			}
+		}
+		if err := d.Set("vm_ids", vmIds); err != nil {
+			return diag.Errorf("[ERR] Failed to set 'vm_ids': %s", err)
+		}
+	}
+
 	return nil
+}
+
+// function to update the instance group (name, vm_ids)
+func resourceInstanceGroupUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	apiClient := m.(*common.Client)
+	service := NewInstanceGroupService(apiClient)
+
+	vpcId, okVpcId := d.GetOk("vpc_id")
+	if !okVpcId {
+		return diag.Errorf("[ERR] vpc_id is required")
+	}
+
+	oldName, _ := d.GetChange("name")
+	oldVmIds, _ := d.GetChange("vm_ids")
+
+	payload := UpdateInstanceGroupDTO{
+		Name:  d.Get("name").(string),
+		VmIds: []string{},
+	}
+	if vmIds, ok := d.GetOk("vm_ids"); ok {
+		for _, v := range vmIds.(*schema.Set).List() {
+			payload.VmIds = append(payload.VmIds, v.(string))
+		}
+	}
+
+	ok, err := service.UpdateInstanceGroup(vpcId.(string), d.Id(), payload)
+	if err != nil || !ok {
+		_ = d.Set("name", oldName)
+		if oldSet, ok := oldVmIds.(*schema.Set); ok {
+			_ = d.Set("vm_ids", oldSet)
+		}
+		return diag.Errorf("[ERR] Failed to update instance group: %s", err)
+	}
+
+	return resourceInstanceGroupRead(ctx, d, m)
 }
 
 // function to delete the instance group

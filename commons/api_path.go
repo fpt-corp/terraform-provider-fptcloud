@@ -29,6 +29,7 @@ var ApiPath = struct {
 	VMGroupPolicies            func(vpcId string) string
 	CreateInstanceGroup        func(vpcId string) string
 	FindInstanceGroup          func(vpcId string) string
+	UpdateInstanceGroup        func(vpcId string, instanceGroupId string) string
 	DeleteInstanceGroup        func(vpcId string, instanceGroupId string) string
 	CreateFloatingIp           func(vpcId string) string
 	FindFloatingIp             func(vpcId string, floatingIpId string) string
@@ -248,6 +249,9 @@ var ApiPath = struct {
 	},
 	FindInstanceGroup: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/vm-groups", vpcId)
+	},
+	UpdateInstanceGroup: func(vpcId string, instanceGroupId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/vm-group/%s", vpcId, instanceGroupId)
 	},
 	DeleteInstanceGroup: func(vpcId string, instanceGroupId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/vm-group/%s", vpcId, instanceGroupId)
