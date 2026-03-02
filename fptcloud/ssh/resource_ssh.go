@@ -62,11 +62,6 @@ func resourceSSHKeyRead(_ context.Context, d *schema.ResourceData, m interface{}
 	log.Printf("[INFO] retrieving ssh key %s", d.Id())
 	sshKey, err := sshService.FindSSHKey(d.Id())
 	if err != nil {
-		if sshKey == nil {
-			d.SetId("")
-			return nil
-		}
-
 		return diag.Errorf("[ERR] error retrieving ssh key: %s", err)
 	}
 
