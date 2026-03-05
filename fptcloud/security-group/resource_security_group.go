@@ -2,12 +2,16 @@ package fptcloud_security_group
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"strings"
+
+	common "terraform-provider-fptcloud/commons"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"log"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceSecurityGroup function returns a schema.Resource that represents a security group.
@@ -21,7 +25,7 @@ func ResourceSecurityGroup() *schema.Resource {
 		UpdateContext: resourceSecurityGroupUpdate,
 		DeleteContext: resourceSecurityGroupDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceSecurityGroupImportState,
 		},
 	}
 }
@@ -100,10 +104,27 @@ func resourceSecurityGroupCreate(ctx context.Context, d *schema.ResourceData, m 
 	}
 	_, err = createStateConf.WaitForStateContext(ctx)
 	if err != nil {
-		return diag.Errorf("[Error] Waiting for security group (%s) to be created: %s", d.Id(), err)
+		return diag.Errorf("[ERR] Waiting for security group (%s) to be created: %s", d.Id(), err)
 	}
 
 	return resourceSecurityGroupRead(ctx, d, m)
+}
+
+// resourceSecurityGroupImportState supports import id format vpc_id/security_group_id.
+func resourceSecurityGroupImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/security_group_id, got %q", d.Id())
+	}
+
+	vpcId := parts[0]
+	securityGroupId := parts[1]
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, fmt.Errorf("[ERR] Failed to set 'vpc_id': %w", err)
+	}
+	d.SetId(securityGroupId)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 // function to read the security group
@@ -221,7 +242,7 @@ func resourceSecurityGroupUpdate(ctx context.Context, d *schema.ResourceData, m 
 		}
 		_, err = updateStateConf.WaitForStateContext(ctx)
 		if err != nil {
-			return diag.Errorf("[Error] Waiting for security group (%s) to be updated: %s", d.Id(), err)
+			return diag.Errorf("[ERR] Waiting for security group (%s) to be updated: %s", d.Id(), err)
 		}
 	}
 
@@ -277,7 +298,7 @@ func resourceSecurityGroupDelete(_ context.Context, d *schema.ResourceData, m in
 	}
 	_, err = deleteStateConf.WaitForStateContext(context.Background())
 	if err != nil {
-		return diag.Errorf("[Error] Waiting for security group (%s) to be deleted: %s", d.Id(), err)
+		return diag.Errorf("[ERR] Waiting for security group (%s) to be deleted: %s", d.Id(), err)
 	}
 
 	return nil

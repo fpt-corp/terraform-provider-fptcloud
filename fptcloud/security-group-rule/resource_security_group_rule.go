@@ -2,13 +2,16 @@ package fptcloud_security_group_rule
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"strings"
+	common "terraform-provider-fptcloud/commons"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"log"
-	common "terraform-provider-fptcloud/commons"
-	"time"
 )
 
 // ResourceSecurityGroupRule function returns a schema.Resource that represents a security group rule.
@@ -36,7 +39,6 @@ func ResourceSecurityGroupRule() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"INGRESS", "EGRESS",
 				}, false),
-				ForceNew: true,
 			},
 			"action": {
 				Type:        schema.TypeString,
@@ -45,7 +47,6 @@ func ResourceSecurityGroupRule() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"ALLOW", "DROP",
 				}, false),
-				ForceNew: true,
 			},
 			"protocol": {
 				Type:        schema.TypeString,
@@ -54,46 +55,41 @@ func ResourceSecurityGroupRule() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"TCP", "UDP", "ICMP", "ALL",
 				}, false),
-				ForceNew: true,
 			},
 			"port_range": {
 				Type:         schema.TypeString,
 				Required:     true,
 				Description:  "The port or port range to open, if the protocol is `ALL` this field is required `ALL`",
 				ValidateFunc: validation.NoZeroValues,
-				ForceNew:     true,
 			},
 			"sources": {
 				Type:        schema.TypeSet,
 				Required:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Description: "The sources of the rule, can be a CIDR notation or a IP address, pass `ALL` if you want to open for all IP",
-				ForceNew:    true,
 			},
 			"ip_type": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "The ip type of the security group rule",
-				ForceNew:    true,
 			},
 			"description": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "The description of the security group rule",
-				ForceNew:    true,
 			},
 			"security_group_id": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "The security group id of the security group rule",
-				ForceNew:    true,
 			},
 		},
 		CreateContext: resourceSecurityGroupRuleCreate,
 		ReadContext:   resourceSecurityGroupRuleRead,
+		UpdateContext: resourceSecurityGroupRuleUpdate,
 		DeleteContext: resourceSecurityGroupRuleDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceSecurityGroupRuleImportState,
 		},
 	}
 }
@@ -173,10 +169,27 @@ func resourceSecurityGroupRuleCreate(ctx context.Context, d *schema.ResourceData
 	}
 	_, err = createStateConf.WaitForStateContext(ctx)
 	if err != nil {
-		return diag.Errorf("[Error] Waiting for security group rule (%s) to be created: %s", d.Id(), err)
+		return diag.Errorf("[ERR] Waiting for security group rule (%s) to be created: %s", d.Id(), err)
 	}
 
 	return resourceSecurityGroupRuleRead(ctx, d, m)
+}
+
+// resourceSecurityGroupRuleImportState supports import id format vpc_id/security_group_rule_id.
+func resourceSecurityGroupRuleImportState(ctx context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	parts := strings.SplitN(d.Id(), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("[ERR] Invalid import format: expected format vpc_id/security_group_rule_id, got %q", d.Id())
+	}
+
+	vpcId := parts[0]
+	securityGroupRuleId := parts[1]
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, fmt.Errorf("[ERR] Failed to set 'vpc_id': %w", err)
+	}
+	d.SetId(securityGroupRuleId)
+
+	return []*schema.ResourceData{d}, nil
 }
 
 // function to read a security group rule
@@ -233,6 +246,14 @@ func resourceSecurityGroupRuleRead(_ context.Context, d *schema.ResourceData, m 
 	return nil
 }
 
+func resourceSecurityGroupRuleUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	if d.HasChange("protocol") || d.HasChange("action") || d.HasChange("port_range") ||
+		d.HasChange("sources") || d.HasChange("description") || d.HasChange("security_group_id") || d.HasChange("direction") {
+		return diag.Errorf("[ERR] Changing security group rule attributes is not supported; delete and recreate the rule to apply the changes.")
+	}
+	return nil
+}
+
 // function to delete a security group rule
 func resourceSecurityGroupRuleDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
@@ -269,7 +290,7 @@ func resourceSecurityGroupRuleDelete(_ context.Context, d *schema.ResourceData, 
 	}
 	_, err = deleteStateConf.WaitForStateContext(context.Background())
 	if err != nil {
-		return diag.Errorf("[Error] Waiting for security group rule (%s) to be deleted: %s", d.Id(), err)
+		return diag.Errorf("[ERR] Waiting for security group rule (%s) to be deleted: %s", d.Id(), err)
 	}
 
 	return nil
