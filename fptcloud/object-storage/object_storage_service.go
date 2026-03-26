@@ -3,6 +3,7 @@ package fptcloud_object_storage
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	common "terraform-provider-fptcloud/commons"
 )
 
@@ -74,11 +75,13 @@ func (s *ObjectStorageServiceImpl) CheckServiceEnable(vpcId string) S3ServiceEna
 	apiPath := common.ApiPath.CheckS3ServiceEnable(vpcId)
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
+		log.Printf("[ERROR] FPTCloud Provider - CheckServiceEnable API request failed: %v", err)
 		return S3ServiceEnableResponse{Total: 0}
 	}
 
 	var response S3ServiceEnableResponse
 	if err := json.Unmarshal(resp, &response); err != nil {
+		log.Printf("[ERROR] FPTCloud Provider - CheckServiceEnable JSON Unmarshal failed: %v, Body: %s", err, string(resp))
 		return S3ServiceEnableResponse{Total: 0}
 	}
 	return response

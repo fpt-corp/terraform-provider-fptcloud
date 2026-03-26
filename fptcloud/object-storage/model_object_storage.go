@@ -8,9 +8,9 @@ type AccessKey struct {
 	Credentials []struct {
 		ID          string `json:"id"`
 		Credentials []struct {
-			AccessKey   string `json:"accessKey"`
-			Active      bool   `json:"active"`
-			CreatedDate string `json:"createdDate,omitempty"`
+			AccessKey   string      `json:"accessKey"`
+			Active      bool        `json:"active"`
+			CreatedDate interface{} `json:"createdDate,omitempty"`
 		} `json:"credentials"`
 	} `json:"credentials"`
 }
@@ -150,10 +150,10 @@ type CreateAccessKeyResponse struct {
 	Status     bool   `json:"status"`
 	Message    string `json:"message,omitempty"`
 	Credential struct {
-		AccessKey   string `json:"accessKey"`
-		SecretKey   string `json:"secretKey"`
-		Active      bool   `json:"active,omitempty"`
-		CreatedDate string `json:"createdDate,omitempty"`
+		AccessKey   string      `json:"accessKey"`
+		SecretKey   string      `json:"secretKey"`
+		Active      bool        `json:"active,omitempty"`
+		CreatedDate interface{} `json:"createdDate,omitempty"`
 	} `json:"credential,omitempty"`
 }
 
@@ -236,10 +236,10 @@ type SubUserCreateKeyResponse struct {
 	Status     bool   `json:"status"`
 	Message    string `json:"message,omitempty"`
 	Credential struct {
-		AccessKey   string `json:"accessKey,omitempty"`
-		SecretKey   string `json:"secretKey,omitempty"`
-		Active      bool   `json:"active,omitempty"`
-		CreatedDate string `json:"createdDate,omitempty"`
+		AccessKey   string      `json:"accessKey,omitempty"`
+		SecretKey   string      `json:"secretKey,omitempty"`
+		Active      bool        `json:"active,omitempty"`
+		CreatedDate interface{} `json:"createdDate,omitempty"`
 	} `json:"credential,omitempty"`
 }
 

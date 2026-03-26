@@ -15,7 +15,7 @@ func ResourceBucketAcl() *schema.Resource {
 		CreateContext: resourceBucketAclCreate,
 		ReadContext:   resourceBucketAclRead,
 		DeleteContext: resourceBucketAclDelete,
-		UpdateContext: nil,
+		UpdateContext: resourceBucketAclUpdate,
 		Schema: map[string]*schema.Schema{
 			"vpc_id": {
 				Type:        schema.TypeString,
@@ -39,7 +39,6 @@ func ResourceBucketAcl() *schema.Resource {
 				Type:         schema.TypeString,
 				Required:     true,
 				Description:  "The Access Control List (ACL) status of the bucket which can be one of the following values: private, public-read, default is private",
-				ForceNew:     true,
 				ValidateFunc: validation.StringInSlice([]string{"private", "public-read"}, false),
 			},
 			"apply_objects": {
@@ -85,7 +84,16 @@ func resourceBucketAclCreate(ctx context.Context, d *schema.ResourceData, m inte
 	if err := d.Set("status", true); err != nil {
 		return diag.FromErr(err)
 	}
+
+	d.SetId(bucketName)
+
 	return resourceBucketAclRead(ctx, d, m)
+}
+
+func resourceBucketAclUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	// Object Storage PutBucketAcl API is essentially an upsert (overwrite) operation
+	// So we can safely reuse the Create function logic for Update operations.
+	return resourceBucketAclCreate(ctx, d, m)
 }
 
 func resourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -112,7 +120,9 @@ func resourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interf
 }
 
 func resourceBucketAclDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// Remove the resource from the state
+	// Đối với ACL của Bucket, thuật ngữ "Delete" không thực sự tồn tại ở S3 API
+	// (vì bucket nào cũng bắt buộc phải có 1 cái ACL).
+	// Nên Terraform chỉ cần remove cái ACL block khỏi state là thành công.
 	d.SetId("")
-	return diag.Errorf("Delete operation is not supported for bucket ACLs. This is a no-op.")
+	return nil
 }

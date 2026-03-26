@@ -397,10 +397,10 @@ func TestCreateAccessKeyResponseDeserialization(t *testing.T) {
 				Status:  true,
 				Message: "Access key created successfully",
 				Credential: struct {
-					AccessKey   string `json:"accessKey"`
-					SecretKey   string `json:"secretKey"`
-					Active      bool   `json:"active,omitempty"`
-					CreatedDate string `json:"createdDate,omitempty"`
+					AccessKey   string      `json:"accessKey"`
+					SecretKey   string      `json:"secretKey"`
+					Active      bool        `json:"active,omitempty"`
+					CreatedDate interface{} `json:"createdDate,omitempty"`
 				}{
 					AccessKey:   "AKIAIOSFODNN7EXAMPLE",
 					SecretKey:   "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
@@ -434,10 +434,10 @@ func TestSubUserCreateKeyResponseDeserialization(t *testing.T) {
 				Status:  true,
 				Message: "Sub-user key created successfully",
 				Credential: struct {
-					AccessKey   string `json:"accessKey,omitempty"`
-					SecretKey   string `json:"secretKey,omitempty"`
-					Active      bool   `json:"active,omitempty"`
-					CreatedDate string `json:"createdDate,omitempty"`
+					AccessKey   string      `json:"accessKey,omitempty"`
+					SecretKey   string      `json:"secretKey,omitempty"`
+					Active      bool        `json:"active,omitempty"`
+					CreatedDate interface{} `json:"createdDate,omitempty"`
 				}{
 					AccessKey:   "AKIAIOSFODNN7EXAMPLE",
 					SecretKey:   "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
