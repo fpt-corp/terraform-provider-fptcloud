@@ -26,6 +26,7 @@ func ResourceAccessKey() *schema.Resource {
 				Required:    false,
 				ForceNew:    true,
 				Optional:    true,
+				Computed:    true,
 				Description: "The access key ID",
 			},
 			"secret_access_key": {
@@ -44,12 +45,14 @@ func ResourceAccessKey() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
+				Computed:    true,
 				Description: "The status after creating the access key",
 			},
 			"message": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
+				Computed:    true,
 				Description: "The message after creating the access key",
 			},
 		},
@@ -71,7 +74,7 @@ func resourceAccessKeyCreate(ctx context.Context, d *schema.ResourceData, m inte
 	resp := service.CreateAccessKey(vpcId, s3ServiceDetail.S3ServiceId)
 
 	if !resp.Status {
-		return diag.Errorf("failed to delete sub-user access key: %s", resp.Message)
+		return diag.Errorf("failed to create access key: %s", resp.Message)
 	}
 
 	if resp.Credential.AccessKey != "" {
