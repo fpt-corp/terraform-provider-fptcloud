@@ -36,6 +36,7 @@ type Subnet struct {
 	ID             string      `json:"id"`
 	Name           string      `json:"name"`
 	NetworkID      string      `json:"network_id"`
+	NetworkIaasID  string      `json:"network_iaas_id,omitempty"`
 	NetworkName    string      `json:"network_name"`
 	Gateway        string      `json:"gateway"`
 	VpcId          string      `json:"vpc_id"`
@@ -73,6 +74,7 @@ type SubnetService interface {
 	FindSubnet(findDto FindSubnetDTO) (*Subnet, error)
 	FindSubnetByName(findDto FindSubnetDTO) (*Subnet, error)
 	ListSubnet(vpcId string) (*[]Subnet, error)
+	ListSubnetIaas(vpcId string) (*[]Subnet, error)
 	CreateSubnet(createDto CreateSubnetDTO) (*Subnet, error)
 	DeleteSubnet(vpcId string, subnetId string) (bool, error)
 	UpdateTags(vpcId string, subnetId string, tagIds []string) (*common.SimpleResponse, error)
@@ -152,6 +154,16 @@ func (s *SubnetServiceImpl) FindSubnet(findDto FindSubnetDTO) (*Subnet, error) {
 // ListSubnet list subnet
 func (s *SubnetServiceImpl) ListSubnet(vpcId string) (*[]Subnet, error) {
 	var apiPath = common.ApiPath.ListSubnets(vpcId)
+	return s.listSubnetByPath(apiPath)
+}
+
+// ListSubnetIaas list subnet from networks-iaas endpoint
+func (s *SubnetServiceImpl) ListSubnetIaas(vpcId string) (*[]Subnet, error) {
+	var apiPath = common.ApiPath.ListSubnetsIaas(vpcId)
+	return s.listSubnetByPath(apiPath)
+}
+
+func (s *SubnetServiceImpl) listSubnetByPath(apiPath string) (*[]Subnet, error) {
 	resp, err := s.client.SendGetRequest(apiPath)
 	if err != nil {
 		return nil, common.DecodeError(err)
