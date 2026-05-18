@@ -28,6 +28,11 @@ func DataSourceSubnet() *schema.Resource {
 				ValidateFunc: validation.NoZeroValues,
 				Description:  "The vpc id of the subnet",
 			},
+			"is_networks_iaas": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "If true, the data source will return the network IaaS ID.",
+			},
 		},
 	}
 
@@ -45,6 +50,11 @@ func subnetSchema() map[string]*schema.Schema {
 			Type:        schema.TypeString,
 			Computed:    true,
 			Description: "The network id of the subnet",
+		},
+		"network_iaas_id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "The network iaas id of the subnet",
 		},
 		"name": {
 			Type:        schema.TypeString,
@@ -87,6 +97,7 @@ func flattenSubnet(subnet, _ interface{}, _ map[string]interface{}) (map[string]
 	flattened := map[string]interface{}{}
 	flattened["id"] = s.ID
 	flattened["network_id"] = s.NetworkID
+	flattened["network_iaas_id"] = s.NetworkIaasID
 	flattened["name"] = s.Name
 	flattened["network_name"] = s.NetworkName
 	flattened["gateway"] = s.Gateway
@@ -111,7 +122,16 @@ func getSubnets(m interface{}, extra map[string]interface{}) ([]interface{}, err
 		return nil, fmt.Errorf("[ERR] Vpc id is required")
 	}
 
-	result, err := service.ListSubnet(vpcId)
+	useNetworksIaas, _ := extra["is_networks_iaas"].(bool)
+
+	var result *[]Subnet
+	var err error
+	if useNetworksIaas {
+		result, err = service.ListSubnetIaas(vpcId)
+	} else {
+		result, err = service.ListSubnet(vpcId)
+	}
+
 	if err != nil || len(*result) == 0 {
 		return nil, fmt.Errorf("[ERR] Failed to retrieve subnet: %s", err)
 	}

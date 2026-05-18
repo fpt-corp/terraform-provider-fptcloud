@@ -40,6 +40,7 @@ output "show_value" {
 
 - `filter` (Block Set) One or more key/value pairs on which to filter results (see [below for nested schema](#nestedblock--filter))
 - `sort` (Block List) One or more key/direction pairs on which to sort results (see [below for nested schema](#nestedblock--sort))
+- `is_networks_iaas` (Boolean) If true, the data source will return the network IaaS ID.
 
 ### Read-Only
 
@@ -82,6 +83,7 @@ Read-Only:
 - `gateway` (String)
 - `id` (String)
 - `network_id` (String)
+- `network_iaas_id` (String)
 - `name` (String)
 - `network_name` (String)
 - `primary_dns_ip` (String) The primary DNS IP address of the subnet
