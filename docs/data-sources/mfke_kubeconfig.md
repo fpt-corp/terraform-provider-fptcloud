@@ -10,7 +10,7 @@ description: |-
 
 Retrieves the kubeconfig for a Managed FKE cluster, exposing the cluster endpoint, CA certificate, and authentication token.
 
-The cluster must be in **RUNNING/READY** state before using this data source. If the cluster is still provisioning, the data source will automatically retry for up to 15 minutes (every 60 seconds) before returning an error.
+The cluster must be in **RUNNING/READY** state before using this data source.
 
 ## Example Usage
 
