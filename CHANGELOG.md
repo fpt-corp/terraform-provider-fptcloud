@@ -1,3 +1,8 @@
+## [0.3.48] - 2026-06-02
+
+### Resource
+
+- Feat: add new datasource mfke_kubeconfig for M-FKE
 ## [0.3.47] - 2026-02-04
 
 ### Resource

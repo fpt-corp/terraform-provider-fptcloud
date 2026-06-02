@@ -19,6 +19,16 @@ func newMfkeApiClient(c *commons.Client) *MfkeApiClient {
 	return &MfkeApiClient{c}
 }
 
+// NewMfkeApiClient creates an exported MfkeApiClient for use by other packages
+func NewMfkeApiClient(c *commons.Client) *MfkeApiClient {
+	return &MfkeApiClient{c}
+}
+
+// SendGetWithInfraType sends a GET request with the infra-type and fpt-region headers set
+func (m *MfkeApiClient) SendGetWithInfraType(requestURL string, infraType string) ([]byte, error) {
+	return m.sendGet(requestURL, infraType)
+}
+
 func (m *MfkeApiClient) sendGet(requestURL string, infraType string) ([]byte, error) {
 	u := m.Client.PrepareClientURL(requestURL)
 	req, err := http.NewRequest("GET", u.String(), nil)
