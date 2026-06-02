@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
 	common "terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
@@ -62,9 +63,9 @@ func (s *MfkeKubeconfigServiceImpl) GetKubeconfig(ctx context.Context, vpcId, cl
 			}
 			if time.Now().After(deadline) {
 				return nil, fmt.Errorf(
-					"kubeconfig for cluster %q is not yet available after waiting %s. "+
-						"The cluster may still be provisioning — please ensure the cluster is in RUNNING/READY state and try again later",
-					clusterId, kubeconfigPollTimeout,
+					"kubeconfig for cluster %q is not yet available. "+
+						"The cluster may still be provisioning — please try again later",
+					clusterId,
 				)
 			}
 			time.Sleep(kubeconfigPollInterval)
