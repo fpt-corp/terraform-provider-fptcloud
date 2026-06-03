@@ -80,6 +80,7 @@ var ApiPath = struct {
 	ManagedFKECheckEnableServiceAccount func(vpcId string, platform string) string
 	ManagedFKECheckQuotaResource        func(vpcId string, platform string) string
 	ManagedFKEStoragePolicy             func(vpcId string) string
+	ManagedFKEKubeconfig                func(vpcId string, platform string, clusterId string) string
 
 	// GPU
 	GetGPUInfo func(vpcId string) string
@@ -432,6 +433,13 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v1/internal/vpc/%s/find_storage_policy",
 			vpcId,
+		)
+	},
+
+	ManagedFKEKubeconfig: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/get-kubeconfig/%s?direct=1",
+			vpcId, platform, clusterId,
 		)
 	},
 
