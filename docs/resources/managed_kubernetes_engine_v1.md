@@ -113,19 +113,22 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
 }
 ```
 
-### With Auto Upgrade Version
+### Configure Automatic Kubernetes Version Upgrades
+
+Use a five-field cron expression (`minute hour day-of-month month day-of-week`)
+and an IANA timezone. For example, `0 2 * * 0` means every Sunday at 02:00 in
+the configured timezone.
 
 ```hcl
 resource "fptcloud_managed_kubernetes_engine_v1" "example_with_auto_upgrade" {
   vpc_id       = "your-vpc-id"
   cluster_name = "example-cluster-with-auto-upgrade"
   network_id   = "your-network-id"
-  k8s_version  = "1.28.0"
 
-  # Enable auto upgrade version configuration
-  is_enable_auto_upgrade = true
-  auto_upgrade_expression = [ "0 0 * * *" ]
-  auto_upgrade_timezone = "Asia/Saigon"
+  # Allow M-FKE to perform version upgrades every Sunday at 02:00 (UTC+7).
+  is_enable_auto_upgrade  = true
+  auto_upgrade_expression = ["0 2 * * 0"]
+  auto_upgrade_timezone   = "Asia/Bangkok"
 
   pools {
     name             = "worker-pool-1"
@@ -137,6 +140,19 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_auto_upgrade" {
   }
 }
 ```
+
+When auto-upgrade is disabled, set `is_enable_auto_upgrade = false` and remove
+both `auto_upgrade_expression` and `auto_upgrade_timezone` from the resource
+configuration:
+
+```hcl
+is_enable_auto_upgrade = false
+
+# Do not configure auto_upgrade_expression or auto_upgrade_timezone.
+```
+
+Do not leave either scheduling field configured when auto-upgrade is disabled,
+including with an empty list or an empty string.
 
 ### With Cluster Endpoint Access
 
@@ -229,8 +245,8 @@ resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
   edge_gateway_name   = "my-edge-gateway"
   internal_subnet_lb  = "10.0.1.0/24"
 
-  # Auto upgrade configuration
-  is_enable_auto_upgrade = true
+  # Automatic Kubernetes version upgrade: every Sunday at 02:00 local time.
+  is_enable_auto_upgrade  = true
   auto_upgrade_expression = ["0 2 * * 0"]  # Every Sunday at 2 AM
   auto_upgrade_timezone   = "Asia/Ho_Chi_Minh"
 
@@ -376,9 +392,18 @@ The following arguments are supported:
 * `internal_subnet_lb` - (Optional) Internal subnet for load balancer
 
 #### Auto Upgrade Configuration
-* `is_enable_auto_upgrade` - (Optional) Enable automatic Kubernetes version upgrades. Default: `false`
-* `auto_upgrade_expression` - (Optional) Cron expressions for auto-upgrade schedule. Default: `[]`
-* `auto_upgrade_timezone` - (Optional) Timezone for auto-upgrade schedule. Default: `"Asia/Saigon"`
+* `is_enable_auto_upgrade` - (Optional) Allows the M-FKE service to perform automatic Kubernetes version upgrades during the configured maintenance schedules. Default: `false`. When set to `false`, remove both `auto_upgrade_expression` and `auto_upgrade_timezone` from the resource configuration.
+* `auto_upgrade_expression` - (Optional) List of five-field cron expressions (`minute hour day-of-month month day-of-week`) defining when M-FKE may perform an automatic upgrade. Configure at least one expression only when auto-upgrade is enabled. Do not configure this argument when `is_enable_auto_upgrade` is `false`.
+* `auto_upgrade_timezone` - (Optional) IANA timezone used to evaluate `auto_upgrade_expression`, for example `"Asia/Bangkok"`. Configure this argument only when auto-upgrade is enabled. Do not configure it when `is_enable_auto_upgrade` is `false`.
+
+The M-FKE service determines the target Kubernetes version; these fields only
+control whether automatic upgrades are enabled and when they may run. All three
+fields can be changed in place without recreating the cluster. They do not
+start an immediate upgrade. To request a manual upgrade during
+`terraform apply`, change `k8s_version`; downgrades are not allowed, and each
+update can advance by at most one Kubernetes minor version. If `k8s_version`
+is kept in HCL while auto-upgrade is enabled, either keep it synchronized with
+the actual version or use `lifecycle { ignore_changes = [k8s_version] }`.
 
 #### Advanced Configuration
 * `hibernation_schedules` - (Optional) List of hibernation schedules for the cluster

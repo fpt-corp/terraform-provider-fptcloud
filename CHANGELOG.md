@@ -1,3 +1,9 @@
+## [0.3.51] - 2026-06-19
+
+### Resource
+
+- Feat: support MFKE in region SGN2 
+
 ## [0.3.50] - 2026-06-02
 
 ### Resource
