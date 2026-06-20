@@ -817,17 +817,17 @@ func (r *resourceDatabase) checkForError(a []byte) *diag2.ErrorDiagnostic {
 }
 
 type dataNodeConfig struct {
-	NodeType     string json:"node_type"
-	NodeRam      int    json:"node_ram"
-	NodeCpu      int    json:"node_cpu"
-	FlavorId     string json:"flavor_id"
-	Flavor       string json:"flavor"
-	DataDiskSize int    json:"data_disk_size"
-	NumberOfNode int    json:"number_of_node"
+	NodeType     string `json:"node_type"`
+	NodeRam      int    `json:"node_ram"`
+	NodeCpu      int    `json:"node_cpu"`
+	FlavorId     string `json:"flavor_id"`
+	Flavor       string `json:"flavor"`
+	DataDiskSize int    `json:"data_disk_size"`
+	NumberOfNode int    `json:"number_of_node"`
 }
 
 type dataNodeType struct {
-	DataNode dataNodeConfig json:"data_node"
+	DataNode dataNodeConfig `json:"data_node"`
 }
 
 type databaseJson struct {
