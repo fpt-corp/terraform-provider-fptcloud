@@ -760,6 +760,45 @@ func (r *resourceDatabase) remap(from *databaseResourceModel, to *databaseJson) 
 	to.MaintenanceEmail = from.MaintenanceEmail.ValueString()
 	to.DayOfWeekMaintenance = int(from.DayOfWeekMaintenance.ValueInt64())
 	to.TimeMaintenance = from.TimeMaintenance.ValueString()
+	to.DataNodeType = dataNodeType{
+		DataNode: dataNodeConfig{
+			NodeType:     "data_node",
+			NodeRam:      int(from.NodeRam.ValueInt64()),
+			NodeCpu:      int(from.NodeCpu.ValueInt64()),
+			FlavorId:     from.FlavorId.ValueString(),
+			Flavor:       from.Flavor.ValueString(),
+			DataDiskSize: int(from.DataDiskSize.ValueInt64()),
+			NumberOfNode: countNode(
+				from.TypeDb.ValueString(),
+				int(from.MasterCount.ValueInt64()),
+				int(from.WorkerCount.ValueInt64()),
+				from.IsCluster.ValueString(),
+			),
+		},
+	}
+}
+
+func countNodeClickhouse(workerCount int, isCluster string) int {
+	if isCluster != "yes" {
+		return workerCount
+	}
+	if workerCount == 1 {
+		return 3
+	}
+	return workerCount * 2
+}
+
+func countNode(typeDb string, masterCount int, workerCount int, isCluster string) int {
+	switch typeDb {
+	case "clickhouse":
+		return countNodeClickhouse(workerCount, isCluster)
+	case "cassandra":
+		return workerCount
+	case "redis_sharding":
+		return workerCount * 2
+	default:
+		return masterCount + workerCount
+	}
 }
 
 // Check if the response contains an error
@@ -777,39 +816,54 @@ func (r *resourceDatabase) checkForError(a []byte) *diag2.ErrorDiagnostic {
 	return nil
 }
 
+type dataNodeConfig struct {
+	NodeType     string json:"node_type"
+	NodeRam      int    json:"node_ram"
+	NodeCpu      int    json:"node_cpu"
+	FlavorId     string json:"flavor_id"
+	Flavor       string json:"flavor"
+	DataDiskSize int    json:"data_disk_size"
+	NumberOfNode int    json:"number_of_node"
+}
+
+type dataNodeType struct {
+	DataNode dataNodeConfig json:"data_node"
+}
+
 type databaseJson struct {
-	Id                   string `json:"id,omitempty"`
-	VpcId                string `json:"vpc_id"`
-	NetworkId            string `json:"network_id"`
-	VmNetwork            string `json:"vm_network"`
-	TypeConfig           string `json:"type_config"`
-	TypeDb               string `json:"type_db"`
-	Version              string `json:"version"`
-	VdcName              string `json:"vdc_name"`
-	IsCluster            string `json:"is_cluster"`
-	MasterCount          int    `json:"master_count"`
-	WorkerCount          int    `json:"worker_count"`
-	NodeCpu              int    `json:"node_cpu"`
-	NodeCore             int    `json:"node_core"`
-	NodeRam              int    `json:"node_ram"`
-	DataDiskSize         int    `json:"data_disk_size"`
-	ClusterName          string `json:"cluster_name"`
-	DatabaseName         string `json:"database_name"`
-	VhostName            string `json:"vhost_name"`
-	IsPublic             string `json:"is_public"`
-	AdminPassword        string `json:"admin_password"`
-	StorageProfile       string `json:"storage_profile"`
-	EdgeId               string `json:"edge_id"`
-	Edition              string `json:"edition"`
-	FlavorId             string `json:"flavor_id"`
-	IsOps                string `json:"is_ops"`
-	Flavor               string `json:"flavor"`
-	NumberOfNode         int    `json:"number_of_node"`
-	NumberOfShard        int    `json:"number_of_shard"`
-	DomainName           string `json:"domain_name"`
-	MaintenanceEmail     string `json:"maintenance_email"`
-	DayOfWeekMaintenance int    `json:"day_of_week_maintenance"`
-	TimeMaintenance      string `json:"time_maintenance"`
+	Id                   string       json:"id,omitempty"
+	VpcId                string       json:"vpc_id"
+	NetworkId            string       json:"network_id"
+	VmNetwork            string       json:"vm_network"
+	TypeConfig           string       json:"type_config"
+	TypeDb               string       json:"type_db"
+	Version              string       json:"version"
+	VdcName              string       json:"vdc_name"
+	IsCluster            string       json:"is_cluster"
+	MasterCount          int          json:"master_count"
+	WorkerCount          int          json:"worker_count"
+	NodeCpu              int          json:"node_cpu"
+	NodeCore             int          json:"node_core"
+	NodeRam              int          json:"node_ram"
+	DataDiskSize         int          json:"data_disk_size"
+	ClusterName          string       json:"cluster_name"
+	DatabaseName         string       json:"database_name"
+	VhostName            string       json:"vhost_name"
+	IsPublic             string       json:"is_public"
+	AdminPassword        string       json:"admin_password"
+	StorageProfile       string       json:"storage_profile"
+	EdgeId               string       json:"edge_id"
+	Edition              string       json:"edition"
+	FlavorId             string       json:"flavor_id"
+	IsOps                string       json:"is_ops"
+	Flavor               string       json:"flavor"
+	NumberOfNode         int          json:"number_of_node"
+	NumberOfShard        int          json:"number_of_shard"
+	DomainName           string       json:"domain_name"
+	MaintenanceEmail     string       json:"maintenance_email"
+	DayOfWeekMaintenance int          json:"day_of_week_maintenance"
+	TimeMaintenance      string       json:"time_maintenance"
+	DataNodeType         dataNodeType json:"data_node_type"
 }
 
 type databaseData struct {
