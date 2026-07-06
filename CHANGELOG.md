@@ -1,8 +1,13 @@
-## [0.3.52] - 2026-007-06
+## [0.3.53] - 2026-07-06
 
 ### Resource
 
 - Fix: update default purpose for MFKE
+## [0.3.52] - 2026-06-20
+
+### Resource
+
+- Feat: Add data_node_type key to database create payload
 ## [0.3.51] - 2026-06-19
 
 ### Resource
