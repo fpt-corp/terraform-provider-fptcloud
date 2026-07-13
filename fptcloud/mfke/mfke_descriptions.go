@@ -32,7 +32,7 @@ var descriptions = map[string]string{
 	"max_client":               "Maximum number of clients (optional)",
 	"gpu_sharing_client":       "GPU sharing client (optional)",
 	"driver_installation_type": "Driver installation type (optional)",
-	"internal_subnet_lb":       "Internal subnet for load balancer (optional)",
+	"internal_subnet_lb":       "Subnet used for the internal load balancer: subnet ID on OSP, subnet CIDR on VMW (optional)",
 	"edge_gateway_name":        "Edge gateway name (optional)",
 	"allowCidr":                "Allowed CIDR blocks for cluster endpoint access (optional)",
 	"is_enable_auto_upgrade":   "Whether to enable auto-upgrade (optional)",

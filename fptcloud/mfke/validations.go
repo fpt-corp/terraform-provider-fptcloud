@@ -165,14 +165,16 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 	return nil
 }
 
+// allowedK8sVersions lists every Kubernetes version the platform can provision.
+var allowedK8sVersions = []string{"1.34.6", "1.33.12", "1.32.5", "1.31.4", "1.30.8", "1.29.8", "1.28.13"}
+
 func validateK8sVersion(version string) *diag2.ErrorDiagnostic {
-	allowed := []string{"1.32.5", "1.31.4", "1.30.8", "1.29.8", "1.28.13"}
-	for _, v := range allowed {
+	for _, v := range allowedK8sVersions {
 		if version == v {
 			return nil
 		}
 	}
-	d := diag2.NewErrorDiagnostic("Invalid Kubernetes version", "k8s_version must be one of: "+strings.Join(allowed, ", "))
+	d := diag2.NewErrorDiagnostic("Invalid Kubernetes version", "k8s_version must be one of: "+strings.Join(allowedK8sVersions, ", "))
 	return &d
 }
 
@@ -189,13 +191,12 @@ func parseK8sMinorVersion(version string) (int, error) {
 }
 
 func validateK8sVersionUpdate(planVersion, stateVersion types.String) diag2.Diagnostic {
-	allowedVersions := []string{"1.32.5", "1.31.4", "1.30.8", "1.29.8", "1.28.13"}
 	if planVersion.IsNull() || planVersion.IsUnknown() || planVersion.ValueString() == "" {
 		return nil
 	}
 	plan := planVersion.ValueString()
 	found := false
-	for _, v := range allowedVersions {
+	for _, v := range allowedK8sVersions {
 		if plan == v {
 			found = true
 			break
@@ -204,7 +205,7 @@ func validateK8sVersionUpdate(planVersion, stateVersion types.String) diag2.Diag
 	if !found {
 		return diag2.NewErrorDiagnostic(
 			"Invalid k8s_version",
-			fmt.Sprintf("k8s_version must be one of: %s", strings.Join(allowedVersions, ", ")),
+			fmt.Sprintf("k8s_version must be one of: %s", strings.Join(allowedK8sVersions, ", ")),
 		)
 	}
 	if stateVersion.IsNull() || stateVersion.IsUnknown() || stateVersion.ValueString() == "" {

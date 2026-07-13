@@ -77,6 +77,7 @@ var ApiPath = struct {
 	ManagedFKEConfigWorker              func(vpcId string, platform string, clusterId string) string
 	ManagedFKEUpdateEndpointCIDR        func(vpcId string, platform string, clusterId string) string
 	ManagedFKEUpdateClusterAutoscaler   func(vpcId string, platform string, clusterId string) string
+	ManagedFKEConfigInternalSubnetLb    func(vpcId string, platform string, clusterId string) string
 	ManagedFKECheckEnableServiceAccount func(vpcId string, platform string) string
 	ManagedFKECheckQuotaResource        func(vpcId string, platform string) string
 	ManagedFKEStoragePolicy             func(vpcId string) string
@@ -411,6 +412,13 @@ var ApiPath = struct {
 	ManagedFKEUpdateClusterAutoscaler: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-cluster-auto-scaling/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+
+	ManagedFKEConfigInternalSubnetLb: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-internal-subnet-lb/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},

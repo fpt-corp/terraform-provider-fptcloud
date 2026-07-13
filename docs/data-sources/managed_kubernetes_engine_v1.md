@@ -34,7 +34,7 @@ Retrieve information about a managed FKE cluster.
 - `auto_upgrade_timezone` (String) Timezone for auto-upgrade (optional)
 - `edge_gateway_name` (String) Edge gateway name (optional)
 - `expander` (String) Autoscaler expander strategy (optional)
-- `internal_subnet_lb` (String) Internal subnet for load balancer (optional)
+- `internal_subnet_lb` (String) Subnet used for the internal load balancer: subnet ID on OSP, subnet CIDR on VMW (optional)
 - `is_enable_auto_scaling` (Boolean) Enable cluster autoscaling (optional)
 - `is_enable_auto_upgrade` (Boolean) Whether to enable auto-upgrade (optional)
 - `k8s_max_pod` (Number) Max pods per node

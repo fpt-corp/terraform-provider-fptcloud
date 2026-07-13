@@ -529,10 +529,13 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		return &d
 	}
 
+	// Both platforms take the same wire field; only the meaning of the value differs
+	// (OSP: subnet ID, VMW: subnet CIDR).
+	to.InternalSubnetLb = from.InternalSubnetLb.ValueString()
+
 	if strings.ToLower(platform) == "osp" {
 		to.EdgeGatewayId = ""
 		to.EdgeGatewayName = ""
-		to.InternalSubnetLb = ""
 	} else {
 		// get edge gateway name
 		edgeGatewayId := to.EdgeGatewayId
@@ -785,6 +788,14 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 	}
 
+	// Handle internal subnet LB changes
+	if !to.InternalSubnetLb.Equal(from.InternalSubnetLb) {
+		err := r.updateInternalSubnetLb(ctx, to, from)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Worker pool changes
 	if r.DiffPool(ctx, from, to) {
 		if err := r.updateWorkerPools(ctx, from, to); err != nil {
@@ -967,6 +978,19 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.Purpose = types.StringValue("firewall")
 	} else {
 		state.Purpose = types.StringValue("private")
+	}
+
+	// internal_subnet_lb
+	// OSP reports it as a subnet ID under internalNetworksLB; VMW reports it as a CIDR
+	// under networks.lbv2Subnet.
+	if strings.ToLower(platform) == "osp" {
+		internalSubnetLb := ""
+		if lb := data.Spec.Provider.InfrastructureConfig.InternalNetworksLB; lb != nil {
+			internalSubnetLb = lb.Id
+		}
+		state.InternalSubnetLb = types.StringValue(internalSubnetLb)
+	} else {
+		state.InternalSubnetLb = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Lbv2Subnet)
 	}
 
 	// network_id of Cluster
@@ -1585,6 +1609,97 @@ func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Co
 	tflog.Info(ctx, "Successfully updated cluster autoscaler.")
 
 	return nil
+}
+
+func (r *resourceManagedKubernetesEngine) updateInternalSubnetLb(ctx context.Context, plan *managedKubernetesEngine, state *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	vpcId := state.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+	platform = strings.ToLower(platform)
+
+	internalSubnetLb := plan.InternalSubnetLb.ValueString()
+	if internalSubnetLb == "" {
+		d := diag2.NewErrorDiagnostic(
+			"internal_subnet_lb cannot be removed",
+			"Detaching the internal subnet LB from an existing cluster is not supported; specify a subnet or destroy the cluster.",
+		)
+		return &d
+	}
+
+	// VMW takes the CIDR verbatim, OSP expects the full subnet descriptor
+	var payload interface{} = internalSubnetLb
+	if platform == "osp" {
+		subnet, diagErr := r.findNetworkSubnetById(vpcId, internalSubnetLb)
+		if diagErr != nil {
+			return diagErr
+		}
+		payload = map[string]interface{}{
+			"label4sending": subnet.Name,
+			"label":         subnet.Description,
+			"value":         subnet.ID,
+			"cidr":          fmt.Sprintf("%s/%d", subnet.DefaultGateway, subnet.SubnetPrefixLength),
+			"networkType":   subnet.NetworkType,
+		}
+	}
+
+	// seedName is only known to the shoot itself, so read it back from the cluster
+	cluster, err := r.InternalRead(ctx, state.Id.ValueString(), state)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
+		return &d
+	}
+
+	requestBody := map[string]interface{}{
+		"internal_subnet_lb": payload,
+		"seedName":           cluster.Data.Spec.SeedName,
+	}
+
+	path := commons.ApiPath.ManagedFKEConfigInternalSubnetLb(vpcId, platform, state.Id.ValueString())
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+
+	tflog.Info(ctx, "Successfully updated internal subnet LB.")
+	return nil
+}
+
+// findNetworkSubnetById resolves the subnet backing internal_subnet_lb. SubnetService is
+// not used here because none of its endpoints report networkType or the prefix length,
+// both of which config-internal-subnet-lb requires.
+func (r *resourceManagedKubernetesEngine) findNetworkSubnetById(vpcId string, subnetId string) (*networkSubnet, *diag2.ErrorDiagnostic) {
+	path := commons.ApiPath.Subnet(vpcId)
+	res, err := r.client.SendGetRequest(path)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return nil, &d
+	}
+
+	var subnets networkSubnetListResponse
+	if err = json.Unmarshal(res, &subnets); err != nil {
+		d := diag2.NewErrorDiagnostic("Error unmarshalling subnets of VPC "+vpcId, err.Error())
+		return nil, &d
+	}
+
+	for _, s := range subnets.Data {
+		if s.ID == subnetId {
+			return &s, nil
+		}
+	}
+
+	d := diag2.NewErrorDiagnostic(
+		"Subnet not found for internal_subnet_lb",
+		fmt.Sprintf("No subnet with ID %s exists in VPC %s", subnetId, vpcId),
+	)
+	return nil, &d
 }
 
 func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context, from *managedKubernetesEngine, to *managedKubernetesEngine) *diag2.ErrorDiagnostic {

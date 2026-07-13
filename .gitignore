@@ -29,6 +29,7 @@ go.work
 # .tfstate files
 *.tfstate
 *.tfstate.*
+*.tfvars
 
 # .log files
 *.log
