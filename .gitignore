@@ -29,6 +29,7 @@ go.work
 # .tfstate files
 *.tfstate
 *.tfstate.*
+*.tfvars
 
 # .log files
 *.log
@@ -45,3 +46,4 @@ test.sh
 tf.sh
 .specstory/**
 *.sh
+.claude

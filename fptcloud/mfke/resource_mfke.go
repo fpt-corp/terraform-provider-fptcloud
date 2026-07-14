@@ -75,15 +75,14 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 		return
 	}
 
-	// Get platform first to set appropriate defaults
 	platform, err := r.tenancyClient.GetVpcPlatform(ctx, state.VpcId.ValueString())
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error getting VPC platform", err.Error()))
 		return
 	}
 
-	// Set all defaults in one place with platform info
-	SetDefaults(&state, platform)
+	// Set all defaults in one place
+	SetDefaults(&state)
 
 	// Validate all in one place
 	if !ValidateCreate(&state, response) {

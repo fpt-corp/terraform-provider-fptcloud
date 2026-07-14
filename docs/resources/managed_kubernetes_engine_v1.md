@@ -243,7 +243,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
   # Edge Gateway configuration (for VMW operation clusters)
   edge_gateway_id     = "urn:vcloud:gateway:12345678-1234-1234-1234-123456789012"
   edge_gateway_name   = "my-edge-gateway"
-  internal_subnet_lb  = "10.0.1.0/24"
+  internal_subnet_lb  = "192.168.1.0/24" # VMW takes a CIDR; on OSP this is a subnet ID
 
   # Automatic Kubernetes version upgrade: every Sunday at 02:00 local time.
   is_enable_auto_upgrade  = true
@@ -389,7 +389,32 @@ The following arguments are supported:
 #### Edge Gateway Configuration (for VMW operation clusters)
 * `edge_gateway_id` - (Require) Edge gateway ID in format `urn:vcloud:gateway:<uuid>`
 * `edge_gateway_name` - (Optional) Edge gateway name
-* `internal_subnet_lb` - (Optional) Internal subnet for load balancer
+
+#### Internal Load Balancer Subnet
+* `internal_subnet_lb` - (Optional) Subnet backing the cluster's internal load balancer. Supported on both platforms, but **the value means a different thing on each**:
+
+| Platform | Value to provide | Example |
+|----------|------------------|---------|
+| VMW      | The subnet **CIDR** | `"192.168.1.0/24"` |
+| OSP      | The subnet **ID** (UUID) | `"482baa43-6797-471f-adad-4eb3fcf81883"` |
+
+On OSP, pass the subnet's ID, not its CIDR — the provider looks the subnet up to resolve its name, gateway, prefix length, and network type. Passing a CIDR there fails with `Subnet not found for internal_subnet_lb`. On VMW, pass the CIDR directly; a subnet ID is not accepted.
+
+Changing this value on an existing cluster reconfigures the load balancer in place. It cannot be removed once set — clearing it fails with `internal_subnet_lb cannot be removed`; destroy the cluster instead.
+
+```hcl
+# VMW: subnet CIDR
+resource "fptcloud_managed_kubernetes_engine_v1" "vmw_cluster" {
+  # ... other configuration ...
+  internal_subnet_lb = "192.168.1.0/24"
+}
+
+# OSP: subnet ID
+resource "fptcloud_managed_kubernetes_engine_v1" "osp_cluster" {
+  # ... other configuration ...
+  internal_subnet_lb = "482baa43-6797-471f-adad-4eb3fcf81883"
+}
+```
 
 #### Auto Upgrade Configuration
 * `is_enable_auto_upgrade` - (Optional) Allows the M-FKE service to perform automatic Kubernetes version upgrades during the configured maintenance schedules. Default: `false`. When set to `false`, remove both `auto_upgrade_expression` and `auto_upgrade_timezone` from the resource configuration.
@@ -521,7 +546,7 @@ The following fields are only validated when `vgpu_id` is set (indicating a GPU 
 - **Purpose**: Must be either `"public"` or `"private"`
 
 ### Kubernetes Version Validation
-- **Supported versions**: `1.32.5`, `1.31.4`, `1.30.8`, `1.29.8`, `1.28.13`
+- **Supported versions**: `1.34.6`, `1.33.12`, `1.32.5`, `1.31.4`, `1.30.8`, `1.29.8`, `1.28.13`
 
 ### Cluster Autoscaler Validation
 - **Expander strategies**: Must be one of: `"random"`, `"least-waste"`, `"most-pods"`, `"priority"` (case-insensitive)

@@ -1,3 +1,9 @@
+## [0.3.53] - 2026-07-14
+
+### Resource
+
+- Feat: MFKE: Add config internalNetworkLB key to MFKE cluster
+
 ## [0.3.52] - 2026-06-20
 
 ### Resource

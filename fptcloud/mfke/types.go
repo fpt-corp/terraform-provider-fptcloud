@@ -158,6 +158,23 @@ type managedKubernetesEnginePoolJson struct {
 	WorkerBase         bool `json:"worker_base"`
 }
 
+// networkSubnet is one entry of the network/subnets listing. That endpoint is the only
+// one exposing networkType and the prefix length, both required by config-internal-subnet-lb.
+// Beware: it swaps the meaning of id and network_id compared to the /networks endpoint
+// backing fptcloud_subnet.SubnetService, so id here is what SubnetService calls NetworkID.
+type networkSubnet struct {
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Description        string `json:"description"`
+	DefaultGateway     string `json:"defaultGateway"`
+	SubnetPrefixLength int    `json:"subnetPrefixLength"`
+	NetworkType        string `json:"networkType"`
+}
+
+type networkSubnetListResponse struct {
+	Data []networkSubnet `json:"data"`
+}
+
 type managedKubernetesEngineCreateResponse struct {
 	Error bool `json:"error"`
 	Kpi   struct {
@@ -210,16 +227,23 @@ type managedKubernetesEngineDataSpec struct {
 		} `json:"matchLabels"`
 	} `json:"seedSelector"`
 
+	SeedName string `json:"seedName"`
+
 	Provider struct {
 		InfrastructureConfig struct {
 			Networks struct {
 				Id         string `json:"id"`
 				Workers    string `json:"workers"`
+				Lbv2Subnet string `json:"lbv2Subnet"`
 				GatewayRef struct {
 					Id   string `json:"id"`
 					Name string `json:"name"`
 				} `json:"gatewayRef"`
 			} `json:"networks"`
+			InternalNetworksLB *struct {
+				Id      string      `json:"id"`
+				Subnets interface{} `json:"subnets"`
+			} `json:"internalNetworksLB"`
 		} `json:"infrastructureConfig"`
 		Workers []*managedKubernetesEngineDataWorker `json:"workers"`
 	} `json:"provider"`
