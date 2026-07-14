@@ -7,6 +7,7 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os:
           - ubuntu-latest
@@ -25,11 +26,16 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
         with:
-          go-version-file: 'go.mod'
+          # Not go-version-file: go.mod pins 1.21, whose linker emits Mach-O binaries
+          # without LC_UUID. dyld on the macOS 15 runners refuses to load those, so every
+          # `go test` binary aborts before running. Fixed in Go >= 1.22.7 / 1.23.1.
+          go-version: '1.24'
       - name: Run linters
         uses: golangci/golangci-lint-action@aaa42aa0628b4ae2578232a66b541047968fac86 # v6.1.0
         with:
-          version: latest
+          # Must stay on the 1.x line: .golangci.yml is v1 format (disable-all, gosimple,
+          # tenv), which golangci-lint v2 rejects. `latest` now resolves to v2.
+          version: v1.64.8
           args: --timeout=3m
       - name: go vet
         run: go vet ./...

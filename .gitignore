@@ -46,3 +46,4 @@ test.sh
 tf.sh
 .specstory/**
 *.sh
+.claude
