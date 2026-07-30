@@ -120,8 +120,13 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 
 	platform = strings.ToLower(platform)
 
-	path := commons.ApiPath.ManagedFKEGet(vpcId, platform, id)
-	a, err := d.mfkeClient.sendGet(path, platform)
+	v1Path := commons.ApiPath.ManagedFKEGet(vpcId, platform, id)
+	v2Path := commons.ApiPath.ManagedFKEGetV2(vpcId, platform, id)
+	primaryPath, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, state.K8SVersion.ValueString()) {
+		primaryPath, fallbackPath = v2Path, v1Path
+	}
+	a, err := d.mfkeClient.sendGetV2Aware(primaryPath, fallbackPath, platform)
 	if err != nil {
 		return nil, err
 	}

@@ -900,8 +900,13 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		return nil, err
 	}
 	platform = strings.ToLower(platform)
-	path := commons.ApiPath.ManagedFKEGet(vpcId, platform, id)
-	a, err := r.mfkeClient.sendGet(path, platform)
+	v1Path := commons.ApiPath.ManagedFKEGet(vpcId, platform, id)
+	v2Path := commons.ApiPath.ManagedFKEGetV2(vpcId, platform, id)
+	primaryPath, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, state.K8SVersion.ValueString()) {
+		primaryPath, fallbackPath = v2Path, v1Path
+	}
+	a, err := r.mfkeClient.sendGetV2Aware(primaryPath, fallbackPath, platform)
 	if err != nil {
 		return nil, err
 	}
@@ -1013,9 +1018,9 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 
 	// edge_gateway_id
 	// if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
-	// 	state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
+	// state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
 	// } else {
-	// 	state.EdgeGatewayId = types.StringNull()
+	// state.EdgeGatewayId = types.StringNull()
 	// }
 	// edge_gateway_name and edge_gateway_id
 	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
@@ -1027,11 +1032,12 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.EdgeGatewayId = types.StringNull()
 	}
 
-	// is_running
-	isRunning := false
-	if len(data.Status.Conditions) > 0 {
-		isRunning = data.Status.Conditions[0].Status == "True"
-	}
+	// is_running reflects the desired hibernation state (spec.hibernation),
+	// not transient control-plane health: a cluster still provisioning (or
+	// whose first status condition just isn't a True/False health check,
+	// as seen on v2/OSP responses) is not "hibernated", so treat a missing
+	// or disabled hibernation spec as running.
+	isRunning := true
 	if data.Spec.Hibernate != nil {
 		isRunning = !data.Spec.Hibernate.Enabled
 	}
@@ -1398,8 +1404,13 @@ func (r *resourceManagedKubernetesEngine) upgradeVersion(ctx context.Context, fr
 		return &d
 	}
 	platform = strings.ToLower(platform)
-	path := commons.ApiPath.ManagedFKEUpgradeVersion(vpcId, platform, clusterId, targetVersion)
-	body, err := r.mfkeClient.sendPatch(ctx, path, platform, struct{}{})
+	v1Path := commons.ApiPath.ManagedFKEUpgradeVersion(vpcId, platform, clusterId, targetVersion)
+	v2Path := commons.ApiPath.ManagedFKEUpgradeVersionV2(vpcId, platform, clusterId, targetVersion)
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, from.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
+	body, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, struct{}{})
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(
 			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
@@ -1423,9 +1434,14 @@ func (r *resourceManagedKubernetesEngine) updateIsRunning(ctx context.Context, t
 
 	platform = strings.ToLower(platform)
 	isWakeup := to.IsRunning.ValueBool()
-	path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
+	v1Path := commons.ApiPath.ManagedFKEHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
+	v2Path := commons.ApiPath.ManagedFKEHibernateV2(vpcId, platform, from.Id.ValueString(), isWakeup)
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, from.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
 
-	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, nil)
+	resp, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, nil)
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return &d
@@ -1446,7 +1462,12 @@ func (r *resourceManagedKubernetesEngine) updateAutoUpgradeVersion(ctx context.C
 	}
 
 	platform = strings.ToLower(platform)
-	path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
+	v1Path := commons.ApiPath.ManagedFKEAutoUpgradeVersion(vpcId, platform, clusterId)
+	v2Path := commons.ApiPath.ManagedFKEAutoUpgradeVersionV2(vpcId, platform, clusterId)
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, from.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
 
 	exprs := []string{}
 	if !to.AutoUpgradeExpression.IsNull() && !to.AutoUpgradeExpression.IsUnknown() {
@@ -1463,7 +1484,7 @@ func (r *resourceManagedKubernetesEngine) updateAutoUpgradeVersion(ctx context.C
 		"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
 	}
 
-	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
+	resp, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, body)
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return &d
@@ -1509,8 +1530,13 @@ func (r *resourceManagedKubernetesEngine) updateHibernationSchedules(ctx context
 	}
 
 	platform = strings.ToLower(platform)
-	path := commons.ApiPath.ManagedFKEHibernationSchedules(vpcId, platform, state.Id.ValueString())
-	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
+	v1Path := commons.ApiPath.ManagedFKEHibernationSchedules(vpcId, platform, state.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedFKEHibernationSchedulesV2(vpcId, platform, state.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, state.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
+	resp, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return &d
@@ -1533,7 +1559,12 @@ func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(ctx context.
 		return &d
 	}
 	platform = strings.ToLower(platform)
-	path := commons.ApiPath.ManagedFKEUpdateEndpointCIDR(vpcId, platform, state.Id.ValueString())
+	v1Path := commons.ApiPath.ManagedFKEUpdateEndpointCIDR(vpcId, platform, state.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedFKEUpdateEndpointCIDRV2(vpcId, platform, state.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, state.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
 
 	// Lấy type từ state
 	endpointAccess := state.ClusterEndpointAccess.Attributes()
@@ -1553,7 +1584,7 @@ func (r *resourceManagedKubernetesEngine) updateClusterEndpointCIDR(ctx context.
 		"allowCidr": allowCidrs,   // đúng key name theo API
 	}
 
-	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return &d
@@ -1577,7 +1608,12 @@ func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Co
 		return &d
 	}
 	platform = strings.ToLower(platform)
-	path := commons.ApiPath.ManagedFKEUpdateClusterAutoscaler(vpcId, platform, state.Id.ValueString())
+	v1Path := commons.ApiPath.ManagedFKEUpdateClusterAutoscaler(vpcId, platform, state.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedFKEUpdateClusterAutoscalerV2(vpcId, platform, state.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, state.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
 
 	// Get cluster autoscaler attributes from plan
 	autoscalerAttrs := plan.ClusterAutoscaler.Attributes()
@@ -1593,7 +1629,7 @@ func (r *resourceManagedKubernetesEngine) updateClusterAutoscaler(ctx context.Co
 		"expander":                      strings.ToLower(autoscalerAttrs["expander"].(types.String).ValueString()),
 	}
 
-	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
+	resp, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return &d
@@ -1657,8 +1693,13 @@ func (r *resourceManagedKubernetesEngine) updateInternalSubnetLb(ctx context.Con
 		"seedName":           cluster.Data.Spec.SeedName,
 	}
 
-	path := commons.ApiPath.ManagedFKEConfigInternalSubnetLb(vpcId, platform, state.Id.ValueString())
-	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, requestBody)
+	v1Path := commons.ApiPath.ManagedFKEConfigInternalSubnetLb(vpcId, platform, state.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedFKEConfigInternalSubnetLbV2(vpcId, platform, state.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, cluster.Data.Spec.Kubernetes.Version) {
+		path, fallbackPath = v2Path, v1Path
+	}
+	resp, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
 	if err != nil {
 		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
 		return &d
@@ -1750,8 +1791,13 @@ func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context,
 	}
 
 	// Call API to configure workers
-	path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
-	res, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
+	v1Path := commons.ApiPath.ManagedFKEConfigWorker(vpcId, platform, from.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedFKEConfigWorkerV2(vpcId, platform, from.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, d.Data.Spec.Kubernetes.Version) {
+		path, fallbackPath = v2Path, v1Path
+	}
+	res, err := r.mfkeClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, body)
 	if err != nil {
 		d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
 		return &d
@@ -2003,45 +2049,45 @@ func (m *MfkeApiClient) checkServiceAccount(ctx context.Context, vpcId string, p
 }
 
 // func (m *MfkeApiClient) checkQuotaResource(ctx context.Context, vpcId string, platform string) (bool, error) {
-// 	path := commons.ApiPath.ManagedFKECheckQuotaResource(vpcId, strings.ToLower(platform))
+// path := commons.ApiPath.ManagedFKECheckQuotaResource(vpcId, strings.ToLower(platform))
 
-// 	tflog.Info(ctx, fmt.Sprintf("Checking quota resource: %s", path))
+// tflog.Info(ctx, fmt.Sprintf("Checking quota resource: %s", path))
 
-// 	responseBody, err := m.sendPost(ctx, path, strings.ToUpper(platform), nil)
-// 	if err != nil {
-// 		// Check if it's an HTTPError (non-200 status code from HTTP layer)
-// 		var httpErr commons.HTTPError
-// 		if errors.As(err, &httpErr) {
-// 			// Try to parse the response body if available
-// 			var quotaResp quotaResourceResponse
-// 			if parseErr := json.Unmarshal([]byte(httpErr.Reason), &quotaResp); parseErr == nil {
-// 				// If we can parse the response, use the message from API
-// 				if len(quotaResp.Mess) > 0 {
-// 					return false, errors.New(strings.Join(quotaResp.Mess, "; "))
-// 				}
-// 			}
-// 			return false, fmt.Errorf("quota resource check returned status code %d: %s", httpErr.Code, httpErr.Reason)
-// 		}
-// 		// Network or other error
-// 		return false, err
-// 	}
+// responseBody, err := m.sendPost(ctx, path, strings.ToUpper(platform), nil)
+// if err != nil {
+// // Check if it's an HTTPError (non-200 status code from HTTP layer)
+// var httpErr commons.HTTPError
+// if errors.As(err, &httpErr) {
+// // Try to parse the response body if available
+// var quotaResp quotaResourceResponse
+// if parseErr := json.Unmarshal([]byte(httpErr.Reason), &quotaResp); parseErr == nil {
+// // If we can parse the response, use the message from API
+// if len(quotaResp.Mess) > 0 {
+// return false, errors.New(strings.Join(quotaResp.Mess, "; "))
+// }
+// }
+// return false, fmt.Errorf("quota resource check returned status code %d: %s", httpErr.Code, httpErr.Reason)
+// }
+// // Network or other error
+// return false, err
+// }
 
-// 	// Parse response to check status_code
-// 	var quotaResp quotaResourceResponse
-// 	if err := json.Unmarshal(responseBody, &quotaResp); err != nil {
-// 		return false, fmt.Errorf("error parsing quota resource response: %w", err)
-// 	}
+// // Parse response to check status_code
+// var quotaResp quotaResourceResponse
+// if err := json.Unmarshal(responseBody, &quotaResp); err != nil {
+// return false, fmt.Errorf("error parsing quota resource response: %w", err)
+// }
 
-// 	// Check status_code from response
-// 	if quotaResp.StatusCode == 200 {
-// 		tflog.Info(ctx, "Quota resource check passed")
-// 		return true, nil
-// 	}
+// // Check status_code from response
+// if quotaResp.StatusCode == 200 {
+// tflog.Info(ctx, "Quota resource check passed")
+// return true, nil
+// }
 
-// 	// Non-200 status code, return message from API
-// 	errorMsg := fmt.Sprintf("quota resource check failed with status code %d", quotaResp.StatusCode)
-// 	if len(quotaResp.Mess) > 0 {
-// 		errorMsg = strings.Join(quotaResp.Mess, "; ")
-// 	}
-// 	return false, errors.New(errorMsg)
+// // Non-200 status code, return message from API
+// errorMsg := fmt.Sprintf("quota resource check failed with status code %d", quotaResp.StatusCode)
+// if len(quotaResp.Mess) > 0 {
+// errorMsg = strings.Join(quotaResp.Mess, "; ")
+// }
+// return false, errors.New(errorMsg)
 // }
