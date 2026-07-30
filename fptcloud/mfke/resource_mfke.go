@@ -132,6 +132,10 @@ func (r *resourceManagedKubernetesEngine) Create(ctx context.Context, request re
 	// }
 
 	path := commons.ApiPath.ManagedFKECreate(state.VpcId.ValueString(), strings.ToLower(platform))
+	if requiresV2API(platform, f.K8SVersion) {
+		path = commons.ApiPath.ManagedFKECreateV2(state.VpcId.ValueString(), strings.ToLower(platform))
+		f.IsV2 = true
+	}
 	tflog.Info(ctx, "Calling path "+path)
 	a, err := r.mfkeClient.sendPost(ctx, path, platform, f)
 
@@ -265,11 +269,17 @@ func (r *resourceManagedKubernetesEngine) Delete(ctx context.Context, request re
 		return
 	}
 
-	path := commons.ApiPath.ManagedFKEDelete(vpcId, strings.ToLower(platform), clusterId)
+	platformLower := strings.ToLower(platform)
+	v1Path := commons.ApiPath.ManagedFKEDelete(vpcId, platformLower, clusterId)
+	v2Path := commons.ApiPath.ManagedFKEDeleteV2(vpcId, platformLower, clusterId)
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(platform, state.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
 
 	tflog.Info(ctx, "Attempting to delete cluster "+cluster+", DELETE "+path)
 
-	_, err = r.mfkeClient.sendDelete(path, strings.ToLower(platform))
+	_, err = r.mfkeClient.sendDeleteV2Aware(path, fallbackPath, platformLower)
 	if err != nil {
 		tflog.Error(ctx, "Error deleting cluster "+cluster+": "+err.Error())
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error()))

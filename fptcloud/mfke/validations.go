@@ -190,6 +190,39 @@ func parseK8sMinorVersion(version string) (int, error) {
 	return minor, nil
 }
 
+// v2MinK8sMajor and v2MinK8sMinor are the minimum Kubernetes version at which
+// clusters must be managed through the m-fke v2 API family (create, get,
+// delete, hibernate, ...) instead of the legacy v1 API.
+const v2MinK8sMajor, v2MinK8sMinor = 1, 33
+
+// v2Platforms lists the platforms whose clusters must use the v2 API family
+// once k8s_version reaches v2MinK8sMajor.v2MinK8sMinor. Add a platform here
+// once its backend supports the v2 endpoints.
+var v2Platforms = map[string]bool{
+	"osp": true,
+}
+
+// requiresV2API reports whether calls for this platform/k8s_version
+// combination must target the v2 API family rather than the legacy v1 one.
+func requiresV2API(platform string, k8sVersion string) bool {
+	if !v2Platforms[strings.ToLower(platform)] {
+		return false
+	}
+	parts := strings.SplitN(k8sVersion, ".", 3)
+	if len(parts) < 2 {
+		return false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false
+	}
+	return major > v2MinK8sMajor || (major == v2MinK8sMajor && minor >= v2MinK8sMinor)
+}
+
 func validateK8sVersionUpdate(planVersion, stateVersion types.String) diag2.Diagnostic {
 	if planVersion.IsNull() || planVersion.IsUnknown() || planVersion.ValueString() == "" {
 		return nil
@@ -265,13 +298,13 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 		}
 	}
 	// else {
-	// 	if state.NetworkID.ValueString() != "" {
-	// 		d := diag2.NewErrorDiagnostic(
-	// 			"Global network ID is not supported",
-	// 			"Network ID must be specified per worker group, not globally",
-	// 		)
-	// 		return &d
-	// 	}
+	// if state.NetworkID.ValueString() != "" {
+	// d := diag2.NewErrorDiagnostic(
+	// "Global network ID is not supported",
+	// "Network ID must be specified per worker group, not globally",
+	// )
+	// return &d
+	// }
 	// }
 
 	// Validate network_overlay based on network_type
@@ -622,10 +655,10 @@ func validateImmutableInt64Field(fieldName string, plan, state types.Int64) diag
 
 func validateImmutablePoolStringField(planPools, statePools []*managedKubernetesEnginePool) diag2.Diagnostic {
 	// if len(planPools) != len(statePools) {
-	// 	return diag2.NewErrorDiagnostic(
-	// 		"Pool count mismatch",
-	// 		"The number of pools in plan and state do not match.",
-	// 	)
+	// return diag2.NewErrorDiagnostic(
+	// "Pool count mismatch",
+	// "The number of pools in plan and state do not match.",
+	// )
 	// }
 	for i := range planPools {
 		if i >= len(statePools) {

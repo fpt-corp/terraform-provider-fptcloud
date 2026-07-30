@@ -1,3 +1,9 @@
+## [0.3.53] - 2026-07-30
+
+### Resource
+
+- Feat: MFKE: Support MFKE version >= 1.33.12
+
 ## [0.3.53] - 2026-07-14
 
 ### Resource
@@ -328,3 +334,4 @@
 - SSH key
 - Storage
 - VPC
+ 

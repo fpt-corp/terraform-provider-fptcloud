@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"terraform-provider-fptcloud/commons"
@@ -79,6 +80,45 @@ func (m *MfkeApiClient) sendDelete(requestURL string, infraType string) ([]byte,
 	}
 
 	return m.sendRequestWithHeader(req, infraType)
+}
+
+// isNotFoundError reports whether err is an HTTP 404 response from the API.
+func isNotFoundError(err error) bool {
+	var httpErr commons.HTTPError
+	return errors.As(err, &httpErr) && httpErr.Code == http.StatusNotFound
+}
+
+// sendGetV2Aware issues a GET against primaryPath, falling back to
+// fallbackPath on a 404. The API routes a cluster to its v1 or v2 API family
+// based on how it was originally created, which callers can't always
+// determine up front from Terraform state alone (e.g. import, data source
+// reads before k8s_version is known) — the fallback keeps those cases working.
+func (m *MfkeApiClient) sendGetV2Aware(primaryPath, fallbackPath, infraType string) ([]byte, error) {
+	a, err := m.sendGet(primaryPath, infraType)
+	if err != nil && isNotFoundError(err) {
+		return m.sendGet(fallbackPath, infraType)
+	}
+	return a, err
+}
+
+// sendPatchV2Aware issues a PATCH against primaryPath, falling back to
+// fallbackPath on a 404. See sendGetV2Aware for why the fallback is needed.
+func (m *MfkeApiClient) sendPatchV2Aware(ctx context.Context, primaryPath, fallbackPath, infraType string, params interface{}) ([]byte, error) {
+	a, err := m.sendPatch(ctx, primaryPath, infraType, params)
+	if err != nil && isNotFoundError(err) {
+		return m.sendPatch(ctx, fallbackPath, infraType, params)
+	}
+	return a, err
+}
+
+// sendDeleteV2Aware issues a DELETE against primaryPath, falling back to
+// fallbackPath on a 404. See sendGetV2Aware for why the fallback is needed.
+func (m *MfkeApiClient) sendDeleteV2Aware(primaryPath, fallbackPath, infraType string) ([]byte, error) {
+	a, err := m.sendDelete(primaryPath, infraType)
+	if err != nil && isNotFoundError(err) {
+		return m.sendDelete(fallbackPath, infraType)
+	}
+	return a, err
 }
 
 func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType string) ([]byte, error) {

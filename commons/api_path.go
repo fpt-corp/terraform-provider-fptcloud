@@ -67,17 +67,29 @@ var ApiPath = struct {
 
 	// Managed FKE
 	ManagedFKEList                      func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedFKEListV2                    func(vpcId string, page int, pageSize int, infraType string) string
 	ManagedFKEGet                       func(vpcId string, platform string, clusterId string) string
+	ManagedFKEGetV2                     func(vpcId string, platform string, clusterId string) string
 	ManagedFKEDelete                    func(vpcId string, platform string, clusterName string) string
+	ManagedFKEDeleteV2                  func(vpcId string, platform string, clusterName string) string
 	ManagedFKECreate                    func(vpcId string, platform string) string
+	ManagedFKECreateV2                  func(vpcId string, platform string) string
 	ManagedFKEUpgradeVersion            func(vpcId string, platform string, clusterId string, targetVersion string) string
+	ManagedFKEUpgradeVersionV2          func(vpcId string, platform string, clusterId string, targetVersion string) string
 	ManagedFKEHibernate                 func(vpcId string, platform string, clusterId string, isWakeup bool) string
+	ManagedFKEHibernateV2               func(vpcId string, platform string, clusterId string, isWakeup bool) string
 	ManagedFKEHibernationSchedules      func(vpcId string, platform string, clusterId string) string
+	ManagedFKEHibernationSchedulesV2    func(vpcId string, platform string, clusterId string) string
 	ManagedFKEAutoUpgradeVersion        func(vpcId string, platform string, clusterId string) string
+	ManagedFKEAutoUpgradeVersionV2      func(vpcId string, platform string, clusterId string) string
 	ManagedFKEConfigWorker              func(vpcId string, platform string, clusterId string) string
+	ManagedFKEConfigWorkerV2            func(vpcId string, platform string, clusterId string) string
 	ManagedFKEUpdateEndpointCIDR        func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateEndpointCIDRV2      func(vpcId string, platform string, clusterId string) string
 	ManagedFKEUpdateClusterAutoscaler   func(vpcId string, platform string, clusterId string) string
+	ManagedFKEUpdateClusterAutoscalerV2 func(vpcId string, platform string, clusterId string) string
 	ManagedFKEConfigInternalSubnetLb    func(vpcId string, platform string, clusterId string) string
+	ManagedFKEConfigInternalSubnetLbV2  func(vpcId string, platform string, clusterId string) string
 	ManagedFKECheckEnableServiceAccount func(vpcId string, platform string) string
 	ManagedFKECheckQuotaResource        func(vpcId string, platform string) string
 	ManagedFKEStoragePolicy             func(vpcId string) string
@@ -348,9 +360,18 @@ var ApiPath = struct {
 	ManagedFKEList: func(vpcId string, page int, pageSize int, infraType string) string {
 		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
 	},
+	ManagedFKEListV2: func(vpcId string, page int, pageSize int, infraType string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/v2/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
+	},
 	ManagedFKEDelete: func(vpcId string, platform string, clusterName string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/delete-shoot-cluster/shoots/%s",
+			vpcId, platform, clusterName,
+		)
+	},
+	ManagedFKEDeleteV2: func(vpcId string, platform string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/delete-shoot-cluster/shoots/%s",
 			vpcId, platform, clusterName,
 		)
 	},
@@ -360,15 +381,36 @@ var ApiPath = struct {
 			vpcId, platform,
 		)
 	},
+	// ManagedFKECreateV2 is the create-cluster endpoint required for clusters
+	// running Kubernetes >= 1.33 (currently only used for OSP, but the path
+	// takes platform so it can be reused once other platforms need it too).
+	ManagedFKECreateV2: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/create-cluster",
+			vpcId, platform,
+		)
+	},
 	ManagedFKEGet: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/get-shoot-specific/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},
+	ManagedFKEGetV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/get-shoot-specific/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
 	ManagedFKEUpgradeVersion: func(vpcId string, platform string, clusterId string, targetVersion string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			vpcId, platform, clusterId, targetVersion,
+		)
+	},
+	ManagedFKEUpgradeVersionV2: func(vpcId string, platform string, clusterId string, targetVersion string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/upgrade_version_cluster/shoots/%s/k8s-version/%s",
 			vpcId, platform, clusterId, targetVersion,
 		)
 	},
@@ -382,9 +424,25 @@ var ApiPath = struct {
 			vpcId, platform, clusterId, action,
 		)
 	},
+	ManagedFKEHibernateV2: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
+		action := "hibernate"
+		if isWakeup {
+			action = "wakeup"
+		}
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/hibernation-cluster/shoots/%s/%s",
+			vpcId, platform, clusterId, action,
+		)
+	},
 	ManagedFKEHibernationSchedules: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/schedules",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEHibernationSchedulesV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/hibernation-cluster/shoots/%s/schedules",
 			vpcId, platform, clusterId,
 		)
 	},
@@ -395,6 +453,12 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
+	ManagedFKEAutoUpgradeVersionV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/config-auto-upgrade-version/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
 
 	ManagedFKEConfigWorker: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
@@ -402,9 +466,21 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
+	ManagedFKEConfigWorkerV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/configure-worker-cluster/shoots/%s/0",
+			vpcId, platform, clusterId,
+		)
+	},
 	ManagedFKEUpdateEndpointCIDR: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/edit-private-cluster-ip/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEUpdateEndpointCIDRV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/edit-private-cluster-ip/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},
@@ -415,10 +491,22 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
+	ManagedFKEUpdateClusterAutoscalerV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/config-cluster-auto-scaling/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
 
 	ManagedFKEConfigInternalSubnetLb: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-internal-subnet-lb/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedFKEConfigInternalSubnetLbV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/config-internal-subnet-lb/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},

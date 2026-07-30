@@ -96,6 +96,7 @@ type managedKubernetesEngineJson struct {
 	ClusterName           string                             `json:"cluster_name"`
 	NetworkID             string                             `json:"network_id"`
 	K8SVersion            string                             `json:"k8s_version,omitempty"`
+	IsV2                  bool                               `json:"isV2,omitempty"`
 	OsVersion             interface{}                        `json:"os_version,omitempty"`
 	Purpose               string                             `json:"purpose,omitempty"`
 	Pools                 []*managedKubernetesEnginePoolJson `json:"pools"`
