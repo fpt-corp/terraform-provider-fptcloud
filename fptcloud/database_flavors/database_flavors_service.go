@@ -75,6 +75,8 @@ func (s *DatabaseFlavorServiceImpl) ListDatabaseFlavor(vpcId string, isOps strin
 		req.Header.Set("fpt-region", "hanoi-2-vn")
 	case "JP/JCSI2":
 		req.Header.Set("fpt-region", "JP/JCSI2")
+	case "VN/SGN2":
+		req.Header.Set("fpt-region", "saigon-02-vn")
 	default:
 		req.Header.Set("fpt-region", s.client.Region)
 	}
