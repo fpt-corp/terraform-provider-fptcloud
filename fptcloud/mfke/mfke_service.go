@@ -132,7 +132,7 @@ func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType s
 	case "VN/SGN2":
 		request.Header.Set("fpt-region", "saigon-02-vn")
 	case "JP/JCSI2":
-		request.Header.Set("fpt-region", "JP/JCSI2")
+		request.Header.Set("fpt-region", "tokyo-jp")
 	default:
 		request.Header.Set("fpt-region", m.Client.Region)
 	}
