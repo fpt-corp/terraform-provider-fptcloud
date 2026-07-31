@@ -1,3 +1,9 @@
+## [0.3.55] - 2026-07-31
+
+### Resource
+
+- Feat: Add SGN2 support for the database resource.
+
 ## [0.3.54] - 2026-07-30
 
 ### Resource
