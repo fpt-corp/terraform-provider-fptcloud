@@ -1,3 +1,9 @@
+## [0.3.57] - 2026-08-11
+
+### Resource
+
+- Fix: populate private_ip in state to prevent downstream plan drift
+
 ## [0.3.56] - 2026-08-11
 
 ### Resource
