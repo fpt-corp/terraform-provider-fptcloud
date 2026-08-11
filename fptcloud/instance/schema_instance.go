@@ -44,6 +44,7 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 	"private_ip": {
 		Type:        schema.TypeString,
 		Computed:    true,
+		Optional:    true,
 		Description: "The private ip of the instance",
 	},
 	"public_ip": {
