@@ -142,11 +142,13 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"private_ip": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The private ip of the instance.",
 	},
 	"public_ip": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The public ip (floating ip) of the instance.",
 	},
 	"flavor_name": {
