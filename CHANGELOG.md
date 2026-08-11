@@ -1,3 +1,9 @@
+## [0.3.56] - 2026-08-11
+
+### Resource
+
+- Fix: `resource/fptcloud_instance`: populate `private_ip` attribute in state after create/read.
+
 ## [0.3.55] - 2026-07-31
 
 ### Resource
