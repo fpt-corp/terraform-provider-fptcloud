@@ -184,6 +184,9 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("status", foundInstance.Status); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("private_ip", foundInstance.PrivateIp); err != nil {
+		return diag.FromErr(err)
+	}
 	if err := d.Set("public_ip", foundInstance.PublicIp); err != nil {
 		return diag.FromErr(err)
 	}
