@@ -1,3 +1,9 @@
+## [0.3.58] - 2026-08-11
+
+### Resource
+
+- Fix: mark private_ip and public_ip as Computed in resource schema to prevent refresh state drift
+
 ## [0.3.57] - 2026-08-11
 
 ### Resource
