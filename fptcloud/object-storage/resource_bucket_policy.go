@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
@@ -42,12 +43,13 @@ func ResourceBucketPolicy() *schema.Resource {
 				Description: "Status after bucket policy is created",
 			},
 			"policy": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ForceNew:      true,
-				Description:   "The bucket policy in JSON format",
-				ConflictsWith: []string{"policy_file"},
-				ValidateFunc:  validation.StringIsJSON,
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				Description:      "The bucket policy in JSON format",
+				ConflictsWith:    []string{"policy_file"},
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: structure.SuppressJsonDiff,
 			},
 			"policy_file": {
 				Type:          schema.TypeString,

@@ -1,3 +1,9 @@
+## [0.3.59] - 2026-08-12
+
+### Resource
+
+- Fix: suppress JSON diff for bucket policy, CORS and lifecycle rule to prevent unnecessary resource recreation
+
 ## [0.3.58] - 2026-08-11
 
 ### Resource

@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
@@ -54,12 +55,13 @@ func ResourceBucketLifeCycle() *schema.Resource {
 				Description: "The region name that's are the same with the region name in the S3 service. Currently, we have: HCM-01, HCM-02, HN-01, HN-02",
 			},
 			"life_cycle_rule": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ForceNew:      true,
-				Description:   "The bucket lifecycle rule in JSON format, support only one rule",
-				ConflictsWith: []string{"life_cycle_rule_file"},
-				ValidateFunc:  validation.StringIsJSON,
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				Description:      "The bucket lifecycle rule in JSON format, support only one rule",
+				ConflictsWith:    []string{"life_cycle_rule_file"},
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: structure.SuppressJsonDiff,
 			},
 			"life_cycle_rule_file": {
 				Type:          schema.TypeString,

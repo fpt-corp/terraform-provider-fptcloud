@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
@@ -19,12 +20,13 @@ func ResourceBucketCors() *schema.Resource {
 		ReadContext:   resourceBucketCorsRead,
 		Schema: map[string]*schema.Schema{
 			"cors_config": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ForceNew:      true,
-				Description:   "The bucket lifecycle rule in JSON format, support only one rule",
-				ConflictsWith: []string{"cors_config_file"},
-				ValidateFunc:  validation.StringIsJSON,
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				Description:      "The bucket lifecycle rule in JSON format, support only one rule",
+				ConflictsWith:    []string{"cors_config_file"},
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: structure.SuppressJsonDiff,
 			},
 			"cors_config_file": {
 				Type:          schema.TypeString,
