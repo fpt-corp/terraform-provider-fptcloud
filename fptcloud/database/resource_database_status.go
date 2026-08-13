@@ -49,6 +49,9 @@ func (r *resourceDatabaseStatus) Create(ctx context.Context, request resource.Cr
 	var database databaseStatusJson
 	r.remap(&currentState, &database)
 
+	// The cluster detail endpoint reads from BSS, which only gets filled by this sync
+	syncVpcInfrastructure(ctx, r.client, currentState.VpcId.ValueString())
+
 	// Getting current status of database on the server
 	var timeStart = time.Now()
 	var timeout = 120 * time.Second
@@ -104,6 +107,9 @@ func (r *resourceDatabaseStatus) Read(ctx context.Context, request resource.Read
 		return
 	}
 
+	// The cluster detail endpoint reads from BSS, which only gets filled by this sync
+	syncVpcInfrastructure(ctx, r.client, state.VpcId.ValueString())
+
 	// Get current status of database
 	var err error
 	status, err := r.getDatabaseCurrentStatus(ctx, state.Id.ValueString())
@@ -152,6 +158,11 @@ func (r *resourceDatabaseStatus) Schema(ctx context.Context, request resource.Sc
 				Required:      true,
 				PlanModifiers: forceNewPlanModifiersString,
 				Description:   "The status of the database cluster, must be 'running' or 'stopped'.",
+			},
+			"vpc_id": schema.StringAttribute{
+				Optional:      true,
+				PlanModifiers: forceNewPlanModifiersString,
+				Description:   "The VPC Id of the database cluster. Set it to let the provider sync the VPC infrastructure into BSS before reading the status of the cluster.",
 			},
 		},
 	}
@@ -310,6 +321,9 @@ func (r *resourceDatabaseStatus) startDatabase(ctx context.Context, databaseId s
 func (r *resourceDatabaseStatus) internalRead(ctx context.Context, databaseId string, state *databaseStatusResourceModel) error {
 	tflog.Info(ctx, "Reading state of Database Id "+databaseId+", VPC Id ")
 
+	// The cluster detail endpoint reads from BSS, which only gets filled by this sync
+	syncVpcInfrastructure(ctx, r.client, state.VpcId.ValueString())
+
 	var nodeTotal = 0
 	var timeStart = time.Now()
 	var node databaseNode
@@ -373,4 +387,5 @@ type databaseStatusJson struct {
 type databaseStatusResourceModel struct {
 	Id     types.String `tfsdk:"id" json:"id"`
 	Status types.String `tfsdk:"status" json:"status"`
+	VpcId  types.String `tfsdk:"vpc_id" json:"vpc_id,omitempty"`
 }

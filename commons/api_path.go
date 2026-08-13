@@ -59,6 +59,12 @@ var ApiPath = struct {
 	DatabaseApplyTags func() string
 	DatabaseFlavor    func(vpcId string, isOSP string) string
 
+	// Pull the infrastructure state of a VPC into BSS. Nothing syncs automatically, so
+	// these have to be called before reading resources that are backed by BSS data
+	VpcSyncInstances  func(vpcId string) string
+	VpcSyncStorages   func(vpcId string) string
+	VpcSyncStoragesV2 func(vpcId string) string
+
 	// Dedicated FKE
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
 	DedicatedFKEGet            func(vpcId string, clusterId string) string
@@ -342,6 +348,16 @@ var ApiPath = struct {
 	},
 	DatabaseFlavor: func(vpcId string, isOSP string) string {
 		return fmt.Sprintf("/v1/xplat/database/configure_management/get_list_flavor_v2?vpc_id=%s&is_ops=%s", vpcId, isOSP)
+	},
+
+	VpcSyncInstances: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instances/async", vpcId)
+	},
+	VpcSyncStorages: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storages/sync", vpcId)
+	},
+	VpcSyncStoragesV2: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storages/sync/v2", vpcId)
 	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {

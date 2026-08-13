@@ -1,3 +1,9 @@
+## [0.3.60] - 2026-08-13
+
+### Datasource
+
+- Feat: Add datasource database
+
 ## [0.3.59] - 2026-08-12
 
 ### Resource
