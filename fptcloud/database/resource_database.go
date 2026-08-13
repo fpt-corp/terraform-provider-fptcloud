@@ -138,10 +138,10 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	// Logged before anything else so the raw answer of the API is always available,
 	// whatever the provider makes of it afterwards
 	tflog.Info(ctx, fmt.Sprintf("Create response: status_code=%s, body=%s",
-	  answer.StatusText(), truncateBody(answer.Body)))
+		answer.StatusText(), truncateBody(answer.Body)))
 
 	if err != nil {
-	  if answer.StatusCode == 0 {
+		if answer.StatusCode == 0 {
 			// The request never reached the server, so there is no body to report
 			response.Diagnostics.Append(diag2.NewErrorDiagnostic(
 				errorCallingApi,

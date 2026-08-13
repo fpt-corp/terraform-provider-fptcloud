@@ -11,11 +11,11 @@ import (
 )
 
 type databaseApiClient struct {
- 	*common.Client
+	*common.Client
 }
 
 func newDatabaseApiClient(c *common.Client) *databaseApiClient {
- 	return &databaseApiClient{c}
+	return &databaseApiClient{c}
 }
 
 func (m *databaseApiClient) sendGet(requestURL string) ([]byte, error) {
