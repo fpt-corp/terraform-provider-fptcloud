@@ -134,13 +134,14 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	path := common.ApiPath.DatabaseCreate()
 	tflog.Debug(ctx, "Calling path "+path)
 
-	a, statusCode, err := r.dataBaseClient.sendPostWithStatus(path, f)
+	answer, err := r.dataBaseClient.sendPostForAnswer(path, f)
 	// Logged before anything else so the raw answer of the API is always available,
 	// whatever the provider makes of it afterwards
-	tflog.Info(ctx, fmt.Sprintf("Create response: status_code=%d, body=%s", statusCode, truncateBody(a)))
+	tflog.Info(ctx, fmt.Sprintf("Create response: status_code=%s, body=%s",
+	  answer.StatusText(), truncateBody(answer.Body)))
 
 	if err != nil {
-		if statusCode == 0 {
+	  if answer.StatusCode == 0 {
 			// The request never reached the server, so there is no body to report
 			response.Diagnostics.Append(diag2.NewErrorDiagnostic(
 				errorCallingApi,
@@ -150,11 +151,13 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		}
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(
 			errorCallingApi,
-			fmt.Sprintf("failed calling path %s: status_code=%d, body=%s", path, statusCode, truncateBody(a)),
+			fmt.Sprintf("failed calling path %s: status_code=%d, body=%s",
+				path, answer.StatusCode, truncateBody(answer.Body)),
 		))
 		return
 	}
 
+	a := answer.Body
 	errorResponse := r.checkForError(a)
 	if errorResponse != nil {
 		response.Diagnostics.Append(errorResponse)

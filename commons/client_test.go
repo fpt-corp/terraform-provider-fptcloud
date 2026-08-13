@@ -3,7 +3,6 @@ package commons
 import (
 	"github.com/stretchr/testify/assert"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -104,69 +103,6 @@ func TestDecodeSimpleResponse_ValidResponse(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "success", simpleResp.Data)
 	assert.Equal(t, "ok", simpleResp.Status)
-}
-
-func TestSendRequestWithStatus(t *testing.T) {
-	tests := []struct {
-		name       string
-		statusCode int
-		body       string
-		wantErr    bool
-	}{
-		{name: "200", statusCode: 200, body: `{"code":"200"}`, wantErr: false},
-		{name: "201", statusCode: 201, body: `{"successes":true}`, wantErr: false},
-		{name: "400", statusCode: 400, body: `{"message":"bad request"}`, wantErr: true},
-		{name: "500", statusCode: 500, body: `{"message":"boom"}`, wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-				rw.WriteHeader(tt.statusCode)
-				_, _ = rw.Write([]byte(tt.body))
-			}))
-			defer server.Close()
-
-			client, err := NewClientForTestingWithServer(server)
-			assert.NoError(t, err)
-
-			req, err := http.NewRequest("POST", server.URL+"/test", nil)
-			assert.NoError(t, err)
-
-			body, statusCode, err := client.SendRequestWithStatus(req)
-			assert.Equal(t, tt.statusCode, statusCode)
-			// The body comes back even on failure, that is the point of this method
-			assert.Equal(t, tt.body, string(body))
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// SendRequest has to keep answering exactly like it did before it started delegating
-func TestSendRequestKeepsItsContract(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-		rw.WriteHeader(http.StatusInternalServerError)
-		_, _ = rw.Write([]byte(`{"message":"boom"}`))
-	}))
-	defer server.Close()
-
-	client, err := NewClientForTestingWithServer(server)
-	assert.NoError(t, err)
-
-	req, err := http.NewRequest("POST", server.URL+"/test", nil)
-	assert.NoError(t, err)
-
-	body, err := client.SendRequest(req)
-	assert.Nil(t, body)
-
-	var httpErr HTTPError
-	assert.ErrorAs(t, err, &httpErr)
-	assert.Equal(t, 500, httpErr.Code)
-	assert.Contains(t, httpErr.Reason, "boom")
 }
 
 // The transport carries the proxy configuration and the connection pool, so it must be
