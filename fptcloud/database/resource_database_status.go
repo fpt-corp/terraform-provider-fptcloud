@@ -162,7 +162,7 @@ func (r *resourceDatabaseStatus) Schema(ctx context.Context, request resource.Sc
 			"vpc_id": schema.StringAttribute{
 				Optional:      true,
 				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The VPC Id of the database cluster. Set it to let the provider sync the VPC infrastructure into BSS before reading the status of the cluster.",
+				Description:   "The VPC Id of the database cluster. Provide it so that the cluster information is refreshed before its status is read.",
 			},
 		},
 	}

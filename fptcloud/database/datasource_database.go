@@ -72,15 +72,15 @@ func (d *datasourceDatabase) Schema(ctx context.Context, request datasource.Sche
 			"vpc_id": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "The VPC Id of the database cluster. Set it to let the provider sync the VPC infrastructure into BSS before reading, which is required for the node information to be available.",
+				Description: "The VPC Id of the database cluster. Provide it so that the node information is refreshed before the cluster is read.",
 			},
 			"wait_for_nodes_timeout": schema.StringAttribute{
 				Optional:    true,
-				Description: "How long to keep re-reading the cluster while it still has no node, as a Go duration such as \"20m\". Nodes only show up once the cluster has been provisioned, so this is what a freshly created cluster needs. Leave it out to read exactly once.",
+				Description: "How long to wait for the nodes of the cluster to become available, as a duration such as \"20m\". Nodes only exist once the cluster has finished provisioning, so this is what a freshly created cluster needs. Omit it to read the cluster once.",
 			},
 			"vdc_name": schema.StringAttribute{
 				Computed:    true,
-				Description: "The VDC name of the database cluster, taken from its nodes.",
+				Description: "The VDC name of the database cluster.",
 			},
 			"org_name": schema.StringAttribute{
 				Computed:    true,
@@ -220,7 +220,7 @@ func (d *datasourceDatabase) Schema(ctx context.Context, request datasource.Sche
 			},
 			"is_ops": schema.StringAttribute{
 				Computed:    true,
-				Description: "Whether the database runs on OpenStack (yes) or VMware (no). Derived from the platform of the nodes when the API does not return it.",
+				Description: "Whether the database runs on OpenStack (yes) or VMware (no).",
 			},
 			"admin_password": schema.StringAttribute{
 				Computed:    true,
@@ -294,7 +294,7 @@ func (d *datasourceDatabase) Schema(ctx context.Context, request datasource.Sche
 			},
 			"flavor": schema.StringAttribute{
 				Computed:    true,
-				Description: "The flavor name of the database cluster. Resolved from the flavor list of the VPC when the API only returns the flavor id.",
+				Description: "The flavor name of the database cluster.",
 			},
 			"vm_sync": schema.BoolAttribute{
 				Computed:    true,
