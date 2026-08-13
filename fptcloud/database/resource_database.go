@@ -133,34 +133,97 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 
 	path := common.ApiPath.DatabaseCreate()
 	tflog.Debug(ctx, "Calling path "+path)
-	a, err := r.dataBaseClient.sendPost(path, f)
+
+	answer, err := r.dataBaseClient.sendPostForAnswer(path, f)
+	tflog.Info(ctx, fmt.Sprintf("Create response: status_code=%s, body=%s",
+		answer.StatusText(), truncateBody(answer.Body)))
+
 	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi, fmt.Sprintf("failed calling path %s: %v", path, err)))
+		if answer.StatusCode == 0 {
+			response.Diagnostics.Append(diag2.NewErrorDiagnostic(
+				errorCallingApi,
+				fmt.Sprintf("failed calling path %s: %v", path, err),
+			))
+			return
+		}
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(
+			errorCallingApi,
+			fmt.Sprintf("failed calling path %s: status_code=%d, body=%s",
+				path, answer.StatusCode, truncateBody(answer.Body)),
+		))
 		return
 	}
+
+	a := answer.Body
 	errorResponse := r.checkForError(a)
 	if errorResponse != nil {
 		response.Diagnostics.Append(errorResponse)
 		return
 	}
 
-	var createResponse databaseCreateResponse
-	if err = json.Unmarshal(a, &createResponse); err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error()))
+	clusterId, createDiag := clusterIdFromCreateResponse(ctx, a)
+	if createDiag != nil {
+		response.Diagnostics.Append(createDiag)
 		return
 	}
-	tflog.Info(ctx, fmt.Sprintf("Create response: Type=%s, Message=%s", createResponse.Type, createResponse.Message))
+	currentState.Id = types.StringValue(clusterId)
 
-	respType := strings.ToLower(createResponse.Type)
-	switch respType {
-	case "error":
-		msg := createResponse.Message
-		if msg == "" {
-			msg = "unknown error from API"
+	// ===== APPLY TAG AFTER CREATE =====
+	if !currentState.TagIds.IsNull() && !currentState.TagIds.IsUnknown() {
+		tagIds := strings.TrimSpace(currentState.TagIds.ValueString())
+		response.Diagnostics.Append(diags...)
+		if response.Diagnostics.HasError() {
+			return
 		}
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error creating database", msg))
-		response.State.RemoveResource(ctx)
-		return
+
+		tflog.Info(ctx, "Applying tags to database cluster after create")
+		err = r.dataBaseClient.applyTagToCluster(clusterId, tagIds)
+		if err != nil {
+			response.Diagnostics.Append(
+				diag2.NewErrorDiagnostic(
+					"Error applying tag to database",
+					err.Error(),
+				),
+			)
+			return
+		}
+	}
+
+	currentState.Nodes = emptyNodesList()
+
+	diags = response.State.Set(ctx, &currentState)
+	response.Diagnostics.Append(diags...)
+}
+
+func clusterIdFromCreateResponse(ctx context.Context, body []byte) (string, *diag2.ErrorDiagnostic) {
+	var createResponse databaseCreateResponse
+	if err := json.Unmarshal(body, &createResponse); err != nil {
+		res := diag2.NewErrorDiagnostic(
+			"Error unmarshalling response",
+			fmt.Sprintf("%v. Response body was %s", err, truncateBody(body)),
+		)
+		return "", &res
+	}
+	tflog.Info(ctx, fmt.Sprintf("Create response: Type=%s, ErrorCode=%d, Message=%s",
+		createResponse.Type, createResponse.ErrorCode, createResponse.Message))
+	tflog.Debug(ctx, "Create response body: "+truncateBody(body))
+
+	if createResponse.ErrorCode != 0 {
+		res := diag2.NewErrorDiagnostic(
+			"Error creating database",
+			fmt.Sprintf("API returned error_code %d: %s",
+				createResponse.ErrorCode, apiMessage(apiString(createResponse.Message), body)),
+		)
+		return "", &res
+	}
+
+	switch strings.ToLower(strings.TrimSpace(createResponse.Type)) {
+	case "error":
+		res := diag2.NewErrorDiagnostic(
+			"Error creating database",
+			apiMessage(apiString(createResponse.Message), body),
+		)
+		return "", &res
 
 	case "success":
 		msg := createResponse.Message
@@ -168,40 +231,24 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 			msg = "database created successfully"
 		}
 		tflog.Info(ctx, msg)
-		clusterId := createResponse.Data.ClusterId
-		currentState.Id = types.StringValue(clusterId)
-		if currentState.Id.IsNull() || currentState.Id.ValueString() == "" {
-			currentState.Id = types.StringValue("temp-" + strconv.FormatInt(time.Now().Unix(), 10))
-		}
-		// ===== APPLY TAG AFTER CREATE =====
-		if !currentState.TagIds.IsNull() && !currentState.TagIds.IsUnknown() {
-			tagIds := strings.TrimSpace(currentState.TagIds.ValueString())
-			response.Diagnostics.Append(diags...)
-			if response.Diagnostics.HasError() {
-				return
-			}
 
-			tflog.Info(ctx, "Applying tags to database cluster after create")
-			err = r.dataBaseClient.applyTagToCluster(
-				currentState.Id.ValueString(),
-				tagIds,
+		clusterId := strings.TrimSpace(createResponse.Data.ClusterId)
+		if clusterId == "" {
+			res := diag2.NewErrorDiagnostic(
+				"Database created without a cluster id",
+				"The API reported success but returned no cluster_id, so the cluster cannot be tracked. Response body was "+truncateBody(body),
 			)
-			if err != nil {
-				response.Diagnostics.Append(
-					diag2.NewErrorDiagnostic(
-						"Error applying tag to database",
-						err.Error(),
-					),
-				)
-				return
-			}
+			return "", &res
 		}
+		return clusterId, nil
 
-		// Initialize nodes to empty list (will be populated on Read/Refresh)
-		currentState.Nodes = emptyNodesList()
-
-		diags = response.State.Set(ctx, &currentState)
-		response.Diagnostics.Append(diags...)
+	default:
+		res := diag2.NewErrorDiagnostic(
+			"Unexpected response when creating the database",
+			fmt.Sprintf("The API answered with type %q instead of success or error. Response body was %s",
+				createResponse.Type, truncateBody(body)),
+		)
+		return "", &res
 	}
 }
 

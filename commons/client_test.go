@@ -2,6 +2,7 @@ package commons
 
 import (
 	"github.com/stretchr/testify/assert"
+	"net/http"
 	"testing"
 )
 
@@ -102,4 +103,13 @@ func TestDecodeSimpleResponse_ValidResponse(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "success", simpleResp.Data)
 	assert.Equal(t, "ok", simpleResp.Status)
+}
+
+func TestClientKeepsItsTransport(t *testing.T) {
+	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant", 5)
+	assert.NoError(t, err)
+
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	assert.True(t, ok)
+	assert.NotNil(t, transport.Proxy, "the transport must keep resolving the proxy from the environment")
 }

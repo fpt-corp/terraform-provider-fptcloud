@@ -14,8 +14,9 @@ Provides a Fpt database cluster status to temporarily stop or start a database.
 
 ```terraform
 resource "fptcloud_database_status" "example_status" {
-  id = fptcloud_database.example.id
+  id     = fptcloud_database.example.id
   status = "running | stopped"
+  vpc_id = fptcloud_database.example.vpc_id
 }
 ```
 
@@ -26,3 +27,7 @@ resource "fptcloud_database_status" "example_status" {
 
 - `id` (String) The Id of the database cluster.
 - `status` (String) The status of the database cluster, must be 'running' or 'stopped'.
+
+### Optional
+
+- `vpc_id` (String) The VPC Id of the database cluster. Provide it so that the cluster information is refreshed before its status is read.
