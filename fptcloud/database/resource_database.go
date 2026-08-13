@@ -135,14 +135,11 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 	tflog.Debug(ctx, "Calling path "+path)
 
 	answer, err := r.dataBaseClient.sendPostForAnswer(path, f)
-	// Logged before anything else so the raw answer of the API is always available,
-	// whatever the provider makes of it afterwards
 	tflog.Info(ctx, fmt.Sprintf("Create response: status_code=%s, body=%s",
 		answer.StatusText(), truncateBody(answer.Body)))
 
 	if err != nil {
 		if answer.StatusCode == 0 {
-			// The request never reached the server, so there is no body to report
 			response.Diagnostics.Append(diag2.NewErrorDiagnostic(
 				errorCallingApi,
 				fmt.Sprintf("failed calling path %s: %v", path, err),
@@ -192,17 +189,12 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		}
 	}
 
-	// Initialize nodes to empty list (will be populated on Read/Refresh)
 	currentState.Nodes = emptyNodesList()
 
 	diags = response.State.Set(ctx, &currentState)
 	response.Diagnostics.Append(diags...)
 }
 
-// clusterIdFromCreateResponse validates the answer of the create endpoint and returns the
-// id of the new cluster. Every path either returns an id or a diagnostic: a response the
-// provider does not understand must stop the apply instead of leaving an empty state
-// behind, which only surfaces later as a confusing Terraform error
 func clusterIdFromCreateResponse(ctx context.Context, body []byte) (string, *diag2.ErrorDiagnostic) {
 	var createResponse databaseCreateResponse
 	if err := json.Unmarshal(body, &createResponse); err != nil {
@@ -216,7 +208,6 @@ func clusterIdFromCreateResponse(ctx context.Context, body []byte) (string, *dia
 		createResponse.Type, createResponse.ErrorCode, createResponse.Message))
 	tflog.Debug(ctx, "Create response body: "+truncateBody(body))
 
-	// Failures are reported through error_code as well, not only through type
 	if createResponse.ErrorCode != 0 {
 		res := diag2.NewErrorDiagnostic(
 			"Error creating database",
@@ -241,8 +232,6 @@ func clusterIdFromCreateResponse(ctx context.Context, body []byte) (string, *dia
 		}
 		tflog.Info(ctx, msg)
 
-		// Without a cluster id there is nothing to track, and inventing one would leave
-		// a state entry pointing at a cluster that does not exist
 		clusterId := strings.TrimSpace(createResponse.Data.ClusterId)
 		if clusterId == "" {
 			res := diag2.NewErrorDiagnostic(

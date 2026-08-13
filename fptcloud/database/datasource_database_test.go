@@ -113,15 +113,11 @@ const flavorListResponse = `{
     ]
 }`
 
-// newTestDataSource spins up a server answering the cluster detail call with the given
-// status and body, and the flavor list call with an empty list
 func newTestDataSource(t *testing.T, statusCode int, body string) (*datasourceDatabase, func()) {
 	t.Helper()
 	return newTestDataSourceWithFlavors(t, statusCode, body, `{"code": "200", "data": []}`)
 }
 
-// newTestDataSourceWithFlavors dispatches on the requested path so the flavor lookup can
-// be exercised alongside the cluster detail call
 func newTestDataSourceWithFlavors(t *testing.T, statusCode int, body string, flavorBody string) (*datasourceDatabase, func()) {
 	t.Helper()
 
@@ -167,15 +163,12 @@ func TestGetDatabaseDetail(t *testing.T) {
 	if got := state.Edition.ValueString(); got != "Community" {
 		t.Errorf("edition = %q, want %q", got, "Community")
 	}
-	// Not returned by the cluster payload, taken from the first node
 	if got := state.VdcName.ValueString(); got != "FDE-VMW-STG-INTERNAL-VPC" {
 		t.Errorf("vdc_name = %q, want %q", got, "FDE-VMW-STG-INTERNAL-VPC")
 	}
-	// Not returned by the cluster payload, derived from the platform of the nodes
 	if got := state.IsOps.ValueString(); got != "no" {
 		t.Errorf("is_ops = %q, want %q", got, "no")
 	}
-	// Not returned by the cluster payload, resolved through the flavor list
 	if got := state.Flavor.ValueString(); got != "Medium-4" {
 		t.Errorf("flavor = %q, want %q", got, "Medium-4")
 	}
@@ -197,14 +190,12 @@ func TestGetDatabaseDetail(t *testing.T) {
 	if !state.VmSync.ValueBool() {
 		t.Error("vm_sync = false, want true")
 	}
-	// Fields returned as JSON null must land as null, not as an empty string
 	if !state.EngineDb.IsNull() {
 		t.Errorf("engine_db = %q, want null", state.EngineDb.ValueString())
 	}
 	if !state.IpPublic.IsNull() {
 		t.Errorf("ip_public = %q, want null", state.IpPublic.ValueString())
 	}
-	// Fields absent from the payload must stay null as well
 	if !state.VhostName.IsNull() {
 		t.Errorf("vhost_name = %q, want null", state.VhostName.ValueString())
 	}
@@ -226,8 +217,6 @@ func TestGetDatabaseDetail(t *testing.T) {
 	}
 }
 
-// The flavor name is extra information, a failing lookup must leave it null
-// instead of breaking the whole read
 func TestFlavorLookupFailureIsNotFatal(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -254,7 +243,6 @@ func TestFlavorLookupFailureIsNotFatal(t *testing.T) {
 			if !state.Flavor.IsNull() {
 				t.Errorf("flavor = %q, want null", state.Flavor.ValueString())
 			}
-			// The rest of the cluster must still be mapped
 			if got := state.Id.ValueString(); got != "owiiqtii" {
 				t.Errorf("id = %q, want %q", got, "owiiqtii")
 			}
@@ -271,7 +259,6 @@ func TestSyncVpcInfrastructure(t *testing.T) {
 		called[req.Method+" "+req.URL.Path]++
 		mu.Unlock()
 
-		// One endpoint answers with an error on purpose: it must not stop the others
 		if strings.HasSuffix(req.URL.Path, "/storages/sync") {
 			rw.WriteHeader(http.StatusInternalServerError)
 			return
@@ -287,7 +274,6 @@ func TestSyncVpcInfrastructure(t *testing.T) {
 
 	syncVpcInfrastructure(context.Background(), client, "vpc-1")
 
-	// The calls are fired in parallel, so only the set matters, not the order
 	want := []string{
 		"POST /v1/vmware/vpc/vpc-1/compute/instances/async",
 		"POST /v1/vmware/vpc/vpc-1/storages/sync",
@@ -306,8 +292,6 @@ func TestSyncVpcInfrastructure(t *testing.T) {
 	}
 }
 
-// Endpoints that never answer must not hold the read hostage: all three are still fired,
-// but the read stops waiting for them after syncWaitTimeout
 func TestSyncVpcInfrastructureDoesNotWaitForSlowEndpoints(t *testing.T) {
 	unblock := make(chan struct{})
 
@@ -325,8 +309,6 @@ func TestSyncVpcInfrastructureDoesNotWaitForSlowEndpoints(t *testing.T) {
 		}
 		rw.WriteHeader(http.StatusOK)
 	}))
-	// Deferred calls run last in first out: the handlers have to be released before
-	// Close, which waits for every outstanding request
 	defer server.Close()
 	defer close(unblock)
 
@@ -343,7 +325,6 @@ func TestSyncVpcInfrastructureDoesNotWaitForSlowEndpoints(t *testing.T) {
 		t.Errorf("syncVpcInfrastructure blocked for %s, want it to give up around %s", elapsed, syncWaitTimeout)
 	}
 
-	// Every endpoint must have been triggered even though none of them answered
 	mu.Lock()
 	defer mu.Unlock()
 	if served != 3 {
@@ -351,13 +332,10 @@ func TestSyncVpcInfrastructureDoesNotWaitForSlowEndpoints(t *testing.T) {
 	}
 }
 
-// The sync calls have to survive the read that started them, otherwise nothing would
-// ever reach BSS once the read stops waiting
 func TestSyncVpcInfrastructureOutlivesTheRead(t *testing.T) {
 	finished := make(chan string, 3)
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		// Answer later than the read is willing to wait
 		select {
 		case <-time.After(syncWaitTimeout + 500*time.Millisecond):
 		case <-req.Context().Done():
@@ -373,7 +351,6 @@ func TestSyncVpcInfrastructureOutlivesTheRead(t *testing.T) {
 		t.Fatalf("failed creating test client: %v", err)
 	}
 
-	// The read context is cancelled right after the sync returns
 	ctx, cancel := context.WithCancel(context.Background())
 	syncVpcInfrastructure(ctx, client, "vpc-1")
 	cancel()
@@ -473,7 +450,6 @@ func TestGetDatabaseDetailErrors(t *testing.T) {
 			wantDetail:  "bad request",
 		},
 		{
-			// What the staging API really answers for an unknown cluster id
 			name:        "http 400 with an internal error message",
 			statusCode:  http.StatusBadRequest,
 			body:        `{"code": "400", "message": "'NoneType' object has no attribute 'vpc_id'", "type": "error"}`,
@@ -481,7 +457,6 @@ func TestGetDatabaseDetailErrors(t *testing.T) {
 			wantDetail:  "Check that the database cluster owiiqtii exists and belongs to the configured region and VPC",
 		},
 		{
-			// What the staging API really answers for an invalid token
 			name:        "http 422 with a detail field",
 			statusCode:  http.StatusUnprocessableEntity,
 			body:        `{"detail":"Could not validate credentials"}`,
@@ -559,9 +534,6 @@ func TestTruncateBody(t *testing.T) {
 	}
 }
 
-// The nodes of a freshly created cluster show up a little after the cluster itself, so
-// the data source keeps re-reading until they do
-// shortenNodeWait makes the polling interval negligible so tests do not sit through it
 func shortenNodeWait(t *testing.T) {
 	t.Helper()
 	original := nodeWaitInterval
@@ -580,7 +552,6 @@ func TestWaitForNodes(t *testing.T) {
 		if strings.Contains(req.URL.Path, "cluster/detail") {
 			mu.Lock()
 			detailCalls++
-			// The nodes only appear on the third attempt
 			payload := noNodes
 			if detailCalls >= 3 {
 				payload = clusterDetailResponse
@@ -622,8 +593,6 @@ func TestWaitForNodes(t *testing.T) {
 	}
 }
 
-// Waiting has to end at the deadline, and hand back the last readable answer instead of
-// failing: a cluster that is simply not ready yet is not an error
 func TestWaitForNodesGivesUpAtTheDeadline(t *testing.T) {
 	shortenNodeWait(t)
 

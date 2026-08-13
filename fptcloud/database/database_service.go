@@ -47,19 +47,11 @@ func (m *databaseApiClient) sendPost(requestURL string, params interface{}) ([]b
 	return m.sendRequestWithHeader(req)
 }
 
-// databaseApiAnswer is what the API replied, whether it liked the request or not.
-// commons.Client only surfaces the status code and the body of a failed call through
-// HTTPError, and drops the body entirely from its return value, so this is what it takes
-// to report both without touching the shared client
 type databaseApiAnswer struct {
-	// StatusCode is 0 when the API did not answer at all, and also for a successful call:
-	// the shared client only reports the code when the call failed, and all we know then
-	// is that it was a 2xx
 	StatusCode int
 	Body       []byte
 }
 
-// StatusText renders the status code for a log line or a diagnostic
 func (a databaseApiAnswer) StatusText() string {
 	if a.StatusCode == 0 {
 		return "2xx"
@@ -67,8 +59,6 @@ func (a databaseApiAnswer) StatusText() string {
 	return strconv.Itoa(a.StatusCode)
 }
 
-// sendPostForAnswer is sendPost for callers that want to report what the API answered,
-// including the raw body of a failed call
 func (m *databaseApiClient) sendPostForAnswer(requestURL string, params interface{}) (databaseApiAnswer, error) {
 	body, err := m.sendPost(requestURL, params)
 	if err == nil {
@@ -80,7 +70,6 @@ func (m *databaseApiClient) sendPostForAnswer(requestURL string, params interfac
 		return databaseApiAnswer{StatusCode: httpErr.Code, Body: []byte(httpErr.Reason)}, err
 	}
 
-	// The request never reached the server, there is nothing to report but the error
 	return databaseApiAnswer{}, err
 }
 

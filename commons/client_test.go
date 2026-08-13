@@ -105,8 +105,6 @@ func TestDecodeSimpleResponse_ValidResponse(t *testing.T) {
 	assert.Equal(t, "ok", simpleResp.Status)
 }
 
-// The transport carries the proxy configuration and the connection pool, so it must be
-// built once and never replaced per request
 func TestClientKeepsItsTransport(t *testing.T) {
 	client, err := NewClientWithURL("apiKey", "https://api.example.com", "region", "tenant", 5)
 	assert.NoError(t, err)

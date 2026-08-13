@@ -49,7 +49,6 @@ func (r *resourceDatabaseStatus) Create(ctx context.Context, request resource.Cr
 	var database databaseStatusJson
 	r.remap(&currentState, &database)
 
-	// The cluster detail endpoint reads from BSS, which only gets filled by this sync
 	syncVpcInfrastructure(ctx, r.client, currentState.VpcId.ValueString())
 
 	// Getting current status of database on the server
@@ -72,7 +71,6 @@ func (r *resourceDatabaseStatus) Create(ctx context.Context, request resource.Cr
 		return
 	}
 
-	// Nếu database đang running và khách hàng cần stopped
 	if status == "running" && database.Status == "stopped" {
 		err = r.stopDatabase(ctx, database.Id)
 		if err != nil {
@@ -107,7 +105,6 @@ func (r *resourceDatabaseStatus) Read(ctx context.Context, request resource.Read
 		return
 	}
 
-	// The cluster detail endpoint reads from BSS, which only gets filled by this sync
 	syncVpcInfrastructure(ctx, r.client, state.VpcId.ValueString())
 
 	// Get current status of database
@@ -321,7 +318,6 @@ func (r *resourceDatabaseStatus) startDatabase(ctx context.Context, databaseId s
 func (r *resourceDatabaseStatus) internalRead(ctx context.Context, databaseId string, state *databaseStatusResourceModel) error {
 	tflog.Info(ctx, "Reading state of Database Id "+databaseId+", VPC Id ")
 
-	// The cluster detail endpoint reads from BSS, which only gets filled by this sync
 	syncVpcInfrastructure(ctx, r.client, state.VpcId.ValueString())
 
 	var nodeTotal = 0

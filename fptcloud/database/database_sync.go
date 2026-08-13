@@ -14,23 +14,11 @@ import (
 )
 
 const (
-	// syncWaitTimeout is how long a read is willing to wait for the sync calls. What
-	// matters to the read is that the sync has been triggered, not that it has finished
 	syncWaitTimeout = 3 * time.Second
 
-	// syncCallTimeout bounds a single call so that a request nobody waits for any more
-	// cannot stay around forever
 	syncCallTimeout = 60 * time.Second
 )
 
-// syncVpcInfrastructure pulls the VM and storage state of a VPC from the infrastructure
-// into BSS. The cluster detail endpoint syncs itself from BSS, but BSS is never filled
-// automatically, so without these calls a freshly provisioned cluster keeps coming back
-// without its node information.
-//
-// The three calls are fired in parallel and are best effort. After syncWaitTimeout the
-// read carries on without them: they keep running in the background so BSS still gets
-// filled, and their failures only end up in the log.
 func syncVpcInfrastructure(ctx context.Context, client *common.Client, vpcId string) {
 	if client == nil || vpcId == "" {
 		return
@@ -42,8 +30,6 @@ func syncVpcInfrastructure(ctx context.Context, client *common.Client, vpcId str
 		common.ApiPath.VpcSyncStoragesV2(vpcId),
 	}
 
-	// Detached from the read: we stop waiting after syncWaitTimeout, but the calls
-	// themselves have to survive that, otherwise nothing would ever reach BSS
 	syncCtx := context.WithoutCancel(ctx)
 
 	var wg sync.WaitGroup
@@ -75,7 +61,6 @@ func syncVpcInfrastructure(ctx context.Context, client *common.Client, vpcId str
 	}
 }
 
-// sendSyncRequest posts to a sync endpoint under its own deadline
 func sendSyncRequest(ctx context.Context, client *common.Client, path string) error {
 	requestCtx, cancel := context.WithTimeout(ctx, syncCallTimeout)
 	defer cancel()

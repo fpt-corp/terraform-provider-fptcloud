@@ -22,8 +22,6 @@ func TestClusterIdFromCreateResponse(t *testing.T) {
 	}
 }
 
-// None of these may return an empty id together with a nil diagnostic: that combination
-// used to leave the state empty without telling anybody the create had failed
 func TestClusterIdFromCreateResponseErrors(t *testing.T) {
 	tests := []struct {
 		name        string

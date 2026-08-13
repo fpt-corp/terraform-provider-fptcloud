@@ -23,11 +23,8 @@ var (
 	_ datasource.DataSourceWithConfigure = &datasourceDatabase{}
 )
 
-// maxErrorBodyLength limits how much of an unexpected response body is echoed back in a diagnostic
 const maxErrorBodyLength = 2000
 
-// nodeWaitInterval is how long to pause between two attempts while waiting for the nodes
-// of a cluster to show up. A variable so that tests do not have to sit through it
 var nodeWaitInterval = 15 * time.Second
 
 type datasourceDatabase struct {
@@ -304,8 +301,6 @@ func (d *datasourceDatabase) Schema(ctx context.Context, request datasource.Sche
 				Computed:    true,
 				Description: "The total number of nodes (VMs) in the database cluster.",
 			},
-			// The provider is served over protocol version 5, which does not support
-			// nested attributes, hence the object element type
 			"nodes": schema.ListAttribute{
 				Computed:    true,
 				Description: "The list of nodes (VMs) in the database cluster.",
@@ -331,9 +326,6 @@ func (d *datasourceDatabase) Read(ctx context.Context, request datasource.ReadRe
 		return
 	}
 
-	// The detail endpoint reads node information out of BSS, and BSS is only filled by
-	// the sync calls below. When the caller tells us which VPC the cluster lives in we
-	// can sync straight away, otherwise we have to read the cluster once to find out.
 	configuredVpcId := strings.TrimSpace(state.VpcId.ValueString())
 	if configuredVpcId != "" {
 		syncVpcInfrastructure(ctx, d.client, configuredVpcId)
@@ -351,8 +343,6 @@ func (d *datasourceDatabase) Read(ctx context.Context, request datasource.ReadRe
 		return
 	}
 
-	// Read succeeded but the cluster came back without nodes: now that the response told
-	// us the VPC, sync and give it one more try
 	if configuredVpcId == "" && detail.Nodes.Total == 0 {
 		responseVpcId := strings.TrimSpace(strVal(detail.Cluster.VpcId))
 		if responseVpcId != "" {
@@ -368,7 +358,6 @@ func (d *datasourceDatabase) Read(ctx context.Context, request datasource.ReadRe
 		}
 	}
 
-	// The caller asked us to keep trying until the nodes are there
 	if detail.Nodes.Total == 0 && !state.WaitForNodesTimeout.IsNull() {
 		waitTimeout, err := time.ParseDuration(state.WaitForNodesTimeout.ValueString())
 		if err != nil {
@@ -406,10 +395,6 @@ func (d *datasourceDatabase) Read(ctx context.Context, request datasource.ReadRe
 	response.Diagnostics.Append(response.State.Set(ctx, &state)...)
 }
 
-// waitForNodes re-reads the cluster while it still has no node. Every attempt syncs the
-// VPC first, because BSS is what the detail endpoint reads from and it never refreshes on
-// its own. Read errors are tolerated while waiting: the detail endpoint answers with an
-// internal error for a while when a cluster is still being provisioned
 func (d *datasourceDatabase) waitForNodes(
 	ctx context.Context,
 	clusterId string,
@@ -448,15 +433,12 @@ func (d *datasourceDatabase) waitForNodes(
 		tflog.Info(ctx, "Cluster "+clusterId+" still has no node, trying again")
 	}
 
-	// Only surface a read error when it left us with nothing usable at all
 	if lastDetail == nil {
 		return nil, lastErr
 	}
 	return lastDetail, nil
 }
 
-// getDatabaseDetail calls the cluster detail API and validates both the HTTP status
-// and the status carried inside the response body
 func (d *datasourceDatabase) getDatabaseDetail(ctx context.Context, clusterId string) (*databaseDetailData, *diag2.ErrorDiagnostic) {
 	path := common.ApiPath.DatabaseGet(clusterId)
 	tflog.Debug(ctx, "Calling path "+path)
@@ -475,7 +457,6 @@ func (d *datasourceDatabase) getDatabaseDetail(ctx context.Context, clusterId st
 		return nil, &res
 	}
 
-	// The API answers with HTTP 200 even for business errors, the real status lives in the body
 	code := string(detailResponse.Code)
 	if code != "" && code != "200" {
 		res := diag2.NewErrorDiagnostic(
@@ -503,7 +484,6 @@ func (d *datasourceDatabase) getDatabaseDetail(ctx context.Context, clusterId st
 	return &detailResponse.Data, nil
 }
 
-// httpErrorDiagnostic turns a transport/HTTP level failure into a readable diagnostic
 func httpErrorDiagnostic(clusterId string, path string, err error) *diag2.ErrorDiagnostic {
 	var httpErr common.HTTPError
 	if !errors.As(err, &httpErr) {
@@ -535,8 +515,6 @@ func httpErrorDiagnostic(clusterId string, path string, err error) *diag2.ErrorD
 			summary = "Database API server error"
 		} else {
 			summary = errorCallingApi
-			// The detail endpoint answers 400 with an internal error message when the
-			// cluster does not exist, so point at the most likely cause
 			if httpErr.Code == 400 {
 				hint = fmt.Sprintf("Check that the database cluster %s exists and belongs to the configured region and VPC", clusterId)
 			}
@@ -552,15 +530,12 @@ func httpErrorDiagnostic(clusterId string, path string, err error) *diag2.ErrorD
 	return &res
 }
 
-// apiMessage picks the most useful error text: the message field of the response when it
-// is present, otherwise the message found in the raw body, otherwise the raw body itself
 func apiMessage(message apiString, body []byte) string {
 	if msg := strings.TrimSpace(string(message)); msg != "" {
 		return msg
 	}
 
 	if len(body) > 0 {
-		// "detail" is what the backend uses for authentication and validation failures
 		var parsed struct {
 			Message apiString `json:"message"`
 			Error   apiString `json:"error"`
@@ -644,8 +619,6 @@ func (d *datasourceDatabase) mapDetailToState(ctx context.Context, detail *datab
 	state.FlavorId = stringOrNull(cluster.FlavorId)
 	state.VmSync = types.BoolValue(cluster.VmSync)
 
-	// The detail endpoint returns neither is_ops nor the flavor name, so derive the
-	// first one from the nodes and use it to look the second one up
 	isOps := strings.TrimSpace(strVal(cluster.IsOps))
 	if isOps == "" {
 		isOps = isOpsFromNodes(detail.Nodes.Items)
@@ -663,9 +636,6 @@ func (d *datasourceDatabase) mapDetailToState(ctx context.Context, detail *datab
 	state.Nodes = buildDetailNodesList(ctx, detail.Nodes.Items)
 }
 
-// lookupFlavorName resolves a flavor id into its name using the flavor list of the VPC.
-// It returns an empty string when the lookup is not possible, since the flavor name is
-// extra information and must not make the whole read fail
 func (d *datasourceDatabase) lookupFlavorName(ctx context.Context, vpcId string, isOps string, flavorId string) string {
 	if vpcId == "" || isOps == "" || flavorId == "" {
 		return ""
@@ -696,7 +666,6 @@ func (d *datasourceDatabase) lookupFlavorName(ctx context.Context, vpcId string,
 	return ""
 }
 
-// isOpsFromNodes derives the is_ops flag from the platform the nodes run on
 func isOpsFromNodes(items []databaseDetailNodeItem) string {
 	for _, item := range items {
 		platform := strings.TrimSpace(strVal(item.Platform))
@@ -711,8 +680,6 @@ func isOpsFromNodes(items []databaseDetailNodeItem) string {
 	return ""
 }
 
-// firstNodeVdcName returns the VDC name of the first node that carries one, since the
-// cluster part of the response does not include it
 func firstNodeVdcName(items []databaseDetailNodeItem) *string {
 	for _, item := range items {
 		if strVal(item.VdcName) != "" {
@@ -740,7 +707,6 @@ func buildServiceList(ctx context.Context, services []string) types.List {
 	return result
 }
 
-// detailNodeAttrTypes returns the attribute types of a node of the database detail data source
 func detailNodeAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"id":             types.StringType,
@@ -774,8 +740,6 @@ func emptyDetailNodesList() types.List {
 	return types.ListValueMust(types.ObjectType{AttrTypes: detailNodeAttrTypes()}, []attr.Value{})
 }
 
-// buildDetailNodesList converts the nodes of the API response into a types.List,
-// returning an empty list when there is nothing to convert
 func buildDetailNodesList(ctx context.Context, items []databaseDetailNodeItem) types.List {
 	attrTypes := detailNodeAttrTypes()
 	if len(items) == 0 {
@@ -825,7 +789,6 @@ func buildDetailNodesList(ctx context.Context, items []databaseDetailNodeItem) t
 	return result
 }
 
-// stringOrNull maps a nullable JSON string to its Terraform counterpart
 func stringOrNull(value *string) types.String {
 	if value == nil {
 		return types.StringNull()
@@ -840,7 +803,6 @@ func strVal(value *string) string {
 	return *value
 }
 
-// stringValueOrNull maps a derived value to null when it could not be determined
 func stringValueOrNull(value string) types.String {
 	if value == "" {
 		return types.StringNull()
@@ -848,8 +810,6 @@ func stringValueOrNull(value string) types.String {
 	return types.StringValue(value)
 }
 
-// apiString stores the textual form of a JSON value that the API may encode
-// as a string, a number or an object depending on whether the call succeeded
 type apiString string
 
 func (s *apiString) UnmarshalJSON(b []byte) error {
@@ -930,7 +890,6 @@ type databaseDataSourceModel struct {
 	Nodes               types.List   `tfsdk:"nodes"`
 }
 
-// Response from API when requesting the detail of a database cluster
 type databaseDetailResponse struct {
 	Code    apiString          `json:"code"`
 	Message apiString          `json:"message"`
@@ -1002,8 +961,6 @@ type databaseDetailCluster struct {
 	VmSync              bool     `json:"vm_sync"`
 }
 
-// Response from API when listing the database flavors of a VPC, used to resolve a
-// flavor id into a flavor name
 type databaseFlavorListResponse struct {
 	Data []struct {
 		FlavorId   string `json:"flavor_id"`

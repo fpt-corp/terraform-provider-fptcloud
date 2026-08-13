@@ -59,8 +59,6 @@ var ApiPath = struct {
 	DatabaseApplyTags func() string
 	DatabaseFlavor    func(vpcId string, isOSP string) string
 
-	// Pull the infrastructure state of a VPC into BSS. Nothing syncs automatically, so
-	// these have to be called before reading resources that are backed by BSS data
 	VpcSyncInstances  func(vpcId string) string
 	VpcSyncStorages   func(vpcId string) string
 	VpcSyncStoragesV2 func(vpcId string) string
