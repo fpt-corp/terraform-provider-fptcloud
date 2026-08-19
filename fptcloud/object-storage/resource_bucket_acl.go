@@ -76,10 +76,14 @@ func resourceBucketAclCreate(ctx context.Context, d *schema.ResourceData, m inte
 
 	r := service.PutBucketAcl(vpcId, s3ServiceDetail.S3ServiceId, bucketName, bucketAclRequest)
 	if !r.Status {
-		if err := d.Set("status", false); err != nil {
+		// The ACL is already the one asked for: an earlier attempt committed and
+		// only its response was lost. Record it instead of failing forever.
+		if reconcileBucketAcl(service, vpcId, s3ServiceDetail.S3ServiceId, bucketName, cannedAcl) != createAdopted {
+			if err := d.Set("status", false); err != nil {
+				return diag.Errorf("failed to create bucket ACL for bucket %s", bucketName)
+			}
 			return diag.Errorf("failed to create bucket ACL for bucket %s", bucketName)
 		}
-		return diag.Errorf("failed to create bucket ACL for bucket %s", bucketName)
 	}
 	if err := d.Set("status", true); err != nil {
 		return diag.FromErr(err)

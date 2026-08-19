@@ -78,7 +78,15 @@ func resourceSubUserCreate(ctx context.Context, d *schema.ResourceData, m interf
 
 	err := objectStorageService.CreateSubUser(req, vpcId, s3ServiceDetail.S3ServiceId)
 	if !err.Status {
-		return diag.FromErr(fmt.Errorf("error creating sub-user: %s", err.Message))
+		switch reconcileSubUser(objectStorageService, vpcId, s3ServiceDetail.S3ServiceId, subUserId, req.Role) {
+		case createAdopted:
+			// The sub-user exists with the requested role: an earlier attempt committed
+			// and only its response was lost. Record it instead of failing forever.
+		case createConflict:
+			return diag.Errorf("sub-user %s already exists with a different role: %s", subUserId, err.Message)
+		default:
+			return diag.FromErr(fmt.Errorf("error creating sub-user: %s", err.Message))
+		}
 	}
 
 	// Set the resource ID after successful creation

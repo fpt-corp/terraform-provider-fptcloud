@@ -80,14 +80,20 @@ func resourceBucketStaticWebsiteCreate(ctx context.Context, d *schema.ResourceDa
 		Suffix: indexDocument,
 		Key:    errorDocument,
 	})
-	d.SetId(bucketName)
+	// A failed call has to surface as an error and leave the ID empty. Returning
+	// nil here reported a website configuration that was never created as a
+	// successful apply, and an ID set on the error path would strand it in state.
 	if !putBucketWebsite.Status {
-		if err := d.Set("status", false); err != nil {
-			d.SetId("")
+		// A website configuration is present after all: an earlier attempt committed
+		// and only its response was lost. Record it instead of failing forever.
+		if reconcileBucketWebsite(service, vpcId, s3ServiceDetail.S3ServiceId, bucketName) != createAdopted {
+			if err := d.Set("status", false); err != nil {
+				return diag.FromErr(err)
+			}
 			return diag.Errorf("failed to create bucket website for bucket %s", bucketName)
 		}
-		return nil
 	}
+	d.SetId(bucketName)
 	if err := d.Set("status", true); err != nil {
 		d.SetId("")
 		return diag.FromErr(err)

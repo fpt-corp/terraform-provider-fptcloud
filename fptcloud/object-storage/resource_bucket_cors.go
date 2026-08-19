@@ -114,10 +114,18 @@ func resourceBucketCorsCreate(ctx context.Context, d *schema.ResourceData, m int
 	}
 	r := service.CreateBucketCors(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 	if !r.Status {
-		if err := d.Set("status", false); err != nil {
-			return diag.FromErr(err)
+		switch reconcileCorsRule(service, vpcId, s3ServiceDetail.S3ServiceId, bucketName, jsonMap) {
+		case createAdopted:
+			// The rule is on the bucket after all: an earlier attempt committed and
+			// only its response was lost. Record it instead of failing forever.
+		case createConflict:
+			return diag.Errorf("CORS rule %q already exists on bucket %s with different settings: %s", jsonMap.ID, bucketName, r.Message)
+		default:
+			if err := d.Set("status", false); err != nil {
+				return diag.FromErr(err)
+			}
+			return diag.FromErr(fmt.Errorf("%s", r.Message))
 		}
-		return diag.FromErr(fmt.Errorf("%s", r.Message))
 	}
 	d.SetId(bucketName)
 	if err := d.Set("status", true); err != nil {
@@ -142,25 +150,56 @@ func resourceBucketCorsRead(_ context.Context, d *schema.ResourceData, m interfa
 	if !bucketCorsDetails.Status {
 		return diag.FromErr(fmt.Errorf("failed to fetch life cycle rules for bucket %s", bucketName))
 	}
-	d.SetId(bucketName)
-	var formattedData []interface{}
-	if bucketCorsDetails.Total == 0 {
-		if err := d.Set("bucket_cors_rules", make([]interface{}, 0)); err != nil {
-			d.SetId("")
-			return diag.FromErr(err)
-		}
+	ruleID, err := corsRuleID(d)
+	if err != nil {
+		return diag.FromErr(err)
 	}
+
+	// The resource owns one rule, so it is gone once its own ID is absent from the
+	// bucket's rule set - which is what happens when a rule is removed out of band
+	// or lost to a concurrent write. Clearing the ID lets Terraform plan a
+	// recreate; leaving it set strands the resource in a state no refresh can
+	// reconcile and makes the eventual destroy fail with a 404.
+	var formattedData []interface{}
+	found := false
 	for _, corsRuleDetail := range bucketCorsDetails.CorsRules {
+		if corsRuleDetail.ID == ruleID {
+			found = true
+		}
 		data := map[string]interface{}{
 			"id": corsRuleDetail.ID,
 		}
 		formattedData = append(formattedData, data)
 	}
+	if !found {
+		d.SetId("")
+		return nil
+	}
+
+	d.SetId(bucketName)
 	if err := d.Set("bucket_cors_rules", formattedData); err != nil {
 		d.SetId("")
 		return diag.FromErr(err)
 	}
 	return nil
+}
+
+// corsRuleID returns the ID of the single rule this resource manages, read from
+// whichever of the two config fields is set.
+func corsRuleID(d *schema.ResourceData) (string, error) {
+	var corsConfigData string
+	if v, ok := d.GetOk("cors_config"); ok {
+		corsConfigData = v.(string)
+	} else if v, ok := d.GetOk("cors_config_file"); ok {
+		corsConfigData = v.(string)
+	} else {
+		return "", fmt.Errorf("either 'cors_config' or 'cors_config_file' must be specified")
+	}
+	var jsonMap CorsRule
+	if err := json.Unmarshal([]byte(corsConfigData), &jsonMap); err != nil {
+		return "", err
+	}
+	return jsonMap.ID, nil
 }
 
 func resourceBucketCorsDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {

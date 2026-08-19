@@ -1,3 +1,15 @@
+## [0.3.61] - 2026-08-19
+
+### Resource
+
+- Feat: support `Status` in bucket lifecycle rule so a rule can be created Disabled
+- Fix: send only the fields a lifecycle rule declares, instead of omitted objects as zero values the API rejects
+- Fix: do not record a bucket lifecycle rule in state when its create fails
+- Fix: detect lifecycle and CORS rules deleted outside Terraform instead of reporting them as present
+- Fix: treat a missing bucket as drift instead of failing the plan
+- Fix: report a failed bucket static website create as an error instead of success
+- Fix: adopt object storage objects left behind by a create whose response was lost
+
 ## [0.3.60] - 2026-08-13
 
 ### Datasource
