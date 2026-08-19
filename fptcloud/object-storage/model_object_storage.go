@@ -196,12 +196,19 @@ type PutBucketAclResponse struct {
 	TaskID string `json:"taskId"`
 }
 
+// S3BucketLifecycleConfig mirrors one rule of a bucket lifecycle configuration.
+//
+// The nested objects are pointers so that "absent" and "present but zero" stay
+// distinguishable: a value type cannot express the difference, and sending an
+// omitted object as {"NoncurrentDays": 0} makes the API reject the rule with
+// InvalidArgument. Only the fields the user actually wrote are marshalled.
 type S3BucketLifecycleConfig struct {
-	ID                             string                         `json:"ID"`
-	Filter                         Filter                         `json:"Filter"`
-	Expiration                     Expiration                     `json:"Expiration"`
-	NoncurrentVersionExpiration    NoncurrentVersionExpiration    `json:"NoncurrentVersionExpiration"`
-	AbortIncompleteMultipartUpload AbortIncompleteMultipartUpload `json:"AbortIncompleteMultipartUpload"`
+	ID                             string                          `json:"ID"`
+	Status                         string                          `json:"Status,omitempty"`
+	Filter                         *Filter                         `json:"Filter,omitempty"`
+	Expiration                     *Expiration                     `json:"Expiration,omitempty"`
+	NoncurrentVersionExpiration    *NoncurrentVersionExpiration    `json:"NoncurrentVersionExpiration,omitempty"`
+	AbortIncompleteMultipartUpload *AbortIncompleteMultipartUpload `json:"AbortIncompleteMultipartUpload,omitempty"`
 }
 
 type S3ServiceEnableResponse struct {

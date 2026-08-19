@@ -63,7 +63,11 @@ func resourceBucketVersioningCreate(ctx context.Context, d *schema.ResourceData,
 	})
 
 	if err != nil {
-		return diag.FromErr(err)
+		// The setting is already the one asked for: an earlier attempt committed and
+		// only its response was lost. Record it instead of failing forever.
+		if reconcileBucketVersioning(service, vpcId, s3ServiceDetail.S3ServiceId, bucketName, versioningStatus) != createAdopted {
+			return diag.FromErr(err)
+		}
 	}
 	d.SetId(fmt.Sprintf("%s:%s", bucketName, versioningStatus))
 	if err := d.Set("versioning_status", versioningStatus); err != nil {

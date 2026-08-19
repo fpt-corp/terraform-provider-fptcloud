@@ -96,12 +96,66 @@ func customizeBucketLifecycleDiff(_ context.Context, d *schema.ResourceDiff, _ i
 	if jsonMap.ID == "" {
 		return fmt.Errorf("life_cycle_rule must include non-empty ID")
 	}
-	if jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
+	if jsonMap.Status != "" && jsonMap.Status != lifeCycleStatusEnabled && jsonMap.Status != lifeCycleStatusDisabled {
+		return fmt.Errorf("Status must be %q or %q, got %q", lifeCycleStatusEnabled, lifeCycleStatusDisabled, jsonMap.Status)
+	}
+	if jsonMap.Expiration != nil && jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
 		return fmt.Errorf("Expiration.Days and Expiration.ExpiredObjectDeleteMarker cannot be set at the same time")
 	}
 
 	return nil
 }
+
+const (
+	lifeCycleStatusEnabled  = "Enabled"
+	lifeCycleStatusDisabled = "Disabled"
+)
+
+// lifeCycleRulePayload builds the API request body, carrying only the fields the
+// rule actually declares. An omitted object is left out entirely rather than
+// sent as a zero value, which the API rejects with InvalidArgument.
+func lifeCycleRulePayload(jsonMap S3BucketLifecycleConfig) map[string]interface{} {
+	payload := map[string]interface{}{"ID": jsonMap.ID}
+	if jsonMap.Status != "" {
+		payload["Status"] = jsonMap.Status
+	}
+	if jsonMap.Filter != nil {
+		payload["Filter"] = map[string]interface{}{"Prefix": jsonMap.Filter.Prefix}
+	}
+	if jsonMap.NoncurrentVersionExpiration != nil {
+		payload["NoncurrentVersionExpiration"] = map[string]interface{}{"NoncurrentDays": jsonMap.NoncurrentVersionExpiration.NoncurrentDays}
+	}
+	if jsonMap.AbortIncompleteMultipartUpload != nil {
+		payload["AbortIncompleteMultipartUpload"] = map[string]interface{}{"DaysAfterInitiation": jsonMap.AbortIncompleteMultipartUpload.DaysAfterInitiation}
+	}
+	if jsonMap.Expiration != nil {
+		if jsonMap.Expiration.Days != 0 {
+			payload["Expiration"] = map[string]interface{}{"Days": jsonMap.Expiration.Days}
+		} else if jsonMap.Expiration.ExpiredObjectDeleteMarker {
+			payload["Expiration"] = map[string]interface{}{"ExpiredObjectDeleteMarker": true}
+		}
+	}
+	return payload
+}
+
+// lifeCycleRuleID returns the ID of the single rule this resource manages, read
+// from whichever of the two config fields is set.
+func lifeCycleRuleID(d *schema.ResourceData) (string, error) {
+	var lifecycleRuleContent string
+	if v, ok := d.GetOk("life_cycle_rule"); ok {
+		lifecycleRuleContent = v.(string)
+	} else if v, ok := d.GetOk("life_cycle_rule_file"); ok {
+		lifecycleRuleContent = v.(string)
+	} else {
+		return "", fmt.Errorf("either 'life_cycle_rule' or 'life_cycle_rule_file' must be specified")
+	}
+	jsonMap, err := parseLifeCycleData(lifecycleRuleContent)
+	if err != nil {
+		return "", err
+	}
+	return jsonMap.ID, nil
+}
+
 func parseLifeCycleData(lifeCycleData string) (S3BucketLifecycleConfig, error) {
 	var jsonMap S3BucketLifecycleConfig
 	err := json.Unmarshal([]byte(lifeCycleData), &jsonMap)
@@ -135,30 +189,30 @@ func resourceBucketLifeCycleCreate(ctx context.Context, d *schema.ResourceData, 
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	payload := map[string]interface{}{
-		"ID":                             jsonMap.ID,
-		"NoncurrentVersionExpiration":    map[string]interface{}{"NoncurrentDays": jsonMap.NoncurrentVersionExpiration.NoncurrentDays},
-		"AbortIncompleteMultipartUpload": map[string]interface{}{"DaysAfterInitiation": jsonMap.AbortIncompleteMultipartUpload.DaysAfterInitiation},
-		"Filter":                         map[string]interface{}{"Prefix": jsonMap.Filter.Prefix},
-	}
-	if jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
+	if jsonMap.Expiration != nil && jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
 		return diag.FromErr(fmt.Errorf("Expiration.Days and Expiration.ExpiredObjectDeleteMarker cannot be set at the same time"))
 	}
-	if jsonMap.Expiration.Days != 0 {
-		payload["Expiration"] = map[string]interface{}{"Days": jsonMap.Expiration.Days}
-	}
-	if jsonMap.Expiration.ExpiredObjectDeleteMarker {
-		payload["Expiration"] = map[string]interface{}{"ExpiredObjectDeleteMarker": jsonMap.Expiration.ExpiredObjectDeleteMarker}
-	}
+	payload := lifeCycleRulePayload(jsonMap)
 	r := service.PutBucketLifecycle(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
-	d.SetId(bucketName)
+	// The ID is only claimed once the rule is known to exist. Returning an error
+	// with an ID set makes Terraform record the resource as tainted, so the next
+	// apply or destroy issues a delete for a rule that was never created and the
+	// backend answers 404.
 	if !r.Status {
-		if err := d.Set("state", false); err != nil {
-			d.SetId("")
-			return diag.FromErr(err)
+		switch reconcileLifeCycleRule(service, vpcId, s3ServiceDetail.S3ServiceId, bucketName, jsonMap) {
+		case createAdopted:
+			// The rule is on the bucket after all: an earlier attempt committed and
+			// only its response was lost. Record it instead of failing forever.
+		case createConflict:
+			return diag.Errorf("lifecycle rule %q already exists on bucket %s with different settings: %s", jsonMap.ID, bucketName, r.Message)
+		default:
+			if err := d.Set("state", false); err != nil {
+				return diag.FromErr(err)
+			}
+			return diag.FromErr(fmt.Errorf("%s", r.Message))
 		}
-		return diag.FromErr(fmt.Errorf("%s", r.Message))
 	}
+	d.SetId(bucketName)
 	if err := d.Set("state", true); err != nil {
 		d.SetId("")
 		return diag.FromErr(err)
@@ -183,21 +237,33 @@ func resourceBucketLifeCycleRead(_ context.Context, d *schema.ResourceData, m in
 	if !lifeCycleResponse.Status {
 		return diag.FromErr(fmt.Errorf("failed to fetch life cycle rules for bucket %s", bucketName))
 	}
-	d.SetId(bucketName)
-	var formattedData []interface{}
-	if lifeCycleResponse.Total == 0 {
-		if err := d.Set("rules", make([]interface{}, 0)); err != nil {
-			d.SetId("")
-			return diag.FromErr(err)
-		}
+	ruleID, err := lifeCycleRuleID(d)
+	if err != nil {
+		return diag.FromErr(err)
 	}
+
+	// The resource owns one rule, so it is gone once its own ID is absent from the
+	// bucket's rule set - which is what happens when a rule is removed out of band
+	// or lost to a concurrent write. Clearing the ID lets Terraform plan a
+	// recreate; leaving it set strands the resource in a state no refresh can
+	// reconcile and makes the eventual destroy fail with a 404.
+	var formattedData []interface{}
+	found := false
 	for _, lifecycleRule := range lifeCycleResponse.Rules {
+		if lifecycleRule.ID == ruleID {
+			found = true
+		}
 		data := map[string]interface{}{
 			"id": lifecycleRule.ID,
 		}
 		formattedData = append(formattedData, data)
 	}
+	if !found {
+		d.SetId("")
+		return nil
+	}
 
+	d.SetId(bucketName)
 	if err := d.Set("rules", formattedData); err != nil {
 		d.SetId("")
 		return diag.FromErr(err)
@@ -229,23 +295,11 @@ func resourceBucketLifeCycleDelete(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(err)
 	}
 
-	payload := map[string]interface{}{
-		"AbortIncompleteMultipartUpload": map[string]interface{}{"DaysAfterInitiation": jsonMap.AbortIncompleteMultipartUpload.DaysAfterInitiation},
-		"Status":                         "Enabled",
-		"ID":                             jsonMap.ID,
-		"OrgID":                          jsonMap.ID, // Portal need both ID and OrgID
-		"Filter":                         map[string]interface{}{"Prefix": jsonMap.Filter.Prefix},
-		"NoncurrentVersionExpiration":    map[string]interface{}{"NoncurrentDays": jsonMap.NoncurrentVersionExpiration.NoncurrentDays},
-	}
-	if jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
+	if jsonMap.Expiration != nil && jsonMap.Expiration.Days != 0 && jsonMap.Expiration.ExpiredObjectDeleteMarker {
 		return diag.FromErr(fmt.Errorf("Expiration.Days and Expiration.ExpiredObjectDeleteMarker cannot be set at the same time"))
 	}
-	if jsonMap.Expiration.Days != 0 {
-		payload["Expiration"] = map[string]interface{}{"Days": jsonMap.Expiration.Days}
-	}
-	if jsonMap.Expiration.ExpiredObjectDeleteMarker {
-		payload["Expiration"] = map[string]interface{}{"ExpiredObjectDeleteMarker": jsonMap.Expiration.ExpiredObjectDeleteMarker}
-	}
+	payload := lifeCycleRulePayload(jsonMap)
+	payload["OrgID"] = jsonMap.ID // Portal need both ID and OrgID
 	r := service.DeleteBucketLifecycle(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 	if !r.Status {
 		if err := d.Set("state", false); err != nil {
