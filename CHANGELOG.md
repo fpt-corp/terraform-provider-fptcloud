@@ -1,3 +1,9 @@
+## [0.3.62] - 2026-08-21
+
+### Resource
+
+- Fix: serialize `policy` and `vms` on `fptcloud_instance_group` read so state matches the string schema instead of failing on the object/list returned by the API
+
 ## [0.3.61] - 2026-08-19
 
 ### Resource
