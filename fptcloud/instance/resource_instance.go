@@ -77,6 +77,11 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 		createdModel.SecurityGroupIds = securityGroupIdsList
 	}
 
+	if gpuPlan, ok := d.GetOk("gpu_plan"); ok {
+		billingType := mapGpuPlanToBillingType(gpuPlan.(string))
+		createdModel.BillingType = &billingType
+	}
+
 	if tags, ok := d.GetOk("tag_ids"); ok {
 		tagsSet := tags.(*schema.Set)
 		tagIds := make([]string, 0, tagsSet.Len())
@@ -205,6 +210,12 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("tag_ids", foundInstance.TagIds); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("vm_type", deriveVmType(foundInstance.GpuName)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("gpu_plan", mapBillingTypeToGpuPlan(foundInstance.BillingType)); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }
@@ -266,6 +277,7 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	hasChangeFlavor := d.HasChange("flavor_name")
 	hasChangeStatus := d.HasChange("status")
 	hasChangeTags := d.HasChange("tag_ids")
+	hasChangeGpuPlan := d.HasChange("gpu_plan")
 
 	if hasChangedName {
 		newName := d.Get("name").(string)
@@ -329,6 +341,14 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		_, err := instanceService.UpdateTags(vpcId, d.Id(), tagIds)
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while updating instance tags %s", err)
+		}
+	}
+
+	if hasChangeGpuPlan {
+		gpuPlan := d.Get("gpu_plan").(string)
+		_, err := instanceService.ChangeBillingType(vpcId, d.Id(), mapGpuPlanToBillingType(gpuPlan))
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while changing billing plan of instance %s", err)
 		}
 	}
 

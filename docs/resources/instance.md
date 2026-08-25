@@ -97,6 +97,7 @@ resource "fptcloud_instance" "example_03" {
 ### Optional
 
 - `flavor_name` (String) The flavor name of the instance (get from API or data source)
+- `gpu_plan` (String) Billing plan for GPU instances: `hold` (reserved) or `detach` (payg). Only applicable when flavor_name is a GPU flavor.
 - `instance_group_id` (String) The instance group id of the instance
 - `password` (String) The password of the instance
 - `private_ip` (String) The private ip of the instance.
@@ -109,3 +110,4 @@ resource "fptcloud_instance" "example_03" {
 
 - `created_at` (String) The created at of the security group
 - `id` (String) The id of the instance
+- `vm_type` (String) Type of the instance (`cpu` or `gpu`), derived from the server based on flavor_name.

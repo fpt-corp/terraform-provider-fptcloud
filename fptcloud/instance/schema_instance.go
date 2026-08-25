@@ -216,4 +216,16 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		Elem:        &schema.Schema{Type: schema.TypeString},
 		Description: "List of tag IDs to associate with the instance",
 	},
+	"gpu_plan": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		Computed:     true,
+		Description:  "Billing plan for GPU instances: `hold` (reserved) or `detach` (payg). Only applicable when flavor_name is a GPU flavor.",
+		ValidateFunc: validation.StringInSlice([]string{"hold", "detach"}, false),
+	},
+	"vm_type": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "Type of the instance (`cpu` or `gpu`), derived from the server based on flavor_name.",
+	},
 }

@@ -16,6 +16,7 @@ type InstanceService interface {
 	Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error)
 	GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error)
 	UpdateTags(vpcId string, instanceId string, tagIds []string) (*common.SimpleResponse, error)
+	ChangeBillingType(vpcId string, instanceId string, billingType string) (*common.SimpleResponse, error)
 }
 
 // InstanceServiceImpl is the implementation of InstanceService
@@ -145,6 +146,21 @@ func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string) (
 	}
 
 	return &flavor, nil
+}
+
+// ChangeBillingType updates the billing plan of a GPU instance
+func (s *InstanceServiceImpl) ChangeBillingType(vpcId string, instanceId string, billingType string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.ChangeBillingTypeInstance(vpcId, instanceId)
+	_, err := s.client.SendPutRequest(apiPath, map[string]string{"billing_type": billingType})
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
 }
 
 // UpdateTags updates tags associated with an instance
