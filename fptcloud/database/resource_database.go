@@ -543,10 +543,10 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description: "List of tag IDs applied to the database",
 			},
 			"nodes": schema.ListAttribute{
-				Computed:				true,
-				PlanModifiers: 	[]planmodifier.List{listplanmodifier.UseStateForUnknown()},
-				Description:		"List of nodes (VMs) in the database cluster",
-				ElementType:		types.ObjectType{
+				Computed:			 true,
+				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				Description:	 "List of nodes (VMs) in the database cluster",
+				ElementType: types.ObjectType{
 					AttrTypes: map[string]attr.Type{
 						"id":             types.StringType,
 						"name":           types.StringType,
