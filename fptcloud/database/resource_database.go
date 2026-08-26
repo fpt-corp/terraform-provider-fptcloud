@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -345,7 +346,18 @@ func (r *resourceDatabase) Update(ctx context.Context, request resource.UpdateRe
 	plan.TimeMaintenance = state.TimeMaintenance
 
 	plan.Id = state.Id
-	response.State.Set(ctx, &plan)
+	plan.Nodes = state.Nodes
+	if plan.Nodes.IsNull() || plan.Nodes.IsUnknown() {
+		refreshed := databaseResourceModel{VpcId: state.VpcId}
+		if err := r.internalRead(ctx, state.Id.ValueString(), &refreshed); err != nil {
+			tflog.Warn(ctx, "Could not read nodes back after applying tags: "+err.Error())
+			plan.Nodes = emptyNodesList()
+		} else {
+			plan.Nodes = refreshed.Nodes
+		}
+	}
+
+	response.Diagnostics.Append(response.State.Set(ctx, &plan)...)
 }
 
 func (r *resourceDatabase) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
@@ -531,8 +543,9 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description: "List of tag IDs applied to the database",
 			},
 			"nodes": schema.ListAttribute{
-				Computed:    true,
-				Description: "List of nodes (VMs) in the database cluster",
+				Computed:      true,
+				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				Description:   "List of nodes (VMs) in the database cluster",
 				ElementType: types.ObjectType{
 					AttrTypes: map[string]attr.Type{
 						"id":             types.StringType,

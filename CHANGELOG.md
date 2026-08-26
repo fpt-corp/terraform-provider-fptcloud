@@ -1,3 +1,9 @@
+## [0.3.63] - 2026-08-25
+
+### Resource
+
+- Fix: keep `nodes` known when `fptcloud_database` is updated in place, so a `tag_ids` change no longer fails with "Provider returned invalid result object after apply" and the new state is saved
+
 ## [0.3.62] - 2026-08-21
 
 ### Resource
