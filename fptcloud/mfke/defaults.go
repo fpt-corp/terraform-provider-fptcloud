@@ -317,10 +317,10 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 			}
 		}
 
-		if !plan.Pools[i].Kv.IsNull() && !plan.Pools[i].Kv.IsUnknown() {
-			// Sort KV pairs to ensure consistent ordering
-			plan.Pools[i].Kv = sortKVByKey(plan.Pools[i].Kv)
-		}
+		// Note: plan.Pools[i].Kv is intentionally left in its config order here.
+		// Terraform's plan for kv is the literal config value (no ModifyPlan
+		// reorders it), so re-sorting it would make the applied result diverge
+		// from what was planned and trigger "inconsistent result after apply".
 		// Don't change null/unknown values - let them stay as they are
 		if plan.Pools[i].VGpuID.IsNull() || plan.Pools[i].VGpuID.IsUnknown() || plan.Pools[i].VGpuID.ValueString() == "" {
 			if i < len(state.Pools) && state.Pools[i] != nil {

@@ -1077,6 +1077,18 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	// pools
 	apiPools := make([]*managedKubernetesEnginePool, 0)
 
+	// Snapshot the pool order/state known before this read so kv ordering can be
+	// preserved across Update/Read; without this, kv is rebuilt from a Go map
+	// (random iteration order) and reordering it (e.g. alphabetically) causes
+	// "Provider produced inconsistent result after apply" because the reordered
+	// value no longer matches the plan Terraform already committed to.
+	previousPoolByName := make(map[string]*managedKubernetesEnginePool, len(state.Pools))
+	for _, p := range state.Pools {
+		if p != nil {
+			previousPoolByName[p.WorkerPoolID.ValueString()] = p
+		}
+	}
+
 	for _, worker := range data.Spec.Provider.Workers {
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
@@ -1159,38 +1171,17 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		// Filter out system-generated labels
 		userDefinedLabels := filterUserDefinedKV(labelMap)
 
-		// Convert back to KV list
-		kvElements := make([]attr.Value, 0)
-		for k, v := range userDefinedLabels {
-			kvElements = append(kvElements, types.ObjectValueMust(
-				map[string]attr.Type{
-					"name":  types.StringType,
-					"value": types.StringType,
-				},
-				map[string]attr.Value{
-					"name":  types.StringValue(k),
-					"value": types.StringValue(v),
-				},
-			))
+		// Order kv to match the previous state's order (which itself mirrors the
+		// config/plan order) instead of alphabetically sorting: Terraform's plan
+		// for this pool is built directly from config with no ModifyPlan, so the
+		// applied kv order must match config order or Terraform rejects the
+		// result as inconsistent. Keys already known keep their prior position;
+		// any new keys are appended in sorted order for determinism.
+		var previousKv types.List
+		if prevPool, ok := previousPoolByName[worker.Name]; ok {
+			previousKv = prevPool.Kv
 		}
-
-		// Always create a list, even if empty
-		kvList := types.ListValueMust(
-			types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"name":  types.StringType,
-					"value": types.StringType,
-				},
-			},
-			kvElements,
-		)
-
-		// Sort KV pairs if any exist
-		if len(kvElements) > 0 {
-			item.Kv = sortKVByKey(kvList)
-		} else {
-			item.Kv = kvList
-		}
+		item.Kv = orderKVLikePrevious(previousKv, userDefinedLabels)
 
 		// taints
 		taintElements := make([]attr.Value, 0)
@@ -1807,6 +1798,74 @@ func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context,
 	}
 
 	return nil
+}
+
+// orderKVLikePrevious builds a kv types.List from a name->value map, ordering
+// entries to match previousKv as closely as possible: keys present in
+// previousKv keep their prior position (with their current value), and any
+// keys not present in previousKv are appended afterwards sorted by name.
+// This keeps the read-back kv order stable across applies so it doesn't
+// drift away from the order Terraform's plan already committed to.
+func orderKVLikePrevious(previousKv types.List, current map[string]string) types.List {
+	kvObjectType := types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"name":  types.StringType,
+			"value": types.StringType,
+		},
+	}
+
+	remaining := make(map[string]string, len(current))
+	for k, v := range current {
+		remaining[k] = v
+	}
+
+	kvElements := make([]attr.Value, 0, len(current))
+
+	if !previousKv.IsNull() && !previousKv.IsUnknown() {
+		for _, kvElement := range previousKv.Elements() {
+			kvObj, ok := kvElement.(types.Object)
+			if !ok {
+				continue
+			}
+			kvAttrs := kvObj.Attributes()
+			name, ok := kvAttrs["name"].(types.String)
+			if !ok {
+				continue
+			}
+			key := name.ValueString()
+			value, found := remaining[key]
+			if !found {
+				continue
+			}
+			kvElements = append(kvElements, types.ObjectValueMust(
+				kvObjectType.AttrTypes,
+				map[string]attr.Value{
+					"name":  types.StringValue(key),
+					"value": types.StringValue(value),
+				},
+			))
+			delete(remaining, key)
+		}
+	}
+
+	if len(remaining) > 0 {
+		newKeys := make([]string, 0, len(remaining))
+		for k := range remaining {
+			newKeys = append(newKeys, k)
+		}
+		sort.Strings(newKeys)
+		for _, key := range newKeys {
+			kvElements = append(kvElements, types.ObjectValueMust(
+				kvObjectType.AttrTypes,
+				map[string]attr.Value{
+					"name":  types.StringValue(key),
+					"value": types.StringValue(remaining[key]),
+				},
+			))
+		}
+	}
+
+	return types.ListValueMust(kvObjectType, kvElements)
 }
 
 // isSystemGeneratedKey checks if a key is system-generated
