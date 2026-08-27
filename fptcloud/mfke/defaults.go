@@ -317,10 +317,8 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 			}
 		}
 
-		if !plan.Pools[i].Kv.IsNull() && !plan.Pools[i].Kv.IsUnknown() {
-			// Sort KV pairs to ensure consistent ordering
-			plan.Pools[i].Kv = sortKVByKey(plan.Pools[i].Kv)
-		}
+		// Note: kv is a Set, so plan.Pools[i].Kv doesn't need any reordering
+		// here - Terraform compares Set values regardless of element order.
 		// Don't change null/unknown values - let them stay as they are
 		if plan.Pools[i].VGpuID.IsNull() || plan.Pools[i].VGpuID.IsUnknown() || plan.Pools[i].VGpuID.ValueString() == "" {
 			if i < len(state.Pools) && state.Pools[i] != nil {

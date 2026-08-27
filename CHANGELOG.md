@@ -1,3 +1,9 @@
+## [0.3.64] - 2026-08-27
+
+### Resource
+
+- Fix: update type Labels and Taints for worker pool in MFKE
+
 ## [0.3.63] - 2026-08-25
 
 ### Resource
