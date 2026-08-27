@@ -238,27 +238,6 @@ func (r *resourceManagedKubernetesEngine) Update(ctx context.Context, request re
 		return
 	}
 
-	// InternalRead rebuilds state.Pools[i].Kv from the API response and uses
-	// state.Pools as the reference order to avoid reshuffling kv entries.
-	// Seed it with the plan's kv order (what Terraform's plan already showed
-	// the user) rather than the stale pre-update state, otherwise a kv
-	// reorder/change in this apply gets read back in the old order and
-	// Terraform rejects the result as inconsistent with the plan.
-	planKvByPool := make(map[string]types.List, len(plan.Pools))
-	for _, p := range plan.Pools {
-		if p != nil {
-			planKvByPool[p.WorkerPoolID.ValueString()] = p.Kv
-		}
-	}
-	for i, p := range state.Pools {
-		if p == nil {
-			continue
-		}
-		if kv, ok := planKvByPool[p.WorkerPoolID.ValueString()]; ok {
-			state.Pools[i].Kv = kv
-		}
-	}
-
 	_, err := r.InternalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))

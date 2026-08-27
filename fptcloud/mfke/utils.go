@@ -305,7 +305,11 @@ func PoolFields() map[string]schema.Attribute {
 		}
 	}
 
-	poolLevelAttributes["kv"] = schema.ListAttribute{
+	// kv is a Set (not a List): entries are unordered key/value pairs, so
+	// reordering them in config must not produce a plan diff, and the API
+	// response order (a Go map, effectively random) must not be rejected as
+	// inconsistent with the plan.
+	poolLevelAttributes["kv"] = schema.SetAttribute{
 		Optional: true,
 		Computed: true,
 		ElementType: types.ObjectType{
@@ -316,7 +320,10 @@ func PoolFields() map[string]schema.Attribute {
 		},
 	}
 
-	poolLevelAttributes["taints"] = schema.ListAttribute{
+	// taints is a Set for the same reason as kv: entries are unordered, so
+	// reordering them in config must not produce a plan diff, and the API
+	// response order must not be rejected as inconsistent with the plan.
+	poolLevelAttributes["taints"] = schema.SetAttribute{
 		Optional: true,
 		Computed: true,
 		ElementType: types.ObjectType{
@@ -350,31 +357,23 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		// KVs
 		kvs := make([]map[string]string, 0)
 		if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
-			// Sort KV blocks by key name for consistent ordering during plan
-			sortedKv := sortKVByKey(item.Kv)
-
-			for _, kvElement := range sortedKv.Elements() {
-				if kvObj, ok := kvElement.(types.Object); ok {
-					kvAttrs := kvObj.Attributes()
-					name := kvAttrs["name"].(types.String)
-					value := kvAttrs["value"].(types.String)
-
-					if name.IsNull() && value.IsNull() {
-						continue
-					}
-					key := name.ValueString()
-					val := value.ValueString()
-					if key == "" && val == "" {
-						continue
-					}
-
-					// Skip system-generated keys when sending request
-					if isSystemGeneratedKey(key) {
-						continue
-					}
-
-					kvs = append(kvs, map[string]string{key: val})
+			// Sort KV blocks by key name for a deterministic request payload
+			for _, kv := range sortKVByKey(item.Kv) {
+				if kv.Name.IsNull() && kv.Value.IsNull() {
+					continue
 				}
+				key := kv.Name.ValueString()
+				val := kv.Value.ValueString()
+				if key == "" && val == "" {
+					continue
+				}
+
+				// Skip system-generated keys when sending request
+				if isSystemGeneratedKey(key) {
+					continue
+				}
+
+				kvs = append(kvs, map[string]string{key: val})
 			}
 		}
 
@@ -615,30 +614,23 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 
 	kvs := make([]map[string]string, 0)
 	if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
-		// Sort KV blocks by key name for consistent ordering during plan
-		sortedKv := sortKVByKey(item.Kv)
-		for _, kvElement := range sortedKv.Elements() {
-			if kvObj, ok := kvElement.(types.Object); ok {
-				kvAttrs := kvObj.Attributes()
-				name := kvAttrs["name"].(types.String)
-				value := kvAttrs["value"].(types.String)
-
-				if name.IsNull() && value.IsNull() {
-					continue
-				}
-				key := name.ValueString()
-				val := value.ValueString()
-				if key == "" && val == "" {
-					continue
-				}
-
-				// Skip system-generated keys when sending request
-				if isSystemGeneratedKey(key) {
-					continue
-				}
-
-				kvs = append(kvs, map[string]string{key: val})
+		// Sort KV blocks by key name for a deterministic request payload
+		for _, kv := range sortKVByKey(item.Kv) {
+			if kv.Name.IsNull() && kv.Value.IsNull() {
+				continue
 			}
+			key := kv.Name.ValueString()
+			val := kv.Value.ValueString()
+			if key == "" && val == "" {
+				continue
+			}
+
+			// Skip system-generated keys when sending request
+			if isSystemGeneratedKey(key) {
+				continue
+			}
+
+			kvs = append(kvs, map[string]string{key: val})
 		}
 	}
 
@@ -813,11 +805,9 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 
 	kvMap := func(p *managedKubernetesEnginePool) map[string]string {
 		m := map[string]string{}
-		// Treat both null and ListNull as empty map for comparison
-		if !p.Kv.IsNull() && !p.Kv.IsUnknown() && len(p.Kv.Elements()) > 0 {
-			// Sort KV blocks by key name for consistent comparison
-			sortedKv := sortKVByKey(p.Kv)
-			for _, kvElement := range sortedKv.Elements() {
+		// Treat both null and empty Set as empty map for comparison
+		if !p.Kv.IsNull() && !p.Kv.IsUnknown() {
+			for _, kvElement := range p.Kv.Elements() {
 				if kvObj, ok := kvElement.(types.Object); ok {
 					kvAttrs := kvObj.Attributes()
 					k := kvAttrs["name"].(types.String).ValueString()
@@ -1077,18 +1067,6 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 	// pools
 	apiPools := make([]*managedKubernetesEnginePool, 0)
 
-	// Snapshot the pool order/state known before this read so kv ordering can be
-	// preserved across Update/Read; without this, kv is rebuilt from a Go map
-	// (random iteration order) and reordering it (e.g. alphabetically) causes
-	// "Provider produced inconsistent result after apply" because the reordered
-	// value no longer matches the plan Terraform already committed to.
-	previousPoolByName := make(map[string]*managedKubernetesEnginePool, len(state.Pools))
-	for _, p := range state.Pools {
-		if p != nil {
-			previousPoolByName[p.WorkerPoolID.ValueString()] = p
-		}
-	}
-
 	for _, worker := range data.Spec.Provider.Workers {
 		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
 		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
@@ -1171,17 +1149,31 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		// Filter out system-generated labels
 		userDefinedLabels := filterUserDefinedKV(labelMap)
 
-		// Order kv to match the previous state's order (which itself mirrors the
-		// config/plan order) instead of alphabetically sorting: Terraform's plan
-		// for this pool is built directly from config with no ModifyPlan, so the
-		// applied kv order must match config order or Terraform rejects the
-		// result as inconsistent. Keys already known keep their prior position;
-		// any new keys are appended in sorted order for determinism.
-		var previousKv types.List
-		if prevPool, ok := previousPoolByName[worker.Name]; ok {
-			previousKv = prevPool.Kv
+		// kv is a Set, so element order carries no meaning to Terraform -
+		// no need to preserve/derive an order when rebuilding it from the
+		// API's label map.
+		kvElements := make([]attr.Value, 0, len(userDefinedLabels))
+		for k, v := range userDefinedLabels {
+			kvElements = append(kvElements, types.ObjectValueMust(
+				map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+				map[string]attr.Value{
+					"name":  types.StringValue(k),
+					"value": types.StringValue(v),
+				},
+			))
 		}
-		item.Kv = orderKVLikePrevious(previousKv, userDefinedLabels)
+		item.Kv = types.SetValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+			},
+			kvElements,
+		)
 
 		// taints
 		taintElements := make([]attr.Value, 0)
@@ -1217,8 +1209,8 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			}
 		}
 
-		// Always create a list, even if empty
-		item.Taints = types.ListValueMust(
+		// Always create a set, even if empty
+		item.Taints = types.SetValueMust(
 			types.ObjectType{
 				AttrTypes: map[string]attr.Type{
 					"key":    types.StringType,
@@ -1800,74 +1792,6 @@ func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context,
 	return nil
 }
 
-// orderKVLikePrevious builds a kv types.List from a name->value map, ordering
-// entries to match previousKv as closely as possible: keys present in
-// previousKv keep their prior position (with their current value), and any
-// keys not present in previousKv are appended afterwards sorted by name.
-// This keeps the read-back kv order stable across applies so it doesn't
-// drift away from the order Terraform's plan already committed to.
-func orderKVLikePrevious(previousKv types.List, current map[string]string) types.List {
-	kvObjectType := types.ObjectType{
-		AttrTypes: map[string]attr.Type{
-			"name":  types.StringType,
-			"value": types.StringType,
-		},
-	}
-
-	remaining := make(map[string]string, len(current))
-	for k, v := range current {
-		remaining[k] = v
-	}
-
-	kvElements := make([]attr.Value, 0, len(current))
-
-	if !previousKv.IsNull() && !previousKv.IsUnknown() {
-		for _, kvElement := range previousKv.Elements() {
-			kvObj, ok := kvElement.(types.Object)
-			if !ok {
-				continue
-			}
-			kvAttrs := kvObj.Attributes()
-			name, ok := kvAttrs["name"].(types.String)
-			if !ok {
-				continue
-			}
-			key := name.ValueString()
-			value, found := remaining[key]
-			if !found {
-				continue
-			}
-			kvElements = append(kvElements, types.ObjectValueMust(
-				kvObjectType.AttrTypes,
-				map[string]attr.Value{
-					"name":  types.StringValue(key),
-					"value": types.StringValue(value),
-				},
-			))
-			delete(remaining, key)
-		}
-	}
-
-	if len(remaining) > 0 {
-		newKeys := make([]string, 0, len(remaining))
-		for k := range remaining {
-			newKeys = append(newKeys, k)
-		}
-		sort.Strings(newKeys)
-		for _, key := range newKeys {
-			kvElements = append(kvElements, types.ObjectValueMust(
-				kvObjectType.AttrTypes,
-				map[string]attr.Value{
-					"name":  types.StringValue(key),
-					"value": types.StringValue(remaining[key]),
-				},
-			))
-		}
-	}
-
-	return types.ListValueMust(kvObjectType, kvElements)
-}
-
 // isSystemGeneratedKey checks if a key is system-generated
 func isSystemGeneratedKey(key string) bool {
 	systemKeys := []string{
@@ -1896,54 +1820,33 @@ func filterUserDefinedKV(kvMap map[string]string) map[string]string {
 	return userDefined
 }
 
-// sortKVByKey sorts KV blocks by key name to ensure consistent ordering
-func sortKVByKey(kvList types.List) types.List {
-	if kvList.IsNull() || kvList.IsUnknown() || len(kvList.Elements()) <= 1 {
-		return kvList
+// sortKVByKey returns the kv entries as a slice sorted by name, for callers
+// that need deterministic ordering (e.g. building the API request payload).
+// kv itself is a Set in the schema, where element order carries no meaning
+// to Terraform, so this is purely a determinism convenience, not something
+// that affects plan/apply consistency.
+func sortKVByKey(kvSet types.Set) []KV {
+	if kvSet.IsNull() || kvSet.IsUnknown() {
+		return nil
 	}
 
-	// Convert to KV slice for sorting
-	kvElements := kvList.Elements()
-	kvs := make([]KV, len(kvElements))
-	for i, kvElement := range kvElements {
+	kvElements := kvSet.Elements()
+	kvs := make([]KV, 0, len(kvElements))
+	for _, kvElement := range kvElements {
 		if kvObj, ok := kvElement.(types.Object); ok {
 			kvAttrs := kvObj.Attributes()
-			kvs[i] = KV{
+			kvs = append(kvs, KV{
 				Name:  kvAttrs["name"].(types.String),
 				Value: kvAttrs["value"].(types.String),
-			}
+			})
 		}
 	}
 
-	// Sort by key name
 	sort.Slice(kvs, func(i, j int) bool {
 		return kvs[i].Name.ValueString() < kvs[j].Name.ValueString()
 	})
 
-	// Convert back to types.List
-	sortedElements := make([]attr.Value, len(kvs))
-	for i, kv := range kvs {
-		sortedElements[i] = types.ObjectValueMust(
-			map[string]attr.Type{
-				"name":  types.StringType,
-				"value": types.StringType,
-			},
-			map[string]attr.Value{
-				"name":  kv.Name,
-				"value": kv.Value,
-			},
-		)
-	}
-
-	return types.ListValueMust(
-		types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"name":  types.StringType,
-				"value": types.StringType,
-			},
-		},
-		sortedElements,
-	)
+	return kvs
 }
 
 func internalReadClusterAutoscaler(ca managedKubernetesEngineDataClusterAutoscaler) (types.Object, diag2.Diagnostics) {
