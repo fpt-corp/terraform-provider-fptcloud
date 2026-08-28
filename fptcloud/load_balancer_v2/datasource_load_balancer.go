@@ -59,6 +59,15 @@ func listLoadBalancers(ctx context.Context, d *schema.ResourceData, m interface{
 		for _, v := range lb.Tags {
 			tags = append(tags, v)
 		}
+		var resourceTags []interface{}
+		for _, t := range lb.ResourceTags {
+			resourceTags = append(resourceTags, map[string]interface{}{
+				"id":    t.Id,
+				"key":   t.Key,
+				"value": t.Value,
+				"color": t.Color,
+			})
+		}
 		formattedData = append(formattedData, map[string]interface{}{
 			"id":                  lb.Id,
 			"name":                lb.Name,
@@ -72,6 +81,7 @@ func listLoadBalancers(ctx context.Context, d *schema.ResourceData, m interface{
 			"size":                size,
 			"created_at":          lb.CreatedAt,
 			"tags":                tags,
+			"resource_tags":       resourceTags,
 			"egw_name":            lb.EgwName,
 		})
 	}
@@ -114,6 +124,15 @@ func getLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{})
 			"name": loadBalancer.Network.Name,
 		},
 	}
+	var resourceTags []interface{}
+	for _, t := range loadBalancer.ResourceTags {
+		resourceTags = append(resourceTags, map[string]interface{}{
+			"id":    t.Id,
+			"key":   t.Key,
+			"value": t.Value,
+			"color": t.Color,
+		})
+	}
 	if err := d.Set("load_balancer_id", loadBalancer.Id); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting load balancer id: %v", err))
 	}
@@ -140,6 +159,9 @@ func getLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{})
 	}
 	if err := d.Set("tags", loadBalancer.Tags); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting load balancer tags: %v", err))
+	}
+	if err := d.Set("resource_tags", resourceTags); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting load balancer resource tags: %v", err))
 	}
 	if err := d.Set("egw_name", loadBalancer.EgwName); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting load balancer edge gateway name: %v", err))
