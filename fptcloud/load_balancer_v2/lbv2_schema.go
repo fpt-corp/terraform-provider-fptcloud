@@ -334,21 +334,25 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 	"floating_ip": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The floating IP ID of the load balancer",
 	},
 	"network_id": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The network ID of the load balancer",
 	},
 	"vip_address": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The VIP address of the load balancer",
 	},
 	"cidr": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The CIDR of the load balancer",
 	},
 	"listener": {
@@ -489,6 +493,7 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 	"egw_id": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The edge gateway ID of the load balancer",
 	},
 	"tag_ids": {
