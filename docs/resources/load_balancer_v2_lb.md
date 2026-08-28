@@ -88,18 +88,18 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
 - `name` (String) The name of the load balancer
 - `size` (String) The size ID of the load balancer
 - `vpc_id` (String) The ID of the VPC which contains your load balancer
-- `network_id` (String) The network ID of the load balancer (OSP platform)
 - `listener` (Block Set) The listener of the load balancer (see [below for nested schema](#nestedblock--listener))
 - `pool` (Block Set) The default server pool of the load balancer (see [below for nested schema](#nestedblock--pool))
-- `egw_id` (String) The edge gateway ID of the load balancer (VMW platform)
 
 ### Optional
 
 - `cidr` (String) The CIDR of the load balancer (VMW platform)
 - `description` (String) The description of the load balancer
+- `egw_id` (String) The edge gateway ID of the load balancer (VMW platform)
 - `floating_ip` (String) The floating IP ID of the load balancer
+- `network_id` (String) The network ID of the load balancer (OSP platform)
 - `tag_ids` (Set of String) List of tag IDs to associate with the load balancer
-- `vip_address` (String) The VIP address of the load balancer
+- `vip_address` (String) The VIP address of the load balancer. If not specified, a VIP address is automatically assigned
 
 ### Read-Only
 

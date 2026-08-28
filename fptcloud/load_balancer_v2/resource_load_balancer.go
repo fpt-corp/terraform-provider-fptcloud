@@ -186,7 +186,7 @@ func createLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 		}
 	}
 
-	return nil
+	return readLoadBalancer(ctx, d, m)
 }
 
 func updateLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
