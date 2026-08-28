@@ -8,6 +8,7 @@ import (
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_mfke "terraform-provider-fptcloud/fptcloud/mfke"
+	fptcloud_mgpu_cluster "terraform-provider-fptcloud/fptcloud/mgpu-cluster"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -164,6 +165,7 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 	return []func() datasource.DataSource{
 		fptcloud_dfke.NewDataSourceDedicatedKubernetesEngine,
 		fptcloud_mfke.NewDataSourceManagedKubernetesEngine,
+		fptcloud_mgpu_cluster.NewDataSourceManagedGpuCluster,
 		fptcloud_edge_gateway.NewDataSourceEdgeGateway,
 		fptcloud_edge_gateway.NewDataSourceEdgeGateways,
 		fptcloud_database.NewDataSourceDatabase,
@@ -175,6 +177,7 @@ func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resourc
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngine,
 		fptcloud_dfke.NewResourceDedicatedKubernetesEngineState,
 		fptcloud_mfke.NewResourceManagedKubernetesEngine,
+		fptcloud_mgpu_cluster.NewResourceManagedGpuCluster,
 		fptcloud_database.NewResourceDatabase,
 		fptcloud_database.NewResourceDatabaseStatus,
 	}

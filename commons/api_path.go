@@ -99,6 +99,38 @@ var ApiPath = struct {
 	ManagedFKEStoragePolicy             func(vpcId string) string
 	ManagedFKEKubeconfig                func(vpcId string, platform string, clusterId string) string
 
+	// Managed GPU Cluster (Bare Metal Kubernetes, m-fke/<platform>/hpc)
+	ManagedGpuClusterList                      func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedGpuClusterListV2                    func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedGpuClusterGet                       func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterGetV2                     func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterDelete                    func(vpcId string, platform string, clusterName string) string
+	ManagedGpuClusterDeleteV2                  func(vpcId string, platform string, clusterName string) string
+	ManagedGpuClusterCreate                    func(vpcId string, platform string) string
+	ManagedGpuClusterCreateV2                  func(vpcId string, platform string) string
+	ManagedGpuClusterUpgradeVersion            func(vpcId string, platform string, clusterId string, targetVersion string) string
+	ManagedGpuClusterUpgradeVersionV2          func(vpcId string, platform string, clusterId string, targetVersion string) string
+	ManagedGpuClusterHibernate                 func(vpcId string, platform string, clusterId string, isWakeup bool) string
+	ManagedGpuClusterHibernateV2               func(vpcId string, platform string, clusterId string, isWakeup bool) string
+	ManagedGpuClusterHibernationSchedules      func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterHibernationSchedulesV2    func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterAutoUpgradeVersion        func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterAutoUpgradeVersionV2      func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterConfigWorker              func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterConfigWorkerV2            func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateEndpointCIDR        func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateEndpointCIDRV2      func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateClusterAutoscaler   func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateClusterAutoscalerV2 func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterConfigInternalSubnetLb    func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterConfigInternalSubnetLbV2  func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterCheckEnableServiceAccount func(vpcId string, platform string) string
+	ManagedGpuClusterCheckQuotaResource        func(vpcId string, platform string) string
+	ManagedGpuClusterStoragePolicy             func(vpcId string) string
+	ManagedGpuClusterKubeconfig                func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterK8sVersions               func(vpcId string, platform string) string
+	ManagedGpuClusterK8sVersionsV2             func(vpcId string, platform string) string
+
 	// GPU
 	GetGPUInfo func(vpcId string) string
 
@@ -550,6 +582,191 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/get-kubeconfig/%s?direct=1",
 			vpcId, platform, clusterId,
+		)
+	},
+
+	// Managed GPU Cluster (Bare Metal Kubernetes). Same shape as the Managed FKE
+	// endpoints above, but served under the /hpc sub-path of the platform segment.
+	ManagedGpuClusterList: func(vpcId string, page int, pageSize int, infraType string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
+	},
+	ManagedGpuClusterListV2: func(vpcId string, page int, pageSize int, infraType string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
+	},
+	ManagedGpuClusterDelete: func(vpcId string, platform string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/delete-shoot-cluster/shoots/%s",
+			vpcId, platform, clusterName,
+		)
+	},
+	ManagedGpuClusterDeleteV2: func(vpcId string, platform string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/delete-shoot-cluster/shoots/%s",
+			vpcId, platform, clusterName,
+		)
+	},
+	ManagedGpuClusterCreate: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/create-cluster",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterCreateV2: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/create-cluster",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterGet: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get-shoot-specific/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterGetV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get-shoot-specific/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpgradeVersion: func(vpcId string, platform string, clusterId string, targetVersion string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			vpcId, platform, clusterId, targetVersion,
+		)
+	},
+	ManagedGpuClusterUpgradeVersionV2: func(vpcId string, platform string, clusterId string, targetVersion string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			vpcId, platform, clusterId, targetVersion,
+		)
+	},
+	ManagedGpuClusterHibernate: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
+		action := "hibernate"
+		if isWakeup {
+			action = "wakeup"
+		}
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/hibernation-cluster/shoots/%s/%s",
+			vpcId, platform, clusterId, action,
+		)
+	},
+	ManagedGpuClusterHibernateV2: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
+		action := "hibernate"
+		if isWakeup {
+			action = "wakeup"
+		}
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/hibernation-cluster/shoots/%s/%s",
+			vpcId, platform, clusterId, action,
+		)
+	},
+	ManagedGpuClusterHibernationSchedules: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/hibernation-cluster/shoots/%s/schedules",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterHibernationSchedulesV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/hibernation-cluster/shoots/%s/schedules",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterAutoUpgradeVersion: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/config-auto-upgrade-version/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterAutoUpgradeVersionV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/config-auto-upgrade-version/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigWorker: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/configure-worker-cluster/shoots/%s/0",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigWorkerV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/configure-worker-cluster/shoots/%s/0",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateEndpointCIDR: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/edit-private-cluster-ip/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateEndpointCIDRV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/edit-private-cluster-ip/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateClusterAutoscaler: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/config-cluster-auto-scaling/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateClusterAutoscalerV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/config-cluster-auto-scaling/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigInternalSubnetLb: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/config-internal-subnet-lb/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigInternalSubnetLbV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/config-internal-subnet-lb/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterCheckEnableServiceAccount: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/check-enable-service-account",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterCheckQuotaResource: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/check-quota-resources",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterStoragePolicy: func(vpcId string) string {
+		return fmt.Sprintf(
+			"/v1/internal/vpc/%s/find_storage_policy",
+			vpcId,
+		)
+	},
+	ManagedGpuClusterKubeconfig: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get-kubeconfig/%s?direct=1",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterK8sVersions: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get_k8s_versions",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterK8sVersionsV2: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get_k8s_versions",
+			vpcId, platform,
 		)
 	},
 
