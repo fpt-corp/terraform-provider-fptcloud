@@ -154,6 +154,7 @@ var ApiPath = struct {
 	UpdateLoadBalancer func(vpcId string, loadBalancerId string) string
 	ResizeLoadBalancer func(vpcId string, loadBalancerId string) string
 	DeleteLoadBalancer func(vpcId string, loadBalancerId string) string
+	ManageLoadBalancerTags func(vpcId string, loadBalancerId string) string
 	//Listener
 	ListListeners  func(vpcId string, loadBalancerId string, page int, pageSize int) string
 	GetListener    func(vpcId string, listenerId string) string
@@ -683,6 +684,9 @@ var ApiPath = struct {
 	},
 	DeleteLoadBalancer: func(vpcId string, loadBalancerId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/delete", vpcId, loadBalancerId)
+	},
+	ManageLoadBalancerTags: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/load_balancer_v2/%s/manage-tags", vpcId, loadBalancerId)
 	},
 
 	//Listener

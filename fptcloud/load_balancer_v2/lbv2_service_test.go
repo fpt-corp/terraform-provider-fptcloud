@@ -108,6 +108,37 @@ func TestListLoadBalancersSuccessfully(t *testing.T) {
 	assert.Nil(t, response.LoadBalancers[0].Tags)
 }
 
+func TestListLoadBalancersWithResourceTagsSuccessfully(t *testing.T) {
+	mockResponse := `{
+		"data": [
+			{
+				"id": "bzesb4e5-2752-4a78-bdd2-e67053a5x99d",
+				"name": "aaaaaaa",
+				"resource_tags": [
+					{
+						"id": "819c60c3-153c-4ba8-a219-c0a419ffb99a",
+						"key": "Tag3",
+						"value": "123",
+						"color": "#FF0000"
+					}
+				]
+			}
+		],
+		"message": "Get load balancers successfully",
+		"total": 1
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vmware/vpc/vpc_id/load_balancer_v2/list?page=1&page_size=1000": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	response, err := service.ListLoadBalancers("vpc_id", 1, 1000)
+	assert.Nil(t, err)
+	assert.Len(t, response.LoadBalancers[0].ResourceTags, 1)
+	assert.Equal(t, "819c60c3-153c-4ba8-a219-c0a419ffb99a", response.LoadBalancers[0].ResourceTags[0].Id)
+	assert.Equal(t, "Tag3", response.LoadBalancers[0].ResourceTags[0].Key)
+}
+
 func TestGetLoadBalancerSuccessfully(t *testing.T) {
 	mockResponse := `{
 		"message": "Get load balancer successfully",
@@ -166,6 +197,61 @@ func TestGetLoadBalancerSuccessfully(t *testing.T) {
 	assert.Equal(t, "2025-10-13T06:28:29", response.LoadBalancer.CreatedAt)
 	assert.Equal(t, "LBv2", response.LoadBalancer.Tags[0])
 	assert.Equal(t, "R1", response.LoadBalancer.EgwName)
+}
+func TestGetLoadBalancerWithResourceTagsSuccessfully(t *testing.T) {
+	mockResponse := `{
+		"message": "Get load balancer successfully",
+		"data": {
+			"id": "5181ab3b-49ee-45df-88d6-f5f4f3c0c45e",
+			"name": "loadbalancer",
+			"resource_tags": [
+				{
+					"id": "819c60c3-153c-4ba8-a219-c0a419ffb99a",
+					"key": "Tag3",
+					"value": "123",
+					"color": "#FF0000"
+				},
+				{
+					"id": "e29d6b9b-23f4-4ff0-adf7-05e991a68dc8",
+					"key": "Tag2",
+					"value": "",
+					"color": "#00FF00"
+				}
+			]
+		}
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vmware/vpc/vpc_id/load_balancer_v2/load_balancer_id": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	response, err := service.GetLoadBalancer("vpc_id", "load_balancer_id")
+	assert.Nil(t, err)
+	assert.Len(t, response.LoadBalancer.ResourceTags, 2)
+	assert.Equal(t, "819c60c3-153c-4ba8-a219-c0a419ffb99a", response.LoadBalancer.ResourceTags[0].Id)
+	assert.Equal(t, "Tag3", response.LoadBalancer.ResourceTags[0].Key)
+	assert.Equal(t, "123", response.LoadBalancer.ResourceTags[0].Value)
+	assert.Equal(t, "#FF0000", response.LoadBalancer.ResourceTags[0].Color)
+	assert.Equal(t, "e29d6b9b-23f4-4ff0-adf7-05e991a68dc8", response.LoadBalancer.ResourceTags[1].Id)
+}
+
+func TestGetLoadBalancerWithoutResourceTagsSuccessfully(t *testing.T) {
+	mockResponse := `{
+		"message": "Get load balancer successfully",
+		"data": {
+			"id": "5181ab3b-49ee-45df-88d6-f5f4f3c0c45e",
+			"name": "loadbalancer",
+			"resource_tags": []
+		}
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vmware/vpc/vpc_id/load_balancer_v2/load_balancer_id": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	response, err := service.GetLoadBalancer("vpc_id", "load_balancer_id")
+	assert.Nil(t, err)
+	assert.Empty(t, response.LoadBalancer.ResourceTags)
 }
 
 func TestCreateLoadBalancerSuccessfully(t *testing.T) {
@@ -373,6 +459,72 @@ func TestDeleteLoadBalancerSuccessfully(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, response)
 	assert.Equal(t, "Delete load balancer successfully", response.Message)
+}
+
+func TestManageLoadBalancerTagsSuccessfully(t *testing.T) {
+	mockResponse := `{
+		"status": 200,
+		"message": "Update tags successfully.",
+		"error": null,
+		"error_code": null,
+		"data": {
+			"added": ["819c60c3-153c-4ba8-a219-c0a419ffb99a"],
+			"removed": ["e29d6b9b-23f4-4ff0-adf7-05e991a68dc8"]
+		}
+	}`
+
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/load_balancer_v2/load_balancer_id/manage-tags": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	vpcId := "vpc_id"
+	loadBalancerId := "load_balancer_id"
+	tagIds := []string{"819c60c3-153c-4ba8-a219-c0a419ffb99a"}
+	response, err := service.ManageLoadBalancerTags(vpcId, loadBalancerId, tagIds)
+	assert.Nil(t, err)
+	assert.NotNil(t, response)
+	assert.Equal(t, "Update tags successfully.", response.Message)
+	assert.Equal(t, []string{"819c60c3-153c-4ba8-a219-c0a419ffb99a"}, response.Data.Added)
+	assert.Equal(t, []string{"e29d6b9b-23f4-4ff0-adf7-05e991a68dc8"}, response.Data.Removed)
+}
+
+func TestManageLoadBalancerTagsClearAllSuccessfully(t *testing.T) {
+	mockResponse := `{
+		"status": 200,
+		"message": "Update tags successfully.",
+		"error": null,
+		"error_code": null,
+		"data": {
+			"added": [],
+			"removed": ["819c60c3-153c-4ba8-a219-c0a419ffb99a"]
+		}
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/load_balancer_v2/load_balancer_id/manage-tags": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	response, err := service.ManageLoadBalancerTags("vpc_id", "load_balancer_id", []string{})
+	assert.Nil(t, err)
+	assert.Empty(t, response.Data.Added)
+	assert.Equal(t, []string{"819c60c3-153c-4ba8-a219-c0a419ffb99a"}, response.Data.Removed)
+}
+
+func TestManageLoadBalancerTagsRejectsLegacyBoolDataShape(t *testing.T) {
+	mockResponse := `{
+		"status": 200,
+		"message": "Update tags successfully.",
+		"data": true
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/load_balancer_v2/load_balancer_id/manage-tags": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	_, err := service.ManageLoadBalancerTags("vpc_id", "load_balancer_id", []string{"819c60c3-153c-4ba8-a219-c0a419ffb99a"})
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "failed to unmarshal")
 }
 
 func TestListListenersSuccessfully(t *testing.T) {
