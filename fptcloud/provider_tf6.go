@@ -166,6 +166,7 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		fptcloud_dfke.NewDataSourceDedicatedKubernetesEngine,
 		fptcloud_mfke.NewDataSourceManagedKubernetesEngine,
 		fptcloud_mgpu_cluster.NewDataSourceManagedGpuCluster,
+		fptcloud_mgpu_cluster.NewDataSourceHpcSubnet,
 		fptcloud_edge_gateway.NewDataSourceEdgeGateway,
 		fptcloud_edge_gateway.NewDataSourceEdgeGateways,
 		fptcloud_database.NewDataSourceDatabase,

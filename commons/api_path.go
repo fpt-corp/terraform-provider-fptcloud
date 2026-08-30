@@ -1,6 +1,9 @@
 package commons
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 const ObjectStorageApiPrefix = "/v1/vmware/vpc"
 
@@ -130,6 +133,8 @@ var ApiPath = struct {
 	ManagedGpuClusterKubeconfig                func(vpcId string, platform string, clusterId string) string
 	ManagedGpuClusterK8sVersions               func(vpcId string, platform string) string
 	ManagedGpuClusterK8sVersionsV2             func(vpcId string, platform string) string
+	ManagedGpuClusterGpuDrivers                func(vpcId string, driverType string, zone string, k8sVersion string) string
+	ManagedGpuClusterHpcSubnets                func(vpcId string, page int, pageSize int) string
 
 	// GPU
 	GetGPUInfo func(vpcId string) string
@@ -767,6 +772,18 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get_k8s_versions",
 			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterGpuDrivers: func(vpcId string, driverType string, zone string, k8sVersion string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-drivers?driver_type=%s&zone=%s&kubernetes_version=%s",
+			vpcId, url.QueryEscape(driverType), url.QueryEscape(zone), url.QueryEscape(k8sVersion),
+		)
+	},
+	ManagedGpuClusterHpcSubnets: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf(
+			"/v2/vmware/vpc/%s/hpc/subnets?page=%d&pageSize=%d",
+			vpcId, page, pageSize,
 		)
 	},
 

@@ -1,6 +1,7 @@
 package fptcloud_mgpu_cluster
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -11,7 +12,74 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-func validatePool(pools []*managedGpuClusterPool) *diag2.ErrorDiagnostic {
+// allowedDriverInstallationTypes are the gpu_driver.installation_type values
+// the gpu-drivers catalog endpoint accepts.
+var allowedDriverInstallationTypes = []string{"MANAGED", "PRE_INSTALL", "USER_INSTALL"}
+
+const driverInstallationTypeUserInstall = "USER_INSTALL"
+
+// validateGpuDriver checks the gpu_driver block: installation_type against the
+// fixed set the API supports, then version against the live catalog for that
+// installation type (GET .../gpu-drivers). USER_INSTALL offers no version to
+// pick, so version must be left empty in that case. The block itself is
+// optional — when absent, nothing is validated or sent to the API.
+func validateGpuDriver(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion, poolName string, pool *managedGpuClusterPool) *diag2.ErrorDiagnostic {
+	if pool.GpuDriver.IsNull() || pool.GpuDriver.IsUnknown() {
+		return nil
+	}
+	driverInstallationType, gpuDriverVersion := gpuDriverFields(pool.GpuDriver)
+	if driverInstallationType == "" {
+		return nil
+	}
+
+	isValidType := false
+	for _, allowed := range allowedDriverInstallationTypes {
+		if driverInstallationType == allowed {
+			isValidType = true
+			break
+		}
+	}
+	if !isValidType {
+		d := diag2.NewErrorDiagnostic("Invalid gpu_driver.installation_type", fmt.Sprintf("gpu_driver.installation_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedDriverInstallationTypes, ", "), poolName, driverInstallationType))
+		return &d
+	}
+
+	drivers, err := client.fetchGpuDrivers(ctx, vpcId, platform, driverInstallationType, k8sVersion)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error fetching GPU drivers", err.Error())
+		return &d
+	}
+
+	if driverInstallationType == driverInstallationTypeUserInstall {
+		if gpuDriverVersion != "" {
+			d := diag2.NewErrorDiagnostic("Invalid gpu_driver.version", fmt.Sprintf("gpu_driver.version must be left empty for pool '%s' when gpu_driver.installation_type = '%s' (the user installs their own driver)", poolName, driverInstallationTypeUserInstall))
+			return &d
+		}
+		return nil
+	}
+
+	if gpuDriverVersion == "" {
+		d := diag2.NewErrorDiagnostic("Missing gpu_driver.version", fmt.Sprintf("gpu_driver.version is required for pool '%s' when gpu_driver.installation_type = '%s'", poolName, driverInstallationType))
+		return &d
+	}
+
+	for _, entry := range drivers {
+		if entry.Value == gpuDriverVersion {
+			return nil
+		}
+	}
+
+	valid := make([]string, 0, len(drivers))
+	for _, entry := range drivers {
+		if entry.Value != "" {
+			valid = append(valid, entry.Value)
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid gpu_driver.version", fmt.Sprintf("gpu_driver.version '%s' is not offered for gpu_driver.installation_type '%s' on pool '%s'. Available: %s", gpuDriverVersion, driverInstallationType, poolName, strings.Join(valid, ", ")))
+	return &d
+}
+
+func validatePool(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion string, pools []*managedGpuClusterPool) *diag2.ErrorDiagnostic {
 	if len(pools) == 0 {
 		d := diag2.NewErrorDiagnostic("Invalid configuration", "At least a worker pool must be configured")
 		return &d
@@ -31,12 +99,6 @@ func validatePool(pools []*managedGpuClusterPool) *diag2.ErrorDiagnostic {
 		}
 
 		groupNames[name] = true
-
-		// Validate worker_disk_size >= 40GB
-		if pool.WorkerDiskSize.ValueInt64() < 40 {
-			d := diag2.NewErrorDiagnostic("Invalid worker_disk_size", "worker_disk_size must be greater than or equal to 40GB for pool '"+name+"'")
-			return &d
-		}
 
 		// Validate hpc_number_server >= 1
 		if pool.HpcNumberServer.ValueInt64() < 1 {
@@ -94,68 +156,10 @@ func validatePool(pools []*managedGpuClusterPool) *diag2.ErrorDiagnostic {
 			}
 		}
 
-		// Only validate GPU-related fields if this is a GPU pool (has VGpuID)
-		if !pool.VGpuID.IsNull() && !pool.VGpuID.IsUnknown() && pool.VGpuID.ValueString() != "" {
-			// Validate gpu_sharing_client
-			if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
-				gpuSharingClient := pool.GpuSharingClient.ValueString()
-				allowedGpuSharingClients := []string{"", "timeSlicing"}
-				isValid := false
-				for _, allowed := range allowedGpuSharingClients {
-					if gpuSharingClient == allowed {
-						isValid = true
-						break
-					}
-				}
-				if !isValid {
-					d := diag2.NewErrorDiagnostic("Invalid gpu_sharing_client", "gpu_sharing_client '"+gpuSharingClient+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedGpuSharingClients, ", "))
-					return &d
-				}
-			}
-
-			// Validate max_client only when gpu_sharing_client = "timeSlicing"
-			if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
-				// Only validate max_client if gpu_sharing_client is "timeSlicing"
-				gpuSharingClientValue := ""
-				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
-					gpuSharingClientValue = pool.GpuSharingClient.ValueString()
-				}
-
-				// If gpu_sharing_client = "" (empty), skip validation
-				if gpuSharingClientValue == "timeSlicing" {
-					maxClient := pool.MaxClient.ValueInt64()
-					if maxClient < 2 || maxClient > 48 {
-						d := diag2.NewErrorDiagnostic("Invalid max_client", fmt.Sprintf("max_client must be between 2 and 48 for pool '%s' when gpu_sharing_client = 'timeSlicing', got: %d", name, maxClient))
-						return &d
-					}
-				}
-			}
-
-			// Validate driver_installation_type (must be "pre-install")
-			if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
-				driverInstallationType := pool.DriverInstallationType.ValueString()
-				if driverInstallationType != "pre-install" {
-					d := diag2.NewErrorDiagnostic("Invalid driver_installation_type", fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", name, driverInstallationType))
-					return &d
-				}
-			}
-
-			// Validate gpu_driver_version (must be "default" or "latest")
-			if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
-				gpuDriverVersion := pool.GpuDriverVersion.ValueString()
-				allowedGpuDriverVersions := []string{"default", "latest"}
-				isValid := false
-				for _, allowed := range allowedGpuDriverVersions {
-					if gpuDriverVersion == allowed {
-						isValid = true
-						break
-					}
-				}
-				if !isValid {
-					d := diag2.NewErrorDiagnostic("Invalid gpu_driver_version", fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedGpuDriverVersions, ", "), name, gpuDriverVersion))
-					return &d
-				}
-			}
+		// Validate driver_installation_type and gpu_driver_version against
+		// the live gpu-drivers catalog.
+		if d := validateGpuDriver(ctx, client, vpcId, platform, k8sVersion, name, pool); d != nil {
+			return d
 		}
 	}
 
@@ -298,11 +302,6 @@ func validateNetwork(state *managedGpuCluster, platform string) *diag2.ErrorDiag
 	// }
 	// }
 
-	// Validate network_overlay based on network_type
-	if diag := validateNetworkOverlayWithType(state.NetworkOverlay.ValueString(), state.NetworkType.ValueString()); diag != nil {
-		return diag
-	}
-
 	return nil
 }
 
@@ -315,43 +314,6 @@ func validateNetworkType(networkType string) *diag2.ErrorDiagnostic {
 	}
 	d := diag2.NewErrorDiagnostic("Invalid network_type", "network_type must be one of: "+strings.Join(allowed, ", "))
 	return &d
-}
-
-func validateNetworkOverlay(networkOverlay string) *diag2.ErrorDiagnostic {
-	allowed := []string{"Always", "CrossSubnet"}
-	for _, v := range allowed {
-		if networkOverlay == v {
-			return nil
-		}
-	}
-	d := diag2.NewErrorDiagnostic("Invalid network_overlay", "network_overlay must be one of: "+strings.Join(allowed, ", "))
-	return &d
-}
-
-func validateNetworkOverlayWithType(networkOverlay, networkType string) *diag2.ErrorDiagnostic {
-	// If network_type is cilium, only allow empty string for network_overlay
-	if networkType == "cilium" {
-		if networkOverlay == "" {
-			return nil
-		}
-		d := diag2.NewErrorDiagnostic("Invalid network_overlay for cilium", "network_overlay must be empty string for cilium network type")
-		return &d
-	}
-
-	// If network_type is calico, only allow "Always" or "CrossSubnet"
-	if networkType == "calico" {
-		allowed := []string{"Always", "CrossSubnet"}
-		for _, v := range allowed {
-			if networkOverlay == v {
-				return nil
-			}
-		}
-		d := diag2.NewErrorDiagnostic("Invalid network_overlay for calico", "network_overlay must be one of: "+strings.Join(allowed, ", "))
-		return &d
-	}
-
-	// For other network types, use standard validation
-	return validateNetworkOverlay(networkOverlay)
 }
 
 func validatePoolNames(pool []*managedGpuClusterPool) ([]string, error) {
@@ -434,11 +396,11 @@ func validateClusterMigStrategy(strategy string) *diag2.ErrorDiagnostic {
 
 // validateSoftware checks the selected software: the type must be one of the
 // four, the version must be one that type offers, and cluster_mig_strategy is
-// required for gpu_operator and rejected for the others.
+// required for gpu_operator and rejected for the others. The software block
+// itself is optional — when omitted, nothing is sent to the API.
 func validateSoftware(software types.Object) *diag2.ErrorDiagnostic {
 	if software.IsNull() || software.IsUnknown() {
-		d := diag2.NewErrorDiagnostic("Missing software", "software block is required")
-		return &d
+		return nil
 	}
 
 	attrs := software.Attributes()
@@ -529,7 +491,7 @@ func validateClusterEndpointAccess(accessType string) *diag2.ErrorDiagnostic {
 	return &d
 }
 
-func ValidateCreate(state *managedGpuCluster, response *resource.CreateResponse) bool {
+func ValidateCreate(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, state *managedGpuCluster, response *resource.CreateResponse) bool {
 	// Validate k8s_version
 	if diag := validateK8sVersion(state.K8SVersion.ValueString()); diag != nil {
 		response.Diagnostics.Append(diag)
@@ -547,11 +509,6 @@ func ValidateCreate(state *managedGpuCluster, response *resource.CreateResponse)
 	}
 	// Validate network_type
 	if diag := validateNetworkType(state.NetworkType.ValueString()); diag != nil {
-		response.Diagnostics.Append(diag)
-		return false
-	}
-	// Validate network_overlay based on network_type
-	if diag := validateNetworkOverlayWithType(state.NetworkOverlay.ValueString(), state.NetworkType.ValueString()); diag != nil {
 		response.Diagnostics.Append(diag)
 		return false
 	}
@@ -605,7 +562,7 @@ func ValidateCreate(state *managedGpuCluster, response *resource.CreateResponse)
 		}
 	}
 	// Validate pool
-	if err := validatePool(state.Pools); err != nil {
+	if err := validatePool(ctx, client, vpcId, platform, state.K8SVersion.ValueString(), state.Pools); err != nil {
 		response.Diagnostics.Append(err)
 		return false
 	}
@@ -766,7 +723,7 @@ func validateImmutablePoolStringField(planPools, statePools []*managedGpuCluster
 	return nil
 }
 
-func ValidateUpdate(state, plan *managedGpuCluster, response *resource.UpdateResponse) bool {
+func ValidateUpdate(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, state, plan *managedGpuCluster, response *resource.UpdateResponse) bool {
 	// Validate k8s_version and prevent downgrade
 	if diag := validateK8sVersionUpdate(plan.K8SVersion, state.K8SVersion); diag != nil {
 		response.Diagnostics.Append(diag)
@@ -826,15 +783,6 @@ func ValidateUpdate(state, plan *managedGpuCluster, response *resource.UpdateRes
 			response.Diagnostics.AddError(
 				"Invalid hpc_number_server",
 				fmt.Sprintf("hpc_number_server must be greater than or equal to 1 for pool '%s'", pool.WorkerPoolID.ValueString()),
-			)
-			return false
-		}
-
-		// Validate worker_disk_size >= 40GB
-		if pool.WorkerDiskSize.ValueInt64() < 40 {
-			response.Diagnostics.AddError(
-				"Invalid worker_disk_size",
-				fmt.Sprintf("worker_disk_size must be greater than or equal to 40GB for pool '%s'", pool.WorkerPoolID.ValueString()),
 			)
 			return false
 		}
@@ -900,80 +848,9 @@ func ValidateUpdate(state, plan *managedGpuCluster, response *resource.UpdateRes
 			}
 		}
 
-		if !pool.VGpuID.IsNull() && !pool.VGpuID.IsUnknown() && pool.VGpuID.ValueString() != "" {
-			if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
-				gpuSharingClient := pool.GpuSharingClient.ValueString()
-				allowedGpuSharingClients := []string{"", "timeSlicing"}
-				isValid := false
-				for _, allowed := range allowedGpuSharingClients {
-					if gpuSharingClient == allowed {
-						isValid = true
-						break
-					}
-				}
-				if !isValid {
-					response.Diagnostics.AddError(
-						"Invalid gpu_sharing_client",
-						fmt.Sprintf("gpu_sharing_client '%s' in pool '%s' is not allowed. Must be one of: %s", gpuSharingClient, pool.WorkerPoolID.ValueString(), strings.Join(allowedGpuSharingClients, ", ")),
-					)
-					return false
-				}
-			}
-
-			// Validate max_client only when gpu_sharing_client = "timeSlicing"
-			if !pool.MaxClient.IsNull() && !pool.MaxClient.IsUnknown() {
-				// Only validate max_client if gpu_sharing_client is "timeSlicing"
-				gpuSharingClientValue := ""
-				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
-					gpuSharingClientValue = pool.GpuSharingClient.ValueString()
-				}
-
-				// Debug logging
-				fmt.Printf("DEBUG: Pool '%s' - gpu_sharing_client: '%s', max_client: %d\n",
-					pool.WorkerPoolID.ValueString(), gpuSharingClientValue, pool.MaxClient.ValueInt64())
-
-				// If gpu_sharing_client = "" (empty), skip validation
-				if gpuSharingClientValue == "timeSlicing" {
-					maxClient := pool.MaxClient.ValueInt64()
-					if maxClient < 2 || maxClient > 48 {
-						response.Diagnostics.AddError(
-							"Invalid max_client",
-							fmt.Sprintf("max_client must be between 2 and 48 for pool '%s' when gpu_sharing_client = 'timeSlicing', got: %d", pool.WorkerPoolID.ValueString(), maxClient),
-						)
-						return false
-					}
-				}
-			}
-
-			if !pool.DriverInstallationType.IsNull() && !pool.DriverInstallationType.IsUnknown() {
-				driverInstallationType := pool.DriverInstallationType.ValueString()
-				if driverInstallationType != "pre-install" {
-					response.Diagnostics.AddError(
-						"Invalid driver_installation_type",
-						fmt.Sprintf("driver_installation_type must be 'pre-install' for pool '%s', got: '%s'", pool.WorkerPoolID.ValueString(), driverInstallationType),
-					)
-					return false
-				}
-			}
-
-			if !pool.GpuDriverVersion.IsNull() && !pool.GpuDriverVersion.IsUnknown() {
-				gpuDriverVersion := pool.GpuDriverVersion.ValueString()
-				allowedGpuDriverVersions := []string{"default", "latest"}
-				isValid := false
-				for _, allowed := range allowedGpuDriverVersions {
-					if gpuDriverVersion == allowed {
-						isValid = true
-						break
-					}
-				}
-				if !isValid {
-					response.Diagnostics.AddError(
-						"Invalid gpu_driver_version",
-						fmt.Sprintf("gpu_driver_version must be one of: %s for pool '%s', got: '%s'", allowedGpuDriverVersions, pool.WorkerPoolID.ValueString(), gpuDriverVersion),
-					)
-					return false
-				}
-			}
+		if d := validateGpuDriver(ctx, client, vpcId, platform, plan.K8SVersion.ValueString(), pool.WorkerPoolID.ValueString(), pool); d != nil {
+			response.Diagnostics.Append(d)
+			return false
 		}
 	}
 

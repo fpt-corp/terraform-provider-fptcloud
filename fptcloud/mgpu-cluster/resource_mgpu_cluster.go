@@ -7,8 +7,10 @@ import (
 	"strings"
 	"terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_ssh "terraform-provider-fptcloud/fptcloud/ssh"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -85,12 +87,12 @@ func (r *resourceManagedGpuCluster) Create(ctx context.Context, request resource
 	SetDefaults(&state)
 
 	// Validate all in one place
-	if !ValidateCreate(&state, response) {
+	if !ValidateCreate(ctx, r.mgpuClusterClient, state.VpcId.ValueString(), platform, &state, response) {
 		return
 	}
 
 	var f managedGpuClusterJson
-	errDiag := MapTerraformToJson(r, ctx, &state, &f, state.VpcId.ValueString())
+	errDiag := MapTerraformToJson(r, ctx, &state, &f, state.VpcId.ValueString(), platform)
 
 	if errDiag != nil {
 		response.Diagnostics.Append(errDiag)
@@ -219,8 +221,14 @@ func (r *resourceManagedGpuCluster) Update(ctx context.Context, request resource
 	// Default optional fields in plan to state if not specified
 	SetDefaultsUpdate(&plan, &state)
 
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, state.VpcId.ValueString())
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error getting VPC platform", err.Error()))
+		return
+	}
+
 	// Validate all in one place for update
-	if !ValidateUpdate(&state, &plan, response) {
+	if !ValidateUpdate(ctx, r.mgpuClusterClient, state.VpcId.ValueString(), platform, &state, &plan, response) {
 		return
 	}
 
@@ -238,7 +246,7 @@ func (r *resourceManagedGpuCluster) Update(ctx context.Context, request resource
 		return
 	}
 
-	_, err := r.InternalRead(ctx, state.Id.ValueString(), &state)
+	_, err = r.InternalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))
 		return
@@ -308,6 +316,16 @@ func (r *resourceManagedGpuCluster) ImportState(ctx context.Context, request res
 
 	state.Id = types.StringValue(clusterId)
 
+	// software is optional (not computed) and InternalRead never populates it —
+	// it only carries forward whatever the config/prior state already had. A
+	// fresh import has neither, so it must be explicitly set to a valid null
+	// object here; left as the Go zero value, it fails state serialization.
+	state.Software = types.ObjectNull(map[string]attr.Type{
+		"software_type":        types.StringType,
+		"software_version":     types.StringType,
+		"cluster_mig_strategy": types.StringType,
+	})
+
 	_, err := r.InternalRead(ctx, clusterId, &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic(errorCallingApi("internalRead"), err.Error()))
@@ -339,5 +357,6 @@ func (r *resourceManagedGpuCluster) Configure(_ context.Context, request resourc
 	r.client = client
 	r.mgpuClusterClient = newMgpuClusterApiClient(r.client)
 	r.subnetClient = fptcloud_subnet.NewSubnetService(r.client)
+	r.sshClient = fptcloud_ssh.NewSSHKeyService(r.client)
 	r.tenancyClient = fptcloud_dfke.NewTenancyApiClient(r.client)
 }

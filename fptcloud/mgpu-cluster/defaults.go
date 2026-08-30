@@ -12,14 +12,6 @@ func SetDefaults(state *managedGpuCluster) {
 	if state.NetworkType.IsNull() || state.NetworkType.IsUnknown() || state.NetworkType.ValueString() == "" {
 		state.NetworkType = types.StringValue("calico")
 	}
-	if state.NetworkOverlay.IsNull() || state.NetworkOverlay.IsUnknown() || state.NetworkOverlay.ValueString() == "" {
-		state.NetworkOverlay = types.StringValue("CrossSubnet")
-	}
-
-	// If network_type is cilium, set network_overlay to empty string
-	if state.NetworkType.ValueString() == "cilium" {
-		state.NetworkOverlay = types.StringValue("")
-	}
 	if state.IsEnableAutoUpgrade.IsNull() || state.IsEnableAutoUpgrade.IsUnknown() {
 		state.IsEnableAutoUpgrade = types.BoolValue(false)
 	}
@@ -29,18 +21,13 @@ func SetDefaults(state *managedGpuCluster) {
 	if state.AutoUpgradeTimezone.IsNull() || state.AutoUpgradeTimezone.IsUnknown() {
 		state.AutoUpgradeTimezone = types.StringValue("Asia/Saigon")
 	}
-	if state.InternalSubnetLb.IsNull() || state.InternalSubnetLb.IsUnknown() {
-		state.InternalSubnetLb = types.StringValue("")
-	}
 	if state.EdgeGatewayName.IsNull() || state.EdgeGatewayName.IsUnknown() {
 		state.EdgeGatewayName = types.StringValue("")
 	}
 	if state.EdgeGatewayId.IsNull() || state.EdgeGatewayId.IsUnknown() {
 		state.EdgeGatewayId = types.StringValue("")
 	}
-	if state.InternalSubnetLb.IsNull() || state.InternalSubnetLb.IsUnknown() {
-		state.InternalSubnetLb = types.StringValue("")
-	}
+	// internal_subnet_lb is now Required — no default needed.
 	if state.PodNetwork.IsNull() || state.PodNetwork.IsUnknown() || state.PodNetwork.ValueString() == "" {
 		state.PodNetwork = types.StringValue("100.96.0.0")
 	}
@@ -57,7 +44,7 @@ func SetDefaults(state *managedGpuCluster) {
 		state.K8SMaxPod = types.Int64Value(110)
 	}
 	if state.K8SVersion.IsNull() || state.K8SVersion.IsUnknown() || state.K8SVersion.ValueString() == "" {
-		state.K8SVersion = types.StringValue("1.31.4")
+		state.K8SVersion = types.StringValue("1.34.6")
 	}
 	if !state.ClusterEndpointAccess.IsNull() && !state.ClusterEndpointAccess.IsUnknown() {
 		attrs := state.ClusterEndpointAccess.Attributes()
@@ -145,10 +132,6 @@ func SetDefaults(state *managedGpuCluster) {
 		if pool.ContainerRuntime.IsNull() || pool.ContainerRuntime.IsUnknown() || pool.ContainerRuntime.ValueString() == "" {
 			pool.ContainerRuntime = types.StringValue("containerd")
 		}
-		// Set default for IsEnableAutoRepair
-		if pool.IsEnableAutoRepair.IsNull() || pool.IsEnableAutoRepair.IsUnknown() {
-			pool.IsEnableAutoRepair = types.BoolValue(true)
-		}
 		// Set worker_base: first pool defaults to true, others default to false
 		if pool.WorkerBase.IsNull() || pool.WorkerBase.IsUnknown() {
 			if i == 0 {
@@ -158,25 +141,13 @@ func SetDefaults(state *managedGpuCluster) {
 			}
 		}
 
-		// Handle GPU-related fields - only set defaults if they are truly null/unknown
-		// Don't override values that are explicitly set
-		if pool.GpuSharingClient.IsNull() || pool.GpuSharingClient.IsUnknown() {
-			pool.GpuSharingClient = types.StringValue("")
-		}
-
 		// Handle MaxClient for GPU pools
 		if pool.MaxClient.IsNull() || pool.MaxClient.IsUnknown() {
 			pool.MaxClient = types.Int64Value(0)
 		}
 
-		// Handle other GPU-related defaults
-		if pool.DriverInstallationType.IsNull() || pool.DriverInstallationType.IsUnknown() || pool.DriverInstallationType.ValueString() == "" {
-			pool.DriverInstallationType = types.StringValue("")
-		}
-
-		if pool.GpuDriverVersion.IsNull() || pool.GpuDriverVersion.IsUnknown() || pool.GpuDriverVersion.ValueString() == "" {
-			pool.GpuDriverVersion = types.StringValue("")
-		}
+		// gpu_driver is left as-is: null when the user does not set it, so
+		// nothing is sent to the API for either of its fields.
 	}
 
 	if state.IsRunning.IsNull() || state.IsRunning.IsUnknown() {
@@ -194,14 +165,6 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 	if plan.NetworkType.IsNull() || plan.NetworkType.IsUnknown() || plan.NetworkType.ValueString() == "" {
 		plan.NetworkType = state.NetworkType
 	}
-	if plan.NetworkOverlay.IsNull() || plan.NetworkOverlay.IsUnknown() || plan.NetworkOverlay.ValueString() == "" {
-		plan.NetworkOverlay = state.NetworkOverlay
-	}
-
-	// If network_type is cilium, set network_overlay to empty string
-	if plan.NetworkType.ValueString() == "cilium" {
-		plan.NetworkOverlay = types.StringValue("")
-	}
 	if plan.IsEnableAutoUpgrade.IsNull() || plan.IsEnableAutoUpgrade.IsUnknown() {
 		plan.IsEnableAutoUpgrade = state.IsEnableAutoUpgrade
 	}
@@ -211,9 +174,7 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 	if plan.AutoUpgradeTimezone.IsNull() || plan.AutoUpgradeTimezone.IsUnknown() {
 		plan.AutoUpgradeTimezone = state.AutoUpgradeTimezone
 	}
-	if plan.InternalSubnetLb.IsNull() || plan.InternalSubnetLb.IsUnknown() {
-		plan.InternalSubnetLb = state.InternalSubnetLb
-	}
+	// internal_subnet_lb is now Required — no default needed.
 	if plan.EdgeGatewayName.IsNull() || plan.EdgeGatewayName.IsUnknown() {
 		plan.EdgeGatewayName = state.EdgeGatewayName
 	}
@@ -320,20 +281,6 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 		// Note: kv is a Set, so plan.Pools[i].Kv doesn't need any reordering
 		// here - Terraform compares Set values regardless of element order.
 		// Don't change null/unknown values - let them stay as they are
-		if plan.Pools[i].VGpuID.IsNull() || plan.Pools[i].VGpuID.IsUnknown() || plan.Pools[i].VGpuID.ValueString() == "" {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].VGpuID = state.Pools[i].VGpuID
-			} else {
-				plan.Pools[i].VGpuID = types.StringValue("")
-			}
-		}
-		if plan.Pools[i].GpuSharingClient.IsNull() || plan.Pools[i].GpuSharingClient.IsUnknown() || plan.Pools[i].GpuSharingClient.ValueString() == "" {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].GpuSharingClient = state.Pools[i].GpuSharingClient
-			} else {
-				plan.Pools[i].GpuSharingClient = types.StringValue("")
-			}
-		}
 		if plan.Pools[i].MaxClient.IsNull() || plan.Pools[i].MaxClient.IsUnknown() {
 			if i < len(state.Pools) && state.Pools[i] != nil {
 				plan.Pools[i].MaxClient = state.Pools[i].MaxClient
@@ -341,27 +288,8 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 				plan.Pools[i].MaxClient = types.Int64Value(0)
 			}
 		}
-		if plan.Pools[i].IsEnableAutoRepair.IsNull() || plan.Pools[i].IsEnableAutoRepair.IsUnknown() {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].IsEnableAutoRepair = state.Pools[i].IsEnableAutoRepair
-			} else {
-				plan.Pools[i].IsEnableAutoRepair = types.BoolValue(true)
-			}
-		}
-		if plan.Pools[i].DriverInstallationType.IsNull() || plan.Pools[i].DriverInstallationType.IsUnknown() || plan.Pools[i].DriverInstallationType.ValueString() == "" {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].DriverInstallationType = state.Pools[i].DriverInstallationType
-			} else {
-				plan.Pools[i].DriverInstallationType = types.StringValue("")
-			}
-		}
-		if plan.Pools[i].GpuDriverVersion.IsNull() || plan.Pools[i].GpuDriverVersion.IsUnknown() || plan.Pools[i].GpuDriverVersion.ValueString() == "" {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].GpuDriverVersion = state.Pools[i].GpuDriverVersion
-			} else {
-				plan.Pools[i].GpuDriverVersion = types.StringValue("")
-			}
-		}
+		// gpu_driver is left as-is: not computed, so a null plan value means
+		// the user genuinely left it unset (or is clearing it).
 		if plan.Pools[i].WorkerBase.IsNull() || plan.Pools[i].WorkerBase.IsUnknown() {
 			if i < len(state.Pools) && state.Pools[i] != nil {
 				plan.Pools[i].WorkerBase = state.Pools[i].WorkerBase

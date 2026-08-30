@@ -1,8 +1,10 @@
 package fptcloud_mgpu_cluster
 
 import (
+	"fmt"
 	"terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_ssh "terraform-provider-fptcloud/fptcloud/ssh"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -22,7 +24,6 @@ type managedGpuCluster struct {
 	ServicePrefix  types.String             `tfsdk:"service_prefix"`
 	K8SMaxPod      types.Int64              `tfsdk:"k8s_max_pod"`
 	NetworkType    types.String             `tfsdk:"network_type"`
-	NetworkOverlay types.String             `tfsdk:"network_overlay"`
 	EdgeGatewayId  types.String             `tfsdk:"edge_gateway_id"`
 	// New block fields
 	ClusterAutoscaler     types.Object `tfsdk:"cluster_autoscaler"`
@@ -36,14 +37,9 @@ type managedGpuCluster struct {
 	HibernationSchedules  types.List   `tfsdk:"hibernation_schedules"`
 
 	// Bare-metal-only fields.
-	DefaultStorageProfile types.String `tfsdk:"default_storage_profile"`
-	NetworkNodePrefix     types.Int64  `tfsdk:"network_node_prefix"`
-	LoadBalancerType      types.String `tfsdk:"load_balancer_type"`
-	SecretBindingName     types.String `tfsdk:"secret_binding_name"`
-	SshId                 types.String `tfsdk:"ssh_id"`
-	SshName               types.String `tfsdk:"ssh_name"`
-	SshPublicKey          types.String `tfsdk:"ssh_public_key"`
-	Software              types.Object `tfsdk:"software"`
+	NetworkNodePrefix types.Int64  `tfsdk:"network_node_prefix"`
+	SshId             types.String `tfsdk:"ssh_key_id"`
+	Software          types.Object `tfsdk:"software"`
 }
 
 // Software is the operator installed on the cluster: one of the four types,
@@ -77,30 +73,34 @@ type resourceManagedGpuCluster struct {
 	client            *commons.Client
 	mgpuClusterClient *MgpuClusterApiClient
 	subnetClient      fptcloud_subnet.SubnetService
+	sshClient         fptcloud_ssh.SSHKeyService
 	tenancyClient     *fptcloud_dfke.TenancyApiClient
 }
 
 type managedGpuClusterPool struct {
-	WorkerBase             types.Bool   `tfsdk:"worker_base"`
-	WorkerPoolID           types.String `tfsdk:"name"`
-	StorageProfile         types.String `tfsdk:"storage_profile"`
-	HpcFlavorId            types.String `tfsdk:"hpc_flavor_id"`
-	HpcFlavorName          types.String `tfsdk:"hpc_flavor_name"`
-	HpcNumberServer        types.Int64  `tfsdk:"hpc_number_server"`
-	GpuTemplateVersion     types.String `tfsdk:"gpu_template_version"`
-	WorkerDiskSize         types.Int64  `tfsdk:"worker_disk_size"`
-	ContainerRuntime       types.String `tfsdk:"container_runtime"`
-	NetworkID              types.String `tfsdk:"network_id"`
-	NetworkName            types.String `tfsdk:"network_name"`
-	Tags                   types.List   `tfsdk:"tags"`
-	Kv                     types.Set    `tfsdk:"kv"`
-	Taints                 types.Set    `tfsdk:"taints"`
-	VGpuID                 types.String `tfsdk:"vgpu_id"`
-	MaxClient              types.Int64  `tfsdk:"max_client"`
-	GpuSharingClient       types.String `tfsdk:"gpu_sharing_client"`
-	IsEnableAutoRepair     types.Bool   `tfsdk:"is_enable_auto_repair"`
-	DriverInstallationType types.String `tfsdk:"driver_installation_type"`
-	GpuDriverVersion       types.String `tfsdk:"gpu_driver_version"`
+	WorkerBase       types.Bool   `tfsdk:"worker_base"`
+	WorkerPoolID     types.String `tfsdk:"name"`
+	HpcFlavorId      types.String `tfsdk:"hpc_flavor_id"`
+	HpcFlavorName    types.String `tfsdk:"hpc_flavor_name"`
+	HpcNumberServer  types.Int64  `tfsdk:"hpc_number_server"`
+	ContainerRuntime types.String `tfsdk:"container_runtime"`
+	NetworkID        types.String `tfsdk:"network_id"`
+	NetworkName      types.String `tfsdk:"network_name"`
+	Tags             types.List   `tfsdk:"tags"`
+	Kv               types.Set    `tfsdk:"kv"`
+	Taints           types.Set    `tfsdk:"taints"`
+	MaxClient        types.Int64  `tfsdk:"max_client"`
+	GpuDriver        types.Object `tfsdk:"gpu_driver"`
+	GpuType          types.String `tfsdk:"gpu_type"`
+	MigProfile       types.String `tfsdk:"mig_profile"`
+}
+
+// GpuDriver groups the two fields that pick a GPU driver for a pool:
+// installation_type selects the catalog (MANAGED/PRE_INSTALL/USER_INSTALL),
+// version is checked against the versions that catalog offers.
+type GpuDriver struct {
+	InstallationType types.String `tfsdk:"installation_type"`
+	Version          types.String `tfsdk:"version"`
 }
 
 type KV struct {
@@ -117,9 +117,10 @@ type Taint struct {
 type managedGpuClusterJson struct {
 	ClusterName           string                       `json:"cluster_name"`
 	NetworkID             string                       `json:"network_id"`
+	VmSubnet              string                       `json:"vm_subnet,omitempty"`
+	OspNetworkId          string                       `json:"osp_network_id,omitempty"`
 	K8SVersion            string                       `json:"k8s_version,omitempty"`
 	IsV2                  bool                         `json:"isV2,omitempty"`
-	OsVersion             interface{}                  `json:"os_version,omitempty"`
 	Purpose               string                       `json:"purpose,omitempty"`
 	Pools                 []*managedGpuClusterPoolJson `json:"pools"`
 	PodNetwork            string                       `json:"pod_network,omitempty"`
@@ -138,6 +139,10 @@ type managedGpuClusterJson struct {
 	AutoUpgradeTimezone   string                       `json:"auto_upgrade_timezone,omitempty"`
 	ClusterAutoscaler     interface{}                  `json:"cluster_autoscaler,omitempty"`
 	TypeCreate            string                       `json:"type_create,omitempty"`
+	// Hps is always sent as null. Seen in a real create-cluster request with
+	// that exact value; meaning unconfirmed with the backend, so no Terraform
+	// field backs it yet.
+	Hps interface{} `json:"hps"`
 
 	// Bare-metal-only fields, absent from the managed FKE create body.
 	DefaultStorageProfile string                 `json:"default_storage_profile,omitempty"`
@@ -167,6 +172,7 @@ type LbInternalNetworkJson struct {
 	Label         string `json:"label"`
 	Label4Sending string `json:"label4sending"`
 	Value         string `json:"value"`
+	NetworkType   string `json:"networkType"`
 }
 
 type ClusterEndpointAccessJson struct {
@@ -181,7 +187,6 @@ type ClusterEndpointAccessJson struct {
 // worker_type + scale_min/scale_max triple the managed FKE API uses.
 type managedGpuClusterPoolJson struct {
 	// int64 fields
-	WorkerDiskSize  int64 `json:"worker_disk_size"`
 	HpcNumberServer int64 `json:"hpc_number_server"`
 	MaxClient       int64 `json:"maxClient"`
 	DeltaQuotaScale int64 `json:"deltaQuotaScale"`
@@ -203,6 +208,8 @@ type managedGpuClusterPoolJson struct {
 	GpuSharingClient       string `json:"gpuSharingClient"`
 	ContainerRuntime       string `json:"container_runtime"`
 	Kubernetes             string `json:"kubernetes,omitempty"`
+	GpuType                string `json:"gpuType,omitempty"`
+	MigProfile             string `json:"migProfile,omitempty"`
 
 	// Resource shape of the pool. Derived from the selected HPC flavor;
 	// left empty until a flavor lookup endpoint is available, in which case
@@ -225,6 +232,43 @@ type managedGpuClusterPoolJson struct {
 	WorkerBase         bool `json:"worker_base"`
 }
 
+// hpcSubnet is one entry of GET .../vmware/vpc/{vpcId}/hpc/subnets. This is
+// the OSP-specific subnet catalog create-cluster needs vm_subnet (the CIDR)
+// and osp_network_id from — neither is derivable from the regular
+// fptcloud_subnet listing, which does not carry an OSP network ID.
+type hpcSubnet struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	SubnetCidr   string `json:"subnet_cidr"`
+	Description  string `json:"description"`
+	Gateway      string `json:"gateway"`
+	Status       string `json:"status"`
+	OspNetworkId string `json:"osp_network_id"`
+	NetworkAclId string `json:"network_acl_id"`
+}
+
+// hpcSubnetListResponse is the response of GET .../vmware/vpc/{vpcId}/hpc/subnets.
+type hpcSubnetListResponse struct {
+	Data  []hpcSubnet `json:"data"`
+	Total int         `json:"total"`
+}
+
+// gpuDriverEntry is one entry of the gpu-drivers catalog: a driver version
+// (value) offered for a given driver_installation_type, with its display
+// label and backing image. USER_INSTALL reports a single entry with an empty
+// value — there is no version to pick, the user installs their own driver.
+type gpuDriverEntry struct {
+	Label   string `json:"label"`
+	Value   string `json:"value"`
+	ImageID string `json:"imageID"`
+}
+
+// gpuDriverListResponse is the response of GET .../fke-gpu/common/vpc/{vpcId}/gpu-drivers.
+type gpuDriverListResponse struct {
+	DriverType string           `json:"driver_type"`
+	DriverList []gpuDriverEntry `json:"driver_list"`
+}
+
 // networkSubnet is one entry of the network/subnets listing. That endpoint is the only
 // one exposing networkType and the prefix length, both required by config-internal-subnet-lb.
 // Beware: it swaps the meaning of id and network_id compared to the /networks endpoint
@@ -235,7 +279,22 @@ type networkSubnet struct {
 	Description        string `json:"description"`
 	DefaultGateway     string `json:"defaultGateway"`
 	SubnetPrefixLength int    `json:"subnetPrefixLength"`
+	NetworkID          string `json:"network_id"`
 	NetworkType        string `json:"networkType"`
+}
+
+// lbInternalNetworkFromSubnet builds the lbInternalNetwork block create-cluster
+// expects from the subnet backing internal_subnet_lb: value is the subnet id,
+// label/label4sending come from its description/name, and cidr is its default
+// gateway plus prefix length.
+func lbInternalNetworkFromSubnet(s *networkSubnet) *LbInternalNetworkJson {
+	return &LbInternalNetworkJson{
+		Value:         s.ID,
+		Label:         s.Description,
+		Label4Sending: s.Name,
+		Cidr:          fmt.Sprintf("%s/%d", s.DefaultGateway, s.SubnetPrefixLength),
+		NetworkType:   s.NetworkType,
+	}
 }
 
 type networkSubnetListResponse struct {
@@ -311,6 +370,11 @@ type managedGpuClusterDataSpec struct {
 				Id      string      `json:"id"`
 				Subnets interface{} `json:"subnets"`
 			} `json:"internalNetworksLB"`
+			// SubnetIDBM is the HPC subnet catalog ID (fptcloud_hpc_subnet's
+			// id/network_id, GET .../hpc/subnets) that OSP bare-metal clusters
+			// were created with — distinct from Networks.Id, which reports
+			// osp_network_id instead.
+			SubnetIDBM string `json:"subnetIDBM"`
 		} `json:"infrastructureConfig"`
 		Workers []*managedGpuClusterDataWorker `json:"workers"`
 	} `json:"provider"`
@@ -419,8 +483,13 @@ type managedGpuClusterDataWorker struct {
 		Kind        string      `json:"kind"`
 		NetworkName string      `json:"networkName"`
 		ServerGroup interface{} `json:"serverGroup"`
-		UserName    string      `json:"userName"`
-		VGpuID      string      `json:"vGpuId"`
+		ServerType  string      `json:"serverType"`
+		SshKey      struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"sshKey"`
+		UserName string `json:"userName"`
+		VGpuID   string `json:"vGpuId"`
 	} `json:"providerConfig"`
 	SystemComponents struct {
 		Allow bool `json:"allow"`

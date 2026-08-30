@@ -3,7 +3,6 @@ package fptcloud_mgpu_cluster
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -182,35 +181,29 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 			continue
 		}
 
-		flavorPoolKey := "fptcloud.com/flavor_pool_" + name
-		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
-		if !ok {
-			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
-		}
-
-		autoRepair := w.AutoRepair()
-
 		// Only use networkId and error from getNetworkInfoByPlatform
-		networkId, _, e := getNetworkInfoByPlatform(ctx, d.subnetClient, vpcId, platform, w, &data)
+		networkId, _, e := getNetworkInfoByPlatform(ctx, d.subnetClient, d.mgpuClusterClient, vpcId, platform, w, &data)
 
 		if e != nil {
 			return nil, e
 		}
 
 		item := &managedGpuClusterPool{
-			WorkerPoolID:           types.StringValue(w.Name),
-			StorageProfile:         types.StringValue(w.Volume.Type),
-			HpcFlavorId:            types.StringValue(flavorId),
-			HpcFlavorName:          types.StringValue(w.Machine.Type),
-			HpcNumberServer:        types.Int64Value(int64(w.Maximum)),
-			WorkerDiskSize:         types.Int64Value(int64(parseNumber(w.Volume.Size))),
-			NetworkID:              types.StringValue(networkId),
-			IsEnableAutoRepair:     types.BoolValue(autoRepair),
-			VGpuID:                 types.StringValue(w.ProviderConfig.VGpuID),
-			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
-			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
-			WorkerBase:             types.BoolValue(w.IsWorkerBase()),
-			Tags:                   tagsStringToList(w.Tags()),
+			WorkerPoolID: types.StringValue(w.Name),
+			// hpc_flavor_id — bare-metal servers report this as
+			// providerConfig.serverType, not a fptcloud.com/flavor_pool_*
+			// label (that label belongs to mfke's response shape, not mgpu's).
+			HpcFlavorId:     types.StringValue(w.ProviderConfig.ServerType),
+			HpcFlavorName:   types.StringValue(w.Machine.Type),
+			HpcNumberServer: types.Int64Value(int64(w.Maximum)),
+			NetworkID:       types.StringValue(networkId),
+			GpuDriver:       gpuDriverObjectValue(w.Machine.Image.DriverInstallationType, w.Machine.Image.GpuDriverVersion),
+			WorkerBase:      types.BoolValue(w.IsWorkerBase()),
+			Tags:            tagsStringToList(w.Tags()),
+			// gpu_type, mig_profile: not exposed by the get-shoot-specific
+			// response, so there is no way to read them back. Always null.
+			GpuType:    types.StringNull(),
+			MigProfile: types.StringNull(),
 		}
 
 		// For GPU pools, read values from addons configuration
@@ -218,14 +211,9 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 			// Read MaxClient from addons configuration
 			maxClientFromAPI := d.MaxClientFromAddons(&data.Spec, w.Name)
 			item.MaxClient = types.Int64Value(maxClientFromAPI)
-
-			// Read GpuSharingClient from addons configuration
-			gpuSharingClientFromAPI := d.GpuSharingClientFromAddons(&data.Spec, w.Name)
-			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
 		} else {
 			// Non-GPU pools: set default values
 			item.MaxClient = types.Int64Value(0)
-			item.GpuSharingClient = types.StringValue("")
 		}
 
 		pool = append(pool, item)
@@ -242,7 +230,16 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 	state.ServicePrefix = types.StringValue(serviceNetwork[1])
 
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
-	// state.NetworkNodePrefix
+
+	// network_node_prefix — the prefix length of infrastructureConfig.networks.workers
+	// (e.g. "10.102.17.0/24" -> 24). Bare-metal only; VMW does not report this CIDR.
+	if workersCidr := data.Spec.Provider.InfrastructureConfig.Networks.Workers; workersCidr != "" {
+		if parts := strings.Split(workersCidr, "/"); len(parts) == 2 {
+			if prefix, err := strconv.Atoi(parts[1]); err == nil {
+				state.NetworkNodePrefix = types.Int64Value(int64(prefix))
+			}
+		}
+	}
 
 	return &response, nil
 }
@@ -269,35 +266,17 @@ func (d *datasourceManagedGpuCluster) MaxClientFromAddons(spec *managedGpuCluste
 	return 0
 }
 
-func (d *datasourceManagedGpuCluster) GpuSharingClientFromAddons(spec *managedGpuClusterDataSpec, poolName string) string {
-	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
-		return ""
-	}
-
-	// Check if this pool has TimeSliceConfig (maxClient configuration)
-	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
-		if strings.HasPrefix(maxClientStr, poolName+":") {
-			// If pool has TimeSliceConfig, it means gpu_sharing_client = "timeSlicing"
-			return "timeSlicing"
-		}
-	}
-
-	// If no TimeSliceConfig found for this pool, gpu_sharing_client = "" (empty)
-	return ""
-}
-
 func (d *datasourceManagedGpuCluster) topFields() map[string]schema.Attribute {
 	topLevelAttributes := map[string]schema.Attribute{}
 	// Required string fields
 	requiredStrings := []string{
 		"vpc_id", "cluster_name", "k8s_version", "purpose",
 		"pod_network", "pod_prefix", "service_network", "service_prefix",
-		"network_id", "network_overlay",
+		"network_id",
 	}
 	// Optional string fields
 	optionalStrings := []string{
-		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone",
-		"default_storage_profile", "load_balancer_type", "secret_binding_name", "ssh_id", "ssh_name", "ssh_public_key",
+		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone", "ssh_key_id",
 	}
 	// Required int fields
 	requiredInts := []string{}
@@ -416,18 +395,18 @@ func (d *datasourceManagedGpuCluster) poolFields() map[string]schema.Attribute {
 	poolLevelAttributes := map[string]schema.Attribute{}
 	// Required string fields
 	requiredStrings := []string{
-		"name", "storage_profile", "hpc_flavor_id", "network_id",
+		"name", "hpc_flavor_id", "network_id",
 	}
 	// Optional string fields
-	optionalStrings := []string{"gpu_sharing_client", "driver_installation_type", "container_runtime", "gpu_driver_version", "network_name", "vgpu_id", "hpc_flavor_name", "gpu_template_version"}
+	optionalStrings := []string{"container_runtime", "network_name", "hpc_flavor_name", "gpu_type", "mig_profile"}
 	// Required int fields
-	requiredInts := []string{"worker_disk_size", "hpc_number_server"}
+	requiredInts := []string{"hpc_number_server"}
 	// Optional int fields
 	optionalInts := []string{"max_client"}
 	// Required bool fields
-	requiredBools := []string{"auto_scale", "is_enable_auto_repair"}
+	requiredBools := []string{"auto_scale"}
 	// Optional bool fields
-	optionalBools := []string{"is_enable_auto_repair"}
+	optionalBools := []string{}
 	// Optional list fields
 	optionalLists := []string{"tags"}
 
@@ -479,6 +458,11 @@ func (d *datasourceManagedGpuCluster) poolFields() map[string]schema.Attribute {
 		Optional:    true,
 		ElementType: types.MapType{ElemType: types.StringType},
 		Description: descriptions["kv"],
+	}
+	poolLevelAttributes["gpu_driver"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["gpu_driver"],
+		AttributeTypes: gpuDriverAttrTypes,
 	}
 	return poolLevelAttributes
 }

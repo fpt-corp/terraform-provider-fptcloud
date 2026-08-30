@@ -48,7 +48,7 @@ func checkClusterName(clusterName string) bool {
 }
 
 // getNetworkInfoByPlatform network_id, network name
-func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId, platform string, w *managedGpuClusterDataWorker, data *managedGpuClusterData) (string, string, error) {
+func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, mgpuClient *MgpuClusterApiClient, vpcId, platform string, w *managedGpuClusterDataWorker, data *managedGpuClusterData) (string, string, error) {
 	if strings.ToLower(platform) == "vmw" {
 		// For VMW platform, try to get network ID from worker's network name
 		networkName := w.ProviderConfig.NetworkName
@@ -82,9 +82,17 @@ func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.Subnet
 
 		// Final fallback to empty values
 		return "", networkName, nil
-	} else {
-		return getNetworkByIdOrName(ctx, client, vpcId, "", data.Spec.Provider.InfrastructureConfig.Networks.Id)
 	}
+
+	// OSP: network_id is the HPC subnet catalog ID (fptcloud_hpc_subnet),
+	// reported back as infrastructureConfig.subnetIDBM — NOT
+	// infrastructureConfig.networks.id, which is osp_network_id instead and
+	// does not exist in the regular subnet catalog getNetworkByIdOrName reads.
+	hpcSubnet, err := mgpuClient.fetchHpcSubnetById(ctx, vpcId, platform, data.Spec.Provider.InfrastructureConfig.SubnetIDBM)
+	if err != nil {
+		return "", "", err
+	}
+	return hpcSubnet.ID, hpcSubnet.Name, nil
 }
 
 // getNetworkByIdOrName network_id, network name
@@ -128,13 +136,12 @@ func TopFields() map[string]schema.Attribute {
 	topLevelAttributes := map[string]schema.Attribute{}
 	// Required string fields
 	requiredStrings := []string{
-		"vpc_id", "cluster_name", "network_id",
+		"vpc_id", "cluster_name", "network_id", "ssh_key_id",
 	}
 	// Optional string fields
 	optionalStrings := []string{
-		"k8s_version", "internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone", "edge_gateway_id", "network_type",
-		"network_overlay", "purpose", "pod_network", "pod_prefix", "service_network", "service_prefix",
-		"default_storage_profile", "load_balancer_type", "secret_binding_name", "ssh_id", "ssh_name", "ssh_public_key",
+		"k8s_version", "edge_gateway_name", "auto_upgrade_timezone", "edge_gateway_id", "network_type",
+		"purpose", "pod_network", "pod_prefix", "service_network", "service_prefix",
 	}
 	// Required int fields
 	requiredInts := []string{}
@@ -152,6 +159,15 @@ func TopFields() map[string]schema.Attribute {
 			Description:   descriptions[attribute],
 		}
 	}
+
+	// internal_subnet_lb is Required but NOT ForceNew: updateInternalSubnetLb
+	// (utils.go) updates it in place via a dedicated API call, so changing it
+	// must not force cluster replacement.
+	topLevelAttributes["internal_subnet_lb"] = schema.StringAttribute{
+		Required:    true,
+		Description: descriptions["internal_subnet_lb"],
+	}
+
 	for _, attribute := range optionalStrings {
 		topLevelAttributes[attribute] = schema.StringAttribute{
 			Optional:    true,
@@ -215,7 +231,7 @@ func TopFields() map[string]schema.Attribute {
 
 	topLevelAttributes["software"] = schema.ObjectAttribute{
 		Description: descriptions["software"],
-		Required:    true,
+		Optional:    true,
 		AttributeTypes: map[string]attr.Type{
 			"software_type":        types.StringType,
 			"software_version":     types.StringType,
@@ -252,18 +268,18 @@ func PoolFields() map[string]schema.Attribute {
 	poolLevelAttributes := map[string]schema.Attribute{}
 	// Required string fields
 	requiredStrings := []string{
-		"name", "storage_profile", "hpc_flavor_id",
+		"name", "hpc_flavor_id",
 	}
 	// Optional string fields
-	optionalStrings := []string{"gpu_sharing_client", "driver_installation_type", "network_name", "network_id", "container_runtime", "gpu_driver_version", "vgpu_id", "hpc_flavor_name", "gpu_template_version"}
+	optionalStrings := []string{"network_name", "network_id", "container_runtime", "hpc_flavor_name", "gpu_type", "mig_profile"}
 	// Required int fields
-	requiredInts := []string{"worker_disk_size", "hpc_number_server"}
+	requiredInts := []string{"hpc_number_server"}
 	// Optional int fields
 	optionalInts := []string{"max_client"}
 	// Required bool fields
 	requiredBools := []string{}
 	// Optional bool fields
-	optionalBools := []string{"worker_base", "is_enable_auto_repair"}
+	optionalBools := []string{"worker_base"}
 	// Optional list fields
 	optionalLists := []string{"tags"}
 
@@ -346,19 +362,52 @@ func PoolFields() map[string]schema.Attribute {
 		},
 	}
 
+	// gpu_driver is optional and not computed: when the user does not set it,
+	// nothing is sent to the API for either field.
+	poolLevelAttributes["gpu_driver"] = schema.ObjectAttribute{
+		Optional:    true,
+		Description: descriptions["gpu_driver"],
+		AttributeTypes: map[string]attr.Type{
+			"installation_type": types.StringType,
+			"version":           types.StringType,
+		},
+	}
+
 	return poolLevelAttributes
 }
 
 // MapTerraformToJson map terraform to json to CREATE
-func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from *managedGpuCluster, to *managedGpuClusterJson, vpcId string) *diag2.ErrorDiagnostic {
+func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from *managedGpuCluster, to *managedGpuClusterJson, vpcId string, platform string) *diag2.ErrorDiagnostic {
 	to.ClusterName = from.ClusterName.ValueString()
 	to.K8SVersion = from.K8SVersion.ValueString()
 	to.Purpose = from.Purpose.ValueString()
-	defaultNetworkID, defaultNetworkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", from.NetworkID.ValueString())
 
-	if err != nil {
-		d := diag2.NewErrorDiagnostic("Error getting default network", err.Error())
-		return &d
+	var defaultNetworkID, defaultNetworkName string
+
+	// network_id on OSP comes from the HPC subnet catalog (fptcloud_hpc_subnet),
+	// a different catalog from the regular VMW-style subnet listing
+	// (fptcloud_subnet) — the two do not share IDs, so resolving it against
+	// ListSubnet would always fail with "no such network found". Resolve
+	// network_id/network_name and vm_subnet/osp_network_id from the same
+	// HPC subnet lookup instead.
+	if strings.EqualFold(platform, "osp") {
+		hpcSubnet, err := r.mgpuClusterClient.fetchHpcSubnetById(ctx, vpcId, platform, from.NetworkID.ValueString())
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error resolving network_id", err.Error())
+			return &d
+		}
+		defaultNetworkID = hpcSubnet.ID
+		defaultNetworkName = hpcSubnet.Name
+		to.VmSubnet = hpcSubnet.SubnetCidr
+		to.OspNetworkId = hpcSubnet.OspNetworkId
+	} else {
+		networkID, networkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", from.NetworkID.ValueString())
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error getting default network", err.Error())
+			return &d
+		}
+		defaultNetworkID = networkID
+		defaultNetworkName = networkName
 	}
 
 	pools := make([]*managedGpuClusterPoolJson, 0)
@@ -385,42 +434,6 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 				}
 
 				kvs = append(kvs, map[string]string{key: val})
-			}
-		}
-
-		// Automatically add required system-generated keys for GPU pools
-		if item.VGpuID.ValueString() != "" {
-			// Check which required GPU labels are already present
-			hasMigConfig := false
-			hasWorkerType := false
-			migConfigValue := "all-1g.6gb" // default value
-
-			if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
-				for _, kvElement := range item.Kv.Elements() {
-					if kvObj, ok := kvElement.(types.Object); ok {
-						kvAttrs := kvObj.Attributes()
-						name := kvAttrs["name"].(types.String).ValueString()
-						value := kvAttrs["value"].(types.String).ValueString()
-
-						if name == "nvidia.com/mig.config" {
-							hasMigConfig = true
-							migConfigValue = value // use user-specified value
-						}
-						if name == "worker.fptcloud/type" {
-							hasWorkerType = true
-						}
-					}
-				}
-			}
-
-			// Add nvidia.com/mig.config if not present, or use user-specified value
-			if !hasMigConfig {
-				kvs = append(kvs, map[string]string{"nvidia.com/mig.config": migConfigValue})
-			}
-
-			// Add worker.fptcloud/type if not present
-			if !hasWorkerType {
-				kvs = append(kvs, map[string]string{"worker.fptcloud/type": "gpu"})
 			}
 		}
 
@@ -454,21 +467,24 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 			}
 		}
 
+		driverInstallationType, gpuDriverVersion := gpuDriverFields(item.GpuDriver)
+
+		gpuTemplateVersion, err := r.resolveGpuTemplateVersion(ctx, vpcId, platform, from.K8SVersion.ValueString(), driverInstallationType, gpuDriverVersion)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error resolving gpu_template_version", err.Error())
+			return &d
+		}
+
 		newItem := &managedGpuClusterPoolJson{
-			StorageProfile:         item.StorageProfile.ValueString(),
 			HpcFlavorId:            item.HpcFlavorId.ValueString(),
 			HpcFlavorName:          item.HpcFlavorName.ValueString(),
 			HpcNumberServer:        item.HpcNumberServer.ValueInt64(),
-			WorkerDiskSize:         item.WorkerDiskSize.ValueInt64(),
-			IsEnableAutoRepair:     item.IsEnableAutoRepair.ValueBool(),
 			WorkerPoolID:           &name,
 			WorkerBase:             item.WorkerBase.ValueBool(),
-			VGpuID:                 item.VGpuID.ValueString(),
 			MaxClient:              item.MaxClient.ValueInt64(),
-			GpuSharingClient:       item.GpuSharingClient.ValueString(),
-			GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
-			GpuTemplateVersion:     item.GpuTemplateVersion.ValueString(),
-			DriverInstallationType: item.DriverInstallationType.ValueString(),
+			GpuDriverVersion:       gpuDriverVersion,
+			DriverInstallationType: driverInstallationType,
+			GpuTemplateVersion:     gpuTemplateVersion,
 			Tags:                   listToTagsString(item.Tags),
 			IsCreate:               true,
 			IsScale:                false,
@@ -476,14 +492,12 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 			// Bare metal pools are a fixed server count, so there is no
 			// min/max range to autoscale between.
 			AutoScale:        false,
+			IsDisplayGPU:     false,
 			ContainerRuntime: item.ContainerRuntime.ValueString(),
 			Kv:               kvs,
 			Taints:           taints,
-		}
-		if item.VGpuID.ValueString() != "" {
-			newItem.IsDisplayGPU = true
-		} else {
-			newItem.IsDisplayGPU = false
+			GpuType:          item.GpuType.ValueString(),
+			MigProfile:       item.MigProfile.ValueString(),
 		}
 
 		if item.NetworkName.ValueString() == "" && item.NetworkID.ValueString() == "" {
@@ -528,17 +542,22 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 	to.ServicePrefix = from.ServicePrefix.ValueString()
 	to.K8SMaxPod = from.K8SMaxPod.ValueInt64()
 	to.NetworkType = from.NetworkType.ValueString()
-	to.NetworkOverlay = from.NetworkOverlay.ValueString()
 	to.EdgeGatewayId = from.EdgeGatewayId.ValueString()
 
 	// Bare-metal-only fields.
-	to.DefaultStorageProfile = from.DefaultStorageProfile.ValueString()
 	to.NetworkNodePrefix = from.NetworkNodePrefix.ValueInt64()
-	to.LoadBalancerType = from.LoadBalancerType.ValueString()
-	to.SecretBindingName = from.SecretBindingName.ValueString()
-	to.SshId = from.SshId.ValueString()
-	to.SshName = from.SshName.ValueString()
-	to.SshPublicKey = from.SshPublicKey.ValueString()
+
+	// ssh_name and ssh_public_key are resolved from ssh_id — the user only
+	// sets ssh_id (e.g. from the fptcloud_ssh data source), same as
+	// vm_subnet/osp_network_id being resolved from network_id.
+	sshKey, err := r.sshClient.FindSSHKey(from.SshId.ValueString())
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error resolving ssh_id", err.Error())
+		return &d
+	}
+	to.SshId = sshKey.ID
+	to.SshName = sshKey.Name
+	to.SshPublicKey = sshKey.PublicKey
 
 	platform, e := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if e != nil {
@@ -553,6 +572,17 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 	if strings.ToLower(platform) == "osp" {
 		to.EdgeGatewayId = ""
 		to.EdgeGatewayName = ""
+
+		// lbInternalNetwork mirrors the subnet backing internal_subnet_lb
+		// (on OSP, internal_subnet_lb is a subnet ID). Left unset when
+		// internal_subnet_lb is not configured.
+		if subnetId := from.InternalSubnetLb.ValueString(); subnetId != "" {
+			subnet, subnetErr := r.findNetworkSubnetById(vpcId, subnetId)
+			if subnetErr != nil {
+				return subnetErr
+			}
+			to.LbInternalNetwork = lbInternalNetworkFromSubnet(subnet)
+		}
 	} else {
 		// get edge gateway name
 		edgeGatewayId := to.EdgeGatewayId
@@ -632,6 +662,63 @@ func objectString(attrs map[string]attr.Value, name string) string {
 	return v.ValueString()
 }
 
+// gpuDriverFields reads installation_type and version out of the gpu_driver
+// block, treating a null or unknown block as both fields absent.
+func gpuDriverFields(gpuDriver types.Object) (installationType string, version string) {
+	if gpuDriver.IsNull() || gpuDriver.IsUnknown() {
+		return "", ""
+	}
+	attrs := gpuDriver.Attributes()
+	return objectString(attrs, "installation_type"), objectString(attrs, "version")
+}
+
+// resolveGpuTemplateVersion derives gpuTemplateVersion from the gpu-drivers
+// catalog entry matching driverInstallationType/gpuDriverVersion (its
+// imageID) — the user only picks installation_type/version in gpu_driver;
+// there is no Terraform field for gpu_template_version. Returns "" when
+// driverInstallationType is empty (gpu_driver not set) so callers can send
+// nothing, matching how the rest of the wire fields behave when the block is
+// absent.
+func (r *resourceManagedGpuCluster) resolveGpuTemplateVersion(ctx context.Context, vpcId, platform, k8sVersion, driverInstallationType, gpuDriverVersion string) (string, error) {
+	if driverInstallationType == "" {
+		return "", nil
+	}
+
+	drivers, err := r.mgpuClusterClient.fetchGpuDrivers(ctx, vpcId, platform, driverInstallationType, k8sVersion)
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range drivers {
+		if entry.Value == gpuDriverVersion {
+			return entry.ImageID, nil
+		}
+	}
+
+	return "", nil
+}
+
+// gpuDriverAttrTypes is the gpu_driver object's attribute type map, shared by
+// every place that builds or reads a gpu_driver types.Object.
+var gpuDriverAttrTypes = map[string]attr.Type{
+	"installation_type": types.StringType,
+	"version":           types.StringType,
+}
+
+// gpuDriverObjectValue builds the gpu_driver state value read back from the
+// API. When the worker reports no installation type, the block is left null
+// rather than an object of empty strings, so a config that never set
+// gpu_driver does not see a permanent diff.
+func gpuDriverObjectValue(installationType, version string) types.Object {
+	if installationType == "" && version == "" {
+		return types.ObjectNull(gpuDriverAttrTypes)
+	}
+	return types.ObjectValueMust(gpuDriverAttrTypes, map[string]attr.Value{
+		"installation_type": types.StringValue(installationType),
+		"version":           types.StringValue(version),
+	})
+}
+
 // softwareToJson converts the software block into its request representation.
 // Returns nil when the block is absent so the field is omitted entirely.
 func softwareToJson(software types.Object) *SoftwareJson {
@@ -655,7 +742,7 @@ func softwareToJson(software types.Object) *SoftwareJson {
 }
 
 // remapPools
-func (r *resourceManagedGpuCluster) remapPools(item *managedGpuClusterPool, name string, clusterNetworkID string, clusterNetworkName string) *managedGpuClusterPoolJson {
+func (r *resourceManagedGpuCluster) remapPools(ctx context.Context, vpcId, platform, k8sVersion string, item *managedGpuClusterPool, name string, clusterNetworkID string, clusterNetworkName string) (*managedGpuClusterPoolJson, error) {
 
 	var workerPoolID *string
 	if name == "" || name == "worker-new" || item.WorkerPoolID.IsNull() || item.WorkerPoolID.IsUnknown() {
@@ -725,46 +812,46 @@ func (r *resourceManagedGpuCluster) remapPools(item *managedGpuClusterPool, name
 		networkName = clusterNetworkName
 	}
 
+	driverInstallationType, gpuDriverVersion := gpuDriverFields(item.GpuDriver)
+
+	gpuTemplateVersion, err := r.resolveGpuTemplateVersion(ctx, vpcId, platform, k8sVersion, driverInstallationType, gpuDriverVersion)
+	if err != nil {
+		return nil, err
+	}
+
 	newItem := &managedGpuClusterPoolJson{
 		WorkerPoolID:           workerPoolID,
-		StorageProfile:         item.StorageProfile.ValueString(),
 		HpcFlavorId:            item.HpcFlavorId.ValueString(),
 		HpcFlavorName:          item.HpcFlavorName.ValueString(),
 		HpcNumberServer:        item.HpcNumberServer.ValueInt64(),
-		WorkerDiskSize:         item.WorkerDiskSize.ValueInt64(),
 		MaxClient:              item.MaxClient.ValueInt64(),
 		NetworkID:              networkID,
 		NetworkName:            networkName,
-		VGpuID:                 item.VGpuID.ValueString(),
-		DriverInstallationType: item.DriverInstallationType.ValueString(),
-		GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
-		GpuTemplateVersion:     item.GpuTemplateVersion.ValueString(),
+		DriverInstallationType: driverInstallationType,
+		GpuDriverVersion:       gpuDriverVersion,
+		GpuTemplateVersion:     gpuTemplateVersion,
 		Tags:                   listToTagsString(item.Tags),
-		GpuSharingClient:       item.GpuSharingClient.ValueString(),
 		ContainerRuntime:       item.ContainerRuntime.ValueString(),
 		Kv:                     kvs,
 		Taints:                 taints,
+		GpuType:                item.GpuType.ValueString(),
+		MigProfile:             item.MigProfile.ValueString(),
 		// Bare metal pools are a fixed server count, so there is no min/max
 		// range to autoscale between.
-		AutoScale:          false,
-		IsDisplayGPU:       false,
-		IsCreate:           false,
-		IsScale:            false,
-		IsOthers:           false,
-		IsEnableAutoRepair: item.IsEnableAutoRepair.ValueBool(),
-		WorkerBase:         item.WorkerBase.ValueBool(),
+		AutoScale:    false,
+		IsDisplayGPU: false,
+		IsCreate:     false,
+		IsScale:      false,
+		IsOthers:     false,
+		WorkerBase:   item.WorkerBase.ValueBool(),
 	}
 
-	// Set IsDisplayGPU if VGpuID is set
-	if item.VGpuID.ValueString() != "" {
-		newItem.IsDisplayGPU = true
-	}
 	// Set IsCreate for new pool
 	if workerPoolID == nil {
 		newItem.IsCreate = true
 	}
 
-	return newItem
+	return newItem, nil
 }
 
 // checkForError
@@ -924,10 +1011,9 @@ func (r *resourceManagedGpuCluster) DiffPool(ctx context.Context, from *managedG
 		if f.HpcNumberServer != t.HpcNumberServer ||
 			f.HpcFlavorId != t.HpcFlavorId ||
 			f.WorkerBase != t.WorkerBase ||
-			f.IsEnableAutoRepair != t.IsEnableAutoRepair ||
 			!f.Tags.Equal(t.Tags) ||
 			f.MaxClient != t.MaxClient ||
-			f.GpuSharingClient.ValueString() != t.GpuSharingClient.ValueString() ||
+			!f.GpuDriver.Equal(t.GpuDriver) ||
 			!reflect.DeepEqual(userDefinedKvMap, userDefinedTvMap) ||
 			!reflect.DeepEqual(taintMap(f), taintMap(t)) {
 			return true
@@ -985,9 +1071,14 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 			state.AutoUpgradeExpression = types.ListNull(types.StringType)
 		}
 	} else {
+		// The API reports autoUpgrade: null when it has never been
+		// configured. Fall back to the same defaults SetDefaults applies at
+		// plan time (types.StringNull()/types.ListNull() here would not match
+		// a plan that filled in "Asia/Saigon"/[] and fail the post-apply
+		// consistency check).
 		state.IsEnableAutoUpgrade = types.BoolValue(false)
-		state.AutoUpgradeTimezone = types.StringNull()
-		state.AutoUpgradeExpression = types.ListNull(types.StringType)
+		state.AutoUpgradeTimezone = types.StringValue("Asia/Saigon")
+		state.AutoUpgradeExpression = types.ListValueMust(types.StringType, []attr.Value{})
 	}
 
 	// id
@@ -1015,8 +1106,16 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	// k8s_max_pod
 	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
 
-	// network_overlay
-	state.NetworkOverlay = types.StringValue(data.Spec.Networking.ProviderConfig.Ipip)
+	// network_node_prefix — the prefix length of infrastructureConfig.networks.workers
+	// (e.g. "10.102.17.0/24" -> 24). Bare-metal only; VMW does not report this CIDR.
+	state.NetworkNodePrefix = types.Int64Null()
+	if workersCidr := data.Spec.Provider.InfrastructureConfig.Networks.Workers; workersCidr != "" {
+		if parts := strings.Split(workersCidr, "/"); len(parts) == 2 {
+			if prefix, err := strconv.Atoi(parts[1]); err == nil {
+				state.NetworkNodePrefix = types.Int64Value(int64(prefix))
+			}
+		}
+	}
 
 	// network_type
 	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
@@ -1035,18 +1134,34 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	// under networks.lbv2Subnet.
 	if strings.ToLower(platform) == "osp" {
 		internalSubnetLb := ""
-		if lb := data.Spec.Provider.InfrastructureConfig.InternalNetworksLB; lb != nil {
-			internalSubnetLb = lb.Id
+		if lb := data.Spec.Provider.InfrastructureConfig.InternalNetworksLB; lb != nil && lb.Id != "" {
+			// lb.Id is network/subnets' own internal id, not the network_id
+			// the user set internal_subnet_lb to (that's what
+			// fptcloud_subnet/findNetworkSubnetById match against) — resolve
+			// it back to the matching network_id.
+			if subnet, err := r.findNetworkSubnetByOwnId(vpcId, lb.Id); err == nil {
+				internalSubnetLb = subnet.NetworkID
+			} else {
+				tflog.Warn(ctx, "Could not resolve internal_subnet_lb's network_id: "+err.Error())
+			}
 		}
 		state.InternalSubnetLb = types.StringValue(internalSubnetLb)
 	} else {
 		state.InternalSubnetLb = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Lbv2Subnet)
 	}
 
+	// ssh_key_id — not computed, but must still be read back explicitly on
+	// Import (there is no prior config/state to carry it forward from).
+	if len(data.Spec.Provider.Workers) > 0 {
+		if sshId := data.Spec.Provider.Workers[0].ProviderConfig.SshKey.ID; sshId != "" {
+			state.SshId = types.StringValue(sshId)
+		}
+	}
+
 	// network_id of Cluster
 	if len(data.Spec.Provider.Workers) > 0 {
 		// Use the first worker to determine cluster network info
-		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
+		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, r.mgpuClusterClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
 		if err == nil {
 			state.NetworkID = types.StringValue(clusterNetworkID)
 			tflog.Info(ctx, fmt.Sprintf("DEBUG: Set cluster NetworkID to: '%s'", clusterNetworkID))
@@ -1123,13 +1238,7 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	apiPools := make([]*managedGpuClusterPool, 0)
 
 	for _, worker := range data.Spec.Provider.Workers {
-		flavorPoolKey := "fptcloud.com/flavor_pool_" + worker.Name
-		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
-		if !ok {
-			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
-		}
-		autoRepair := worker.AutoRepair()
-		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, vpcId, platform, worker, &data)
+		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, r.mgpuClusterClient, vpcId, platform, worker, &data)
 		if e != nil {
 			return nil, e
 		}
@@ -1137,50 +1246,41 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 		item := &managedGpuClusterPool{
 			// name
 			WorkerPoolID: types.StringValue(worker.Name),
-			// storage_profile
-			StorageProfile: types.StringValue(worker.Volume.Type),
-			// hpc_flavor_id
-			HpcFlavorId: types.StringValue(flavorId),
+			// hpc_flavor_id — bare-metal servers report this as
+			// providerConfig.serverType, not a fptcloud.com/flavor_pool_*
+			// label (that label belongs to mfke's response shape, not mgpu's).
+			HpcFlavorId: types.StringValue(worker.ProviderConfig.ServerType),
 			// hpc_flavor_name
 			HpcFlavorName: types.StringValue(worker.Machine.Type),
 			// hpc_number_server — bare metal pools are a fixed server count,
 			// which Gardener still reports as a min == max worker range.
 			HpcNumberServer: types.Int64Value(int64(worker.Maximum)),
-			// worker_disk_size
-			WorkerDiskSize: types.Int64Value(int64(parseNumber(worker.Volume.Size))),
 			// network_id
 			NetworkID: types.StringValue(networkId),
 			// network_name
 			NetworkName: types.StringValue(networkName),
-			// is_enable_auto_repair
-			IsEnableAutoRepair: types.BoolValue(autoRepair),
 			// container_runtime
 			ContainerRuntime: types.StringValue(worker.Cri.Name),
 			// tags
 			Tags: tagsStringToList(worker.Tags()),
-			// vgpu_id
-			VGpuID: types.StringValue(worker.ProviderConfig.VGpuID),
-			// driver_installation_type
-			DriverInstallationType: types.StringValue(worker.Machine.Image.DriverInstallationType),
-			// gpu_driver_version
-			GpuDriverVersion: types.StringValue(worker.Machine.Image.GpuDriverVersion),
+			// gpu_driver
+			GpuDriver: gpuDriverObjectValue(worker.Machine.Image.DriverInstallationType, worker.Machine.Image.GpuDriverVersion),
 			// worker_base
 			WorkerBase: types.BoolValue(worker.IsWorkerBase()),
+			// gpu_type, mig_profile: not exposed by the get-shoot-specific
+			// response, so there is no way to read them back. Always null.
+			GpuType:    types.StringNull(),
+			MigProfile: types.StringNull(),
 		}
 
-		// max_client and gpu_sharing_client
+		// max_client
 		if worker.ProviderConfig.VGpuID != "" {
 			// Read MaxClient from addons configuration
 			maxClientFromAPI := r.MaxClientFromAddons(&data.Spec, worker.Name)
 			item.MaxClient = types.Int64Value(maxClientFromAPI)
-
-			// Read GpuSharingClient from addons configuration
-			gpuSharingClientFromAPI := r.GpuSharingClientFromAddons(&data.Spec, worker.Name)
-			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
 		} else {
 			// Non-GPU pools: set default values
 			item.MaxClient = types.Int64Value(0)
-			item.GpuSharingClient = types.StringValue("")
 		}
 
 		// kv
@@ -1376,15 +1476,6 @@ func tagsStringToList(tagsString string) types.List {
 	return types.ListValueMust(types.StringType, elements)
 }
 
-func (w *managedGpuClusterDataWorker) AutoRepair() bool {
-	autoRepair := false
-	if label, ok := w.Annotations["worker.fptcloud.com/node-auto-repair"]; ok {
-		autoRepair = label == "true"
-	}
-
-	return autoRepair
-}
-
 func (w *managedGpuClusterDataWorker) Tags() string {
 	return w.Annotations["tagging.fke.fptcloud.com/worker-tags"]
 }
@@ -1409,23 +1500,6 @@ func (r *resourceManagedGpuCluster) MaxClientFromAddons(spec *managedGpuClusterD
 		}
 	}
 	return 0
-}
-
-func (r *resourceManagedGpuCluster) GpuSharingClientFromAddons(spec *managedGpuClusterDataSpec, poolName string) string {
-	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
-		return ""
-	}
-
-	// Check if this pool has TimeSliceConfig (maxClient configuration)
-	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
-		if strings.HasPrefix(maxClientStr, poolName+":") {
-			// If pool has TimeSliceConfig, it means gpu_sharing_client = "timeSlicing"
-			return "timeSlicing"
-		}
-	}
-
-	// If no TimeSliceConfig found for this pool, gpu_sharing_client = "" (empty)
-	return ""
 }
 
 func (w *managedGpuClusterDataWorker) IsWorkerBase() bool {
@@ -1752,10 +1826,11 @@ func (r *resourceManagedGpuCluster) updateInternalSubnetLb(ctx context.Context, 
 	return nil
 }
 
-// findNetworkSubnetById resolves the subnet backing internal_subnet_lb. SubnetService is
-// not used here because none of its endpoints report networkType or the prefix length,
-// both of which config-internal-subnet-lb requires.
-func (r *resourceManagedGpuCluster) findNetworkSubnetById(vpcId string, subnetId string) (*networkSubnet, *diag2.ErrorDiagnostic) {
+// fetchNetworkSubnets lists every subnet from GET /v1/vmware/vpc/{vpcId}/network/subnets.
+// SubnetService itself is not used for this because none of its endpoints
+// report networkType or the prefix length, both of which config-internal-subnet-lb
+// requires.
+func (r *resourceManagedGpuCluster) fetchNetworkSubnets(vpcId string) ([]networkSubnet, *diag2.ErrorDiagnostic) {
 	path := commons.ApiPath.Subnet(vpcId)
 	res, err := r.client.SendGetRequest(path)
 	if err != nil {
@@ -1769,17 +1844,50 @@ func (r *resourceManagedGpuCluster) findNetworkSubnetById(vpcId string, subnetId
 		return nil, &d
 	}
 
-	for _, s := range subnets.Data {
-		if s.ID == subnetId {
+	return subnets.Data, nil
+}
+
+// findNetworkSubnetById resolves the subnet backing internal_subnet_lb.
+// internal_subnet_lb is the subnet id the fptcloud_subnet data source reports
+// (Subnet.ID, backed by GET /v2/vpc/{vpcId}/networks) — matched here against
+// this endpoint's network_id field, not its own id, since the two are
+// different identifiers for the same subnet.
+func (r *resourceManagedGpuCluster) findNetworkSubnetById(vpcId string, subnetId string) (*networkSubnet, *diag2.ErrorDiagnostic) {
+	subnets, d := r.fetchNetworkSubnets(vpcId)
+	if d != nil {
+		return nil, d
+	}
+
+	for _, s := range subnets {
+		if s.NetworkID == subnetId {
 			return &s, nil
 		}
 	}
 
-	d := diag2.NewErrorDiagnostic(
+	err := diag2.NewErrorDiagnostic(
 		"Subnet not found for internal_subnet_lb",
 		fmt.Sprintf("No subnet with ID %s exists in VPC %s", subnetId, vpcId),
 	)
-	return nil, &d
+	return nil, &err
+}
+
+// findNetworkSubnetByOwnId resolves a network/subnets entry by its own id
+// (as opposed to its network_id) — needed to read internal_subnet_lb back:
+// the API reports internalNetworksLB.id using this endpoint's own id, which
+// must be translated back to the network_id the user's config uses.
+func (r *resourceManagedGpuCluster) findNetworkSubnetByOwnId(vpcId string, ownId string) (*networkSubnet, error) {
+	subnets, d := r.fetchNetworkSubnets(vpcId)
+	if d != nil {
+		return nil, errors.New(d.Detail())
+	}
+
+	for _, s := range subnets {
+		if s.ID == ownId {
+			return &s, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no subnet with id %s exists in VPC %s", ownId, vpcId)
 }
 
 func (r *resourceManagedGpuCluster) updateWorkerPools(ctx context.Context, from *managedGpuCluster, to *managedGpuCluster) *diag2.ErrorDiagnostic {
@@ -1817,7 +1925,11 @@ func (r *resourceManagedGpuCluster) updateWorkerPools(ctx context.Context, from 
 	// Prepare pools data
 	pools := []*managedGpuClusterPoolJson{}
 	for _, pool := range to.Pools {
-		item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
+		item, err := r.remapPools(ctx, vpcId, platform, to.K8SVersion.ValueString(), pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
+		if err != nil {
+			di := diag2.NewErrorDiagnostic("Error resolving gpu_template_version", err.Error())
+			return &di
+		}
 		pools = append(pools, item)
 	}
 
@@ -1852,6 +1964,7 @@ func (r *resourceManagedGpuCluster) updateWorkerPools(ctx context.Context, from 
 func isSystemGeneratedKey(key string) bool {
 	systemKeys := []string{
 		"nvidia.com/device-plugin.config", // System auto-generates this for GPU pools
+		"worker.fptcloud/type",            // Backend auto-generates this on the worker (e.g. "gpu"), independent of what the pool's kv sends
 		// Add more system-generated keys here if needed
 	}
 
@@ -2064,6 +2177,71 @@ func (m *MgpuClusterApiClient) checkServiceAccount(ctx context.Context, vpcId st
 	}
 
 	return false, lastErr
+}
+
+// gpuDriverZoneForRegion maps the client's internal region code to the "zone"
+// query param the gpu-drivers endpoint expects. Only JP is confirmed so far;
+// the remaining regions are pending confirmation from the backend team.
+func gpuDriverZoneForRegion(region string) (string, error) {
+	switch region {
+	case "JP/JCSI2":
+		return "jcncp01", nil
+	default:
+		return "", fmt.Errorf("gpu-drivers zone mapping is not yet defined for region %q", region)
+	}
+}
+
+// fetchGpuDrivers calls the gpu-drivers catalog for one driver_installation_type
+// and returns the driver versions it offers. USER_INSTALL comes back as a
+// single entry with an empty value, meaning there is no version to pick.
+func (m *MgpuClusterApiClient) fetchGpuDrivers(ctx context.Context, vpcId string, platform string, driverType string, k8sVersion string) ([]gpuDriverEntry, error) {
+	zone, err := gpuDriverZoneForRegion(m.Client.Region)
+	if err != nil {
+		return nil, err
+	}
+
+	path := commons.ApiPath.ManagedGpuClusterGpuDrivers(vpcId, driverType, zone, k8sVersion)
+	tflog.Info(ctx, "Fetching GPU drivers: "+path)
+
+	a, err := m.SendGetWithInfraType(path, strings.ToUpper(platform))
+	if err != nil {
+		return nil, err
+	}
+
+	var resp gpuDriverListResponse
+	if err := json.Unmarshal(a, &resp); err != nil {
+		return nil, fmt.Errorf("error unmarshalling gpu-drivers response: %w", err)
+	}
+
+	return resp.DriverList, nil
+}
+
+// fetchVmSubnetAndOspNetworkId resolves a cluster's network_id into the
+// vm_subnet (CIDR) and osp_network_id create-cluster expects on OSP. Neither
+// value is exposed by the regular fptcloud_subnet listing, so this hits the
+// OSP-specific HPC subnet catalog (the same one fptcloud_hpc_subnet reads)
+// directly, keyed by the subnet id the user already put in network_id.
+func (m *MgpuClusterApiClient) fetchHpcSubnetById(ctx context.Context, vpcId string, platform string, networkId string) (*hpcSubnet, error) {
+	path := commons.ApiPath.ManagedGpuClusterHpcSubnets(vpcId, 1, 256)
+	tflog.Info(ctx, "Fetching HPC subnets: "+path)
+
+	a, err := m.sendGet(path, strings.ToUpper(platform))
+	if err != nil {
+		return nil, err
+	}
+
+	var resp hpcSubnetListResponse
+	if err := json.Unmarshal(a, &resp); err != nil {
+		return nil, fmt.Errorf("error unmarshalling hpc-subnets response: %w", err)
+	}
+
+	for _, s := range resp.Data {
+		if s.ID == networkId {
+			return &s, nil
+		}
+	}
+
+	return nil, fmt.Errorf("network_id %q not found in HPC subnet catalog (see the fptcloud_hpc_subnet data source)", networkId)
 }
 
 // func (m *MgpuClusterApiClient) checkQuotaResource(ctx context.Context, vpcId string, platform string) (bool, error) {
