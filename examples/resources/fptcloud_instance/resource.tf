@@ -2,7 +2,7 @@
 resource "fptcloud_instance" "example_01" {
   name              = "example-01"
   vpc_id            = "your_vpc_id"
-  ssh_key           = "your_ssh_key"
+  ssh_key           = "ssh-rsa AAAAB3NzaC1yc2E... user@example.com" # public key material, not the key name
   image_name        = "UBUNTU-20.04-04072024"
   flavor_name       = "2C2G"
   subnet_id         = "your_subnet_id"

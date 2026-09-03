@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/ssh"
 )
 
 func ValidateName(v interface{}, _ string) (ws []string, es []error) {
@@ -24,6 +26,27 @@ func ValidateName(v interface{}, _ string) (ws []string, es []error) {
 		return warns, errs
 	}
 	return warns, errs
+}
+
+// ValidateSSHPublicKey rejects values OpenSSH cannot parse, e.g. a key name or a private key pasted by mistake.
+func ValidateSSHPublicKey(v interface{}, name string) (ws []string, es []error) {
+	value, ok := v.(string)
+	if !ok {
+		return nil, []error{fmt.Errorf("expected %s to be string", name)}
+	}
+
+	_, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(value))
+	if err != nil {
+		// never echo the value back, it may hold private key material
+		if strings.Contains(value, "PRIVATE KEY") {
+			return nil, []error{fmt.Errorf("%s must be a public key, not a private key: use the content of the matching .pub file", name)}
+		}
+		return nil, []error{fmt.Errorf("%s must be an OpenSSH public key such as \"ssh-rsa AAAAB3NzaC1yc2E... user@example.com\"", name)}
+	}
+	if len(strings.TrimSpace(string(rest))) > 0 {
+		return nil, []error{fmt.Errorf("%s must contain exactly one public key", name)}
+	}
+	return nil, nil
 }
 
 // ToQueryParams converts a struct to URL query parameters.

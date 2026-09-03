@@ -15,7 +15,7 @@ Provides a SSH key resource to allow you to manage SSH keys for instance access.
 ```terraform
 resource "fptcloud_ssh_key" "example" {
   name = "your_ssh_name"
-  public_key = "your_public_key"
+  public_key = "ssh-rsa AAAAB3NzaC1yc2E... user@example.com"
 }
 ```
 
@@ -25,7 +25,7 @@ resource "fptcloud_ssh_key" "example" {
 ### Required
 
 - `name` (String) a string that will be the reference for the SSH key.
-- `public_key` (String) a string containing the SSH public key.
+- `public_key` (String) a string containing the SSH public key, e.g. "ssh-rsa AAAAB3NzaC1yc2E... user@example.com".
 
 ### Read-Only
 
