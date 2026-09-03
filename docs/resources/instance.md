@@ -17,7 +17,7 @@ Provides a instance resource. This can be used to create, modify, and delete ins
 resource "fptcloud_instance" "example_01" {
   name              = "example-01"
   vpc_id            = "your_vpc_id"
-  ssh_key           = "your_ssh_key"
+  ssh_key           = "ssh-rsa AAAAB3NzaC1yc2E... user@example.com" # public key material, not the key name
   image_name        = "UBUNTU-20.04-04072024"
   flavor_name       = "2C2G"
   subnet_id         = "your_subnet_id"
@@ -102,7 +102,7 @@ resource "fptcloud_instance" "example_03" {
 - `private_ip` (String) The private ip of the instance.
 - `public_ip` (String) The public ip (floating ip) of the instance.
 - `security_group_ids` (List of String) The security group associated with the instance
-- `ssh_key` (String) The ssh key of the instance
+- `ssh_key` (String) The OpenSSH public key granted access to the instance, key material and not a key name, e.g. "ssh-rsa AAAAB3NzaC1yc2E... user@example.com"
 - `tag_ids` (Set of String) List of tag IDs to associate with the instance
 
 ### Read-Only

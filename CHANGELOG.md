@@ -1,3 +1,9 @@
+## [0.3.65] - 2026-09-03
+
+### Resource
+
+- Fix: validate `ssh_key` on `fptcloud_instance` and `public_key` on `fptcloud_ssh_key` as OpenSSH public keys, so a key name or a private key fails at plan time instead of creating an instance that ends up in `ERROR`
+
 ## [0.3.64] - 2026-08-27
 
 ### Resource

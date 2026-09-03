@@ -195,9 +195,10 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"ssh_key": {
 		Type:         schema.TypeString,
 		Optional:     true,
-		Description:  "The ssh key of the instance",
+		Description:  "The OpenSSH public key granted access to the instance, key material and not a key name, e.g. \"ssh-rsa AAAAB3NzaC1yc2E... user@example.com\"",
 		ForceNew:     true,
 		ExactlyOneOf: []string{"ssh_key", "password"},
+		ValidateFunc: utils.ValidateSSHPublicKey,
 	},
 	"password": {
 		Type:         schema.TypeString,
