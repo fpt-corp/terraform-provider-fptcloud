@@ -73,6 +73,9 @@ func readLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}
 	if err := d.Set("egw_id", loadBalancer.EdgeGateway.Id); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting egw id: %s", err))
 	}
+	if err := d.Set("scheme", loadBalancer.Scheme); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting scheme: %s", err))
+	}
 
 	detail, err := service.GetLoadBalancer(vpcId, loadBalancerId)
 	if err != nil {
@@ -103,6 +106,7 @@ func createLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 	payload.VipAddress = d.Get("vip_address").(string)
 	payload.Cidr = d.Get("cidr").(string)
 	payload.EgwId = d.Get("egw_id").(string)
+	payload.Scheme = d.Get("scheme").(string)
 
 	var tagIds []string
 	if tagIdsRaw, ok := d.GetOk("tag_ids"); ok {
@@ -194,6 +198,15 @@ func updateLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 	service := NewLoadBalancerV2Service(client)
 	vpcId := d.Get("vpc_id").(string)
 	loadBalancerId := d.Id()
+
+	if d.HasChange("scheme") {
+		oldScheme, newScheme := d.GetChange("scheme")
+		return diag.Errorf(
+			"scheme is immutable after creation (was %q, requested %q) — "+
+				"create a new load balancer with the desired scheme instead of editing this one",
+			oldScheme, newScheme,
+		)
+	}
 
 	if d.HasChange("size") {
 		new_size := d.Get("size").(string)

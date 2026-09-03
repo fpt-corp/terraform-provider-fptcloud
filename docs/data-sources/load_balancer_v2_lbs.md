@@ -53,6 +53,7 @@ Read-Only:
 - `provisioning_status` (String)
 - `public_ip` (List of Object) (see [below for nested schema](#nestedobjatt--loadbalancers--public_ip))
 - `resource_tags` (List of Object) (see [below for nested schema](#nestedobjatt--loadbalancers--resource_tags))
+- `scheme` (String)
 - `size` (List of Object) (see [below for nested schema](#nestedobjatt--loadbalancers--size))
 - `tags` (List of String)
 

@@ -80,6 +80,7 @@ func listLoadBalancers(ctx context.Context, d *schema.ResourceData, m interface{
 			"cidr":                lb.Cidr,
 			"size":                size,
 			"created_at":          lb.CreatedAt,
+			"scheme":              lb.Scheme,
 			"tags":                tags,
 			"resource_tags":       resourceTags,
 			"egw_name":            lb.EgwName,
@@ -156,6 +157,9 @@ func getLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{})
 	}
 	if err := d.Set("created_at", loadBalancer.CreatedAt); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting load balancer create date: %v", err))
+	}
+	if err := d.Set("scheme", loadBalancer.Scheme); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting load balancer scheme: %v", err))
 	}
 	if err := d.Set("tags", loadBalancer.Tags); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting load balancer tags: %v", err))
