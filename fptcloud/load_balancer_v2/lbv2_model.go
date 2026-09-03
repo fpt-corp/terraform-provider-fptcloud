@@ -16,6 +16,7 @@ type LoadBalancer struct {
 	CreatedAt          string            `json:"created_at"`
 	Tags               []string          `json:"tags"`
 	ResourceTags       []LoadBalancerTag `json:"resource_tags"`
+	Scheme             string            `json:"scheme"`
 	EgwName            string            `json:"egw_name"`
 	Size               struct {
 		Id                    string `json:"id"`
@@ -44,6 +45,7 @@ type LoadBalancerRead struct {
 	Cidr               string   `json:"cidr"`
 	CreatedAt          string   `json:"created_at"`
 	Tags               []string `json:"tags"`
+	Scheme             string   `json:"scheme"`
 	EdgeGateway        struct {
 		Id   string `json:"id"`
 		Name string `json:"name"`
@@ -199,6 +201,7 @@ type LoadBalancerCreateModel struct {
 	Listener    DefaultListener        `json:"listener"`
 	Pool        InputDefaultServerPool `json:"pool"`
 	EgwId       string                 `json:"egw_id"`
+	Scheme      string                 `json:"scheme,omitempty"`
 }
 
 type LoadBalancerUpdateModel struct {
