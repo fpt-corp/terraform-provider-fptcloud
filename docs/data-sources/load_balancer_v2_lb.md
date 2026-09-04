@@ -27,7 +27,7 @@ output "loadbalancer" {
 
 This data source exposes two unrelated fields that are easy to confuse:
 
-- `tags` — an internal field used to distinguish LBv1 vs LBv2 objects (e.g. `["LBv2"]`). It is not user-configurable and has nothing to do with FPT Cloud's tagging service.
+- `tags` — an internal marker that identifies the object as LBv2 for Portal. It is not user-configurable and has nothing to do with FPT Cloud's tagging service.
 - `resource_tags` — the real tags from FPT Cloud's tagging system (the "Manage Tags" feature on Portal). On the `fptcloud_load_balancer_v2_lb` resource, the equivalent (write-only, ID-based) field is `tag_ids`.
 
 If you're looking for the tags you manage on Portal, use `resource_tags`, not `tags`:
@@ -39,7 +39,7 @@ output "loadbalancer_real_tags" {
 }
 
 output "loadbalancer_internal_tags" {
-  # tags is unrelated internal metadata (e.g. ["LBv2"]) — not the tags shown on Portal
+  # tags marks the object as LBv2 for Portal, not the tags shown on Portal
   value = data.fptcloud_load_balancer_v2_lb.example.tags
 }
 ```
@@ -67,7 +67,7 @@ output "loadbalancer_internal_tags" {
 - `public_ip` (List of Object) The public IP address of the load balancer (see [below for nested schema](#nestedatt--public_ip))
 - `resource_tags` (List of Object) The tags from FPT Cloud's tagging system associated with the load balancer (see [below for nested schema](#nestedatt--resource_tags))
 - `size` (List of Object) The size of the load balancer (see [below for nested schema](#nestedatt--size))
-- `tags` (List of String) Internal field used to distinguish LBv1/LBv2 objects
+- `tags` (List of String) Internal marker identifying the object as LBv2 for Portal
 
 <a id="nestedatt--network"></a>
 ### Nested Schema for `network`
