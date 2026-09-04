@@ -66,7 +66,7 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
 
 ### Manage tags via `fptcloud_tagging` data source
 
-`tag_ids` is unrelated to the `tags` field seen on `fptcloud_load_balancer_v2_lb` data sources — that one is an internal field used to distinguish LBv1/LBv2 objects, not FPT Cloud's tagging service. See the [data source docs](../data-sources/load_balancer_v2_lb.md#tags-vs-resource_tags) for details.
+`tag_ids` is unrelated to the `tags` field seen on `fptcloud_load_balancer_v2_lb` data sources — that one is an internal marker identifying the object as LBv2 for Portal, not FPT Cloud's tagging service. See the [data source docs](../data-sources/load_balancer_v2_lb.md#tags-vs-resource_tags) for details.
 
 ```terraform
 data "fptcloud_tagging" "env_prod" {
@@ -93,11 +93,11 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
 
 ### Optional
 
-- `cidr` (String) The CIDR of the load balancer (VMW platform)
+- `cidr` (String) The CIDR of the load balancer. Optional on VMW; not used on OSP
 - `description` (String) The description of the load balancer
-- `egw_id` (String) The edge gateway ID of the load balancer (VMW platform)
+- `egw_id` (String) The edge gateway ID of the load balancer. Platform ID on VMW; null on OSP
 - `floating_ip` (String) The floating IP ID of the load balancer
-- `network_id` (String) The network ID of the load balancer (OSP platform)
+- `network_id` (String) The network ID of the load balancer. The subnet's ID on OSP; null on VMW
 - `tag_ids` (Set of String) List of tag IDs to associate with the load balancer
 - `vip_address` (String) The VIP address of the load balancer. If not specified, a VIP address is automatically assigned
 

@@ -118,7 +118,7 @@ var dataSourceLoadBalancers = map[string]*schema.Schema{
 					Computed:    true,
 					Description: "The creation time of the load balancer",
 				},
-				// "tags" distinguishes LBv1/LBv2 objects internally;
+				// "tags" marks the object as LBv2 so Portal syncs it;
 				// "resource_tags" is FPT Cloud's real tagging service.
 				"tags": {
 					Type: schema.TypeList,
@@ -126,7 +126,7 @@ var dataSourceLoadBalancers = map[string]*schema.Schema{
 						Type: schema.TypeString,
 					},
 					Computed:    true,
-					Description: "Internal field used to distinguish LBv1/LBv2 objects",
+					Description: "Internal marker identifying the object as LBv2 for Portal",
 				},
 				"resource_tags": {
 					Type:     schema.TypeList,
@@ -277,7 +277,7 @@ var dataSourceLoadBalancer = map[string]*schema.Schema{
 			Type: schema.TypeString,
 		},
 		Computed:    true,
-		Description: "Internal field used to distinguish LBv1/LBv2 objects",
+		Description: "Internal marker identifying the object as LBv2 for Portal",
 	},
 	"resource_tags": {
 		Type:     schema.TypeList,
@@ -341,7 +341,7 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
 		Computed:    true,
-		Description: "The network ID of the load balancer",
+		Description: "The network ID of the load balancer. The subnet's ID on OSP; null on VMW",
 	},
 	"vip_address": {
 		Type:        schema.TypeString,
@@ -353,7 +353,7 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
 		Computed:    true,
-		Description: "The CIDR of the load balancer",
+		Description: "The CIDR of the load balancer. Optional on VMW; not used on OSP",
 	},
 	"listener": {
 		Type:        schema.TypeSet,
@@ -490,11 +490,11 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 				},
 			},
 		}},
-	"egw_id": {
+	"egw_id": { // egw_id is the platform ID from the infrastructure, not the record ID from Portal.
 		Type:        schema.TypeString,
 		Optional:    true,
 		Computed:    true,
-		Description: "The edge gateway ID of the load balancer",
+		Description: "The edge gateway ID of the load balancer. Platform ID on VMW; null on OSP",
 	},
 	"tag_ids": {
 		Type:        schema.TypeSet,
