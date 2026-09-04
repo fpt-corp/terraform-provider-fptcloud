@@ -64,7 +64,7 @@ output "show_value" {
 
 Required:
 
-- `key` (String) Filter flavors by this key. This may be one of `cpu`, `gpu_memory_gb`, `id`, `memory_mb`, `name`, `type`.
+- `key` (String) Filter flavors by this key. This may be one of `cpu`, `gpu_id`, `gpu_memory_gb`, `gpu_name`, `id`, `is_nvme`, `memory_mb`, `name`, `type`.
 - `values` (List of String) Only retrieves `flavors` which keys has value that matches one of the values provided here
 
 Optional:
@@ -78,7 +78,7 @@ Optional:
 
 Required:
 
-- `key` (String) Sort flavors by this key. This may be one of `cpu`, `gpu_memory_gb`, `id`, `memory_mb`, `name`, `type`.
+- `key` (String) Sort flavors by this key. This may be one of `cpu`, `gpu_id`, `gpu_memory_gb`, `gpu_name`, `id`, `is_nvme`, `memory_mb`, `name`, `type`.
 
 Optional:
 
@@ -91,8 +91,11 @@ Optional:
 Read-Only:
 
 - `cpu` (Number)
+- `gpu_id` (String)
 - `gpu_memory_gb` (Number)
+- `gpu_name` (String)
 - `id` (String)
+- `is_nvme` (Boolean)
 - `memory_mb` (Number)
 - `name` (String)
 - `type` (String)

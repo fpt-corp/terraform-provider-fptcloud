@@ -89,14 +89,16 @@ resource "fptcloud_instance" "example_03" {
 - `image_name` (String) The image name of the instance (get from API or data source)
 - `name` (String) The name of the instance
 - `status` (String) The status of the instance (`POWERED_ON` or `POWERED_OFF`)
-- `storage_policy_id` (String) The root storage policy of the instance
-- `storage_size_gb` (Number) The root storage size of the instance
+- `storage_policy_id` (String) The root storage policy of the instance. Changing this updates the storage in place (not ForceNew). Ignored for NVMe GPU flavors (see `is_nvme` on the `fptcloud_flavor` data source) — the server always uses that flavor's own NVMe storage policy instead.
+- `storage_size_gb` (Number) The root storage size of the instance. Changing this updates the storage in place (not ForceNew); the server only allows growing the size, not shrinking it. Ignored for NVMe GPU flavors (see `is_nvme` on the `fptcloud_flavor` data source) — the server always uses that flavor's own NVMe storage size instead.
 - `subnet_id` (String) The subnet id of the instance
 - `vpc_id` (String) The vpc id of the instance
 
 ### Optional
 
-- `flavor_name` (String) The flavor name of the instance (get from API or data source)
+- `flavor_name` (String) The flavor name of the instance (get from API or data source). Changing this resizes the instance in place (not ForceNew). For OSP-backed VMs, this is also how GPUs are attached/detached: switching to/from a GPU flavor (see `gpu_id`/`gpu_name` on the `fptcloud_flavor` data source) attaches/detaches the GPU as part of the resize. Resize is blocked by the server when `is_nvme` is `true`.
+- `gpu_name` (String) Optional verification input: the GPU this instance is expected to get, as reported by the `gpu_name` field of the `fptcloud_flavor` data source. Leave it unset and the flavor alone decides the GPU (see `vm_type` for what the instance actually got). When set, the server checks it against `flavor_name` on create and on resize, and rejects the request if it names a different GPU or if `flavor_name` is not a GPU flavor. Point it at the same data source as `flavor_name` so the two can never drift apart.
+- `gpu_plan` (String) Billing plan for GPU instances: `hold` (reserved) or `detach` (payg). Only applicable when flavor_name is a GPU flavor.
 - `instance_group_id` (String) The instance group id of the instance
 - `password` (String) The password of the instance
 - `private_ip` (String) The private ip of the instance.
@@ -109,3 +111,7 @@ resource "fptcloud_instance" "example_03" {
 
 - `created_at` (String) The created at of the security group
 - `id` (String) The id of the instance
+- `is_nvme` (Boolean) Whether the instance uses a physical NVMe disk instead of the requested storage_policy_id (see the `is_nvme` field on the `fptcloud_flavor` data source).
+- `storage_id` (String) Internal id of the instance's root storage, used to support in-place storage updates.
+- `storage_name` (String) Internal name of the instance's root storage, used to support in-place storage updates.
+- `vm_type` (String) Type of the instance (`cpu` or `gpu`), derived from the server based on flavor_name.
