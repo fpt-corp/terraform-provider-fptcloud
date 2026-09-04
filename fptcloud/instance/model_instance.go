@@ -30,6 +30,9 @@ type InstanceModel struct {
 	TagIds           []string `json:"tag_ids,omitempty"`
 	GpuName          *string  `json:"gpu_name,omitempty"`
 	BillingType      *string  `json:"billing_type,omitempty"`
+	IsNvme           bool     `json:"is_nvme"`
+	StorageId        *string  `json:"storage_id,omitempty"`
+	StorageName      *string  `json:"storage_name,omitempty"`
 }
 
 type CreateInstanceDTO struct {
@@ -48,6 +51,7 @@ type CreateInstanceDTO struct {
 	Password         *string  `json:"password,omitempty"`
 	TagIds           []string `json:"tag_ids,omitempty"`
 	BillingType      *string  `json:"billing_type,omitempty"`
+	GpuName          *string  `json:"gpu_name,omitempty"`
 }
 
 type FlavorDTO struct {

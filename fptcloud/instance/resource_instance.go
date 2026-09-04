@@ -7,8 +7,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
 	common "terraform-provider-fptcloud/commons"
+	fptcloud_storage "terraform-provider-fptcloud/fptcloud/storage"
 	"time"
 )
+
+// suppressDiffForNvme suppresses diffs on fields the server ignores (and overrides
+// with the flavor's own values) for NVMe-backed instances.
+func suppressDiffForNvme(_, _, _ string, d *schema.ResourceData) bool {
+	isNvme, ok := d.GetOk("is_nvme")
+	return ok && isNvme.(bool)
+}
 
 // ResourceInstance function returns a schema.Resource that represents an instance.
 // This can be used to create, read, update and delete operations for an instance in the infrastructure.
@@ -80,6 +88,11 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 	if gpuPlan, ok := d.GetOk("gpu_plan"); ok {
 		billingType := mapGpuPlanToBillingType(gpuPlan.(string))
 		createdModel.BillingType = &billingType
+	}
+
+	if gpuName, ok := d.GetOk("gpu_name"); ok {
+		gpuNameValue := gpuName.(string)
+		createdModel.GpuName = &gpuNameValue
 	}
 
 	if tags, ok := d.GetOk("tag_ids"); ok {
@@ -216,6 +229,15 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("gpu_plan", mapBillingTypeToGpuPlan(foundInstance.BillingType)); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("is_nvme", foundInstance.IsNvme); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("storage_id", foundInstance.StorageId); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("storage_name", foundInstance.StorageName); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
 }
@@ -278,6 +300,8 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	hasChangeStatus := d.HasChange("status")
 	hasChangeTags := d.HasChange("tag_ids")
 	hasChangeGpuPlan := d.HasChange("gpu_plan")
+	hasChangeGpuName := d.HasChange("gpu_name")
+	hasChangeStorage := (d.HasChange("storage_size_gb") || d.HasChange("storage_policy_id")) && !d.Get("is_nvme").(bool)
 
 	if hasChangedName {
 		newName := d.Get("name").(string)
@@ -295,9 +319,22 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
+	if hasChangeGpuName && !hasChangeFlavor {
+		if gpuName, ok := d.GetOk("gpu_name"); ok {
+			_, err := instanceService.GetFlavorByName(vpcId, d.Get("flavor_name").(string), gpuName.(string))
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while verifying gpu name %s", err)
+			}
+		}
+	}
+
 	if hasChangeFlavor {
 		newFlavorName := d.Get("flavor_name").(string)
-		flavor, flavorErr := instanceService.GetFlavorByName(vpcId, newFlavorName)
+		gpuName := ""
+		if v, ok := d.GetOk("gpu_name"); ok {
+			gpuName = v.(string)
+		}
+		flavor, flavorErr := instanceService.GetFlavorByName(vpcId, newFlavorName, gpuName)
 		if flavorErr != nil {
 			return diag.Errorf("[ERR] Flavor not found %s", flavorErr)
 		}
@@ -349,6 +386,20 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		_, err := instanceService.ChangeBillingType(vpcId, d.Id(), mapGpuPlanToBillingType(gpuPlan))
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while changing billing plan of instance %s", err)
+		}
+	}
+
+	if hasChangeStorage {
+		storageId := d.Get("storage_id").(string)
+		storageName := d.Get("storage_name").(string)
+		storageService := fptcloud_storage.NewStorageService(apiClient)
+		_, err := storageService.UpdateStorage(vpcId, storageId, fptcloud_storage.UpdateStorageDTO{
+			Name:            storageName,
+			SizeGb:          d.Get("storage_size_gb").(int),
+			StoragePolicyId: d.Get("storage_policy_id").(string),
+		})
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while updating instance storage %s", err)
 		}
 	}
 

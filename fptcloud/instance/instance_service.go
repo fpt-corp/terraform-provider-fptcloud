@@ -14,7 +14,7 @@ type InstanceService interface {
 	Rename(vpcId string, instanceId string, newName string) (*common.SimpleResponse, error)
 	ChangeStatus(vpcId string, instanceId string, status string) (*common.SimpleResponse, error)
 	Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error)
-	GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error)
+	GetFlavorByName(vpcId string, flavorName string, gpuName string) (*FlavorDTO, error)
 	UpdateTags(vpcId string, instanceId string, tagIds []string) (*common.SimpleResponse, error)
 	ChangeBillingType(vpcId string, instanceId string, billingType string) (*common.SimpleResponse, error)
 }
@@ -131,9 +131,13 @@ func (s *InstanceServiceImpl) Resize(vpcId string, instanceId string, flavorId s
 }
 
 // GetFlavorByName get flavor by name
-func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error) {
+func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string, gpuName string) (*FlavorDTO, error) {
 	var apiPath = common.ApiPath.GetFlavorByName(vpcId)
-	resp, err := s.client.SendPostRequest(apiPath, map[string]string{"flavor_name": flavorName})
+	body := map[string]string{"flavor_name": flavorName}
+	if gpuName != "" {
+		body["gpu_name"] = gpuName
+	}
+	resp, err := s.client.SendPostRequest(apiPath, body)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
