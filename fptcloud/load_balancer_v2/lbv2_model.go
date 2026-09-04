@@ -6,16 +6,17 @@ type CommonResponse struct {
 }
 
 type LoadBalancer struct {
-	Id                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Description        string   `json:"description"`
-	OperatingStatus    string   `json:"operating_status"`
-	ProvisioningStatus string   `json:"provisioning_status"`
-	PrivateIp          string   `json:"private_ip"`
-	Cidr               string   `json:"cidr"`
-	CreatedAt          string   `json:"created_at"`
-	Tags               []string `json:"tags"`
-	EgwName            string   `json:"egw_name"`
+	Id                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description"`
+	OperatingStatus    string            `json:"operating_status"`
+	ProvisioningStatus string            `json:"provisioning_status"`
+	PrivateIp          string            `json:"private_ip"`
+	Cidr               string            `json:"cidr"`
+	CreatedAt          string            `json:"created_at"`
+	Tags               []string          `json:"tags"`
+	ResourceTags       []LoadBalancerTag `json:"resource_tags"`
+	EgwName            string            `json:"egw_name"`
 	Size               struct {
 		Id                    string `json:"id"`
 		Name                  string `json:"name"`
@@ -101,6 +102,22 @@ type LoadBalancerListResponse struct {
 	LoadBalancers []LoadBalancer `json:"data"`
 	Total         int            `json:"total"`
 	Message       string         `json:"message"`
+}
+
+type LoadBalancerTag struct {
+	Id    string `json:"id"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+	Color string `json:"color"`
+}
+
+type ManageTagsResponse struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Data    struct {
+		Added   []string `json:"added"`
+		Removed []string `json:"removed"`
+	} `json:"data"`
 }
 
 type DefaultListener struct {
