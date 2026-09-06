@@ -11,13 +11,16 @@ import (
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	path2 "github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -34,6 +37,35 @@ var (
 
 	forceNewPlanModifiersInt = []planmodifier.Int64{
 		int64planmodifier.RequiresReplace(),
+	}
+
+	// Computed attributes keep whatever the last read put in state unless the
+	// config actually changes them. Without this, every plan shows each of them
+	// as "(known after apply)" — including the resource id, which never changes
+	// for a cluster that already exists — burying the one line the user did
+	// change in a wall of noise.
+	keepStatePlanModifiersString = []planmodifier.String{
+		stringplanmodifier.UseStateForUnknown(),
+	}
+
+	keepStatePlanModifiersInt = []planmodifier.Int64{
+		int64planmodifier.UseStateForUnknown(),
+	}
+
+	keepStatePlanModifiersBool = []planmodifier.Bool{
+		boolplanmodifier.UseStateForUnknown(),
+	}
+
+	keepStatePlanModifiersList = []planmodifier.List{
+		listplanmodifier.UseStateForUnknown(),
+	}
+
+	keepStatePlanModifiersSet = []planmodifier.Set{
+		setplanmodifier.UseStateForUnknown(),
+	}
+
+	keepStatePlanModifiersObject = []planmodifier.Object{
+		objectplanmodifier.UseStateForUnknown(),
 	}
 )
 
@@ -54,7 +86,8 @@ func (r *resourceManagedGpuCluster) Schema(_ context.Context, _ resource.SchemaR
 	poolAttributes := PoolFields()
 
 	topLevelAttributes["id"] = schema.StringAttribute{
-		Computed: true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersString,
 	}
 
 	response.Schema = schema.Schema{
@@ -295,6 +328,14 @@ func (r *resourceManagedGpuCluster) Update(ctx context.Context, request resource
 		return
 	}
 
+	// The GPU-software backend holds the cluster's operators and the per-pool
+	// GPU settings, and nothing above touches it. Sync it after the pool
+	// changes land, the order the console uses.
+	if err := syncGpuSoftware(ctx, r.mgpuClusterClient, r.vpcClient, r.client.Region, &plan, state.Id.ValueString(), platform); err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error updating GPU software", err.Error()))
+		return
+	}
+
 	_, err = r.InternalRead(ctx, state.Id.ValueString(), &state)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))
@@ -394,15 +435,10 @@ func (r *resourceManagedGpuCluster) ImportState(ctx context.Context, request res
 
 	state.Id = types.StringValue(clusterId)
 
-	// software is optional (not computed) and InternalRead never populates it —
-	// it only carries forward whatever the config/prior state already had. A
-	// fresh import has neither, so it must be explicitly set to a valid null
-	// object here; left as the Go zero value, it fails state serialization.
-	state.Software = types.ObjectNull(map[string]attr.Type{
-		"software_type":        types.StringType,
-		"software_version":     types.StringType,
-		"cluster_mig_strategy": types.StringType,
-	})
+	// A fresh import has no prior value for software, and the Go zero value is
+	// not a valid Set — it fails state serialization. InternalRead overwrites
+	// this with what the GPU-software backend reports.
+	state.Software = types.SetNull(types.ObjectType{AttrTypes: softwareAttrTypes})
 
 	_, err := r.InternalRead(ctx, clusterId, &state)
 	if err != nil {

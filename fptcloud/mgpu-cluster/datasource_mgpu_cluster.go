@@ -180,10 +180,13 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 
 	var pool []*managedGpuClusterPool
 
-	// gpu_type, gpu_sharing and mig live in the GPU-software backend, which
-	// get-shoot-specific does not report. See fetchGpuSoftwareWorkers on why
-	// a failure here leaves those blocks null rather than failing the read.
-	gpuWorkers := fetchGpuSoftwareWorkers(ctx, d.mgpuClusterClient, d.vpcClient, d.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+	// gpu_type, gpu_sharing and the cluster's operators live in the
+	// GPU-software backend, which get-shoot-specific does not report. See
+	// readGpuSoftwareState on why a failure here leaves them null rather than
+	// failing the read.
+	gpuSoftware := readGpuSoftwareState(ctx, d.mgpuClusterClient, d.vpcClient, d.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+	gpuWorkers := gpuSoftware.workers
+	state.Software = gpuSoftware.software
 
 	for _, name := range poolNames {
 		w, ok := workers[name]
@@ -210,17 +213,20 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 			GpuDriver:       gpuDriverObjectValue(w.Machine.Image.DriverInstallationType, w.Machine.Image.GpuDriverVersion),
 			WorkerBase:      types.BoolValue(w.IsWorkerBase()),
 			Tags:            tagsStringToList(w.Tags()),
-			// gpu_type, gpu_sharing, mig: filled in below from the
+			// gpu_type and gpu_sharing: filled in below from the
 			// GPU-software backend, the only place that reports them.
 			GpuType:    types.StringNull(),
 			GpuSharing: types.ObjectNull(gpuSharingAttrTypes),
-			Mig:        types.ObjectNull(migAttrTypes),
 		}
 
 		if gw, ok := gpuWorkers[w.Name]; ok {
 			item.GpuType = stringOrNull(gw.GpuType)
-			item.GpuSharing = gpuSharingObjectValue(normalizeGpuNone(gw.SharingClientType), gw.MaxClient)
-			item.Mig = migObjectValue(normalizeGpuNone(gw.MigMode), normalizeGpuNone(gw.MigProfile))
+			item.GpuSharing = gpuSharingObjectValue(
+				normalizeGpuNone(gw.MigMode),
+				normalizeGpuNone(gw.MigProfile),
+				normalizeGpuNone(gw.SharingClientType),
+				gw.MaxClient,
+			)
 			// The GPU-software backend is the authoritative source for the
 			// driver too: the shoot reports machine.image.driverInstallationType
 			// as null even for pools that were created with one.
@@ -370,14 +376,10 @@ func (d *datasourceManagedGpuCluster) topFields() map[string]schema.Attribute {
 		},
 	}
 
-	topLevelAttributes["software"] = schema.ObjectAttribute{
+	topLevelAttributes["gpu_software"] = schema.SetAttribute{
 		Computed:    true,
-		Description: descriptions["software"],
-		AttributeTypes: map[string]attr.Type{
-			"software_type":        types.StringType,
-			"software_version":     types.StringType,
-			"cluster_mig_strategy": types.StringType,
-		},
+		Description: descriptions["gpu_software"],
+		ElementType: types.ObjectType{AttrTypes: softwareAttrTypes},
 	}
 
 	topLevelAttributes["hibernation_schedules"] = schema.ListAttribute{
@@ -481,11 +483,6 @@ func (d *datasourceManagedGpuCluster) poolFields() map[string]schema.Attribute {
 		Optional:       true,
 		Description:    descriptions["gpu_sharing"],
 		AttributeTypes: gpuSharingAttrTypes,
-	}
-	poolLevelAttributes["mig"] = schema.ObjectAttribute{
-		Optional:       true,
-		Description:    descriptions["mig"],
-		AttributeTypes: migAttrTypes,
 	}
 	return poolLevelAttributes
 }

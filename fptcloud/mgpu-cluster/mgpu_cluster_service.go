@@ -56,6 +56,21 @@ func (m *MgpuClusterApiClient) sendPost(ctx context.Context, requestURL string, 
 	return m.sendRequestWithHeader(req, infraType)
 }
 
+func (m *MgpuClusterApiClient) sendPut(ctx context.Context, requestURL string, infraType string, params interface{}) ([]byte, error) {
+	u := m.Client.PrepareClientURL(requestURL)
+
+	jsonValue, _ := json.Marshal(params)
+
+	req, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(jsonValue))
+	if err != nil {
+		return nil, err
+	}
+
+	tflog.Info(ctx, "sendPut Body JSON: "+string(jsonValue))
+
+	return m.sendRequestWithHeader(req, infraType)
+}
+
 func (m *MgpuClusterApiClient) sendPatch(ctx context.Context, requestURL string, infraType string, params interface{}) ([]byte, error) {
 	u := m.Client.PrepareClientURL(requestURL)
 

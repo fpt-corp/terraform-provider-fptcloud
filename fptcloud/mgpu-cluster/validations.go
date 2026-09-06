@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -111,10 +112,13 @@ func validateGpuType(poolName string, gpuType types.String) *diag2.ErrorDiagnost
 	return &d
 }
 
-// validateGpuSharing checks the gpu_sharing block: the strategy must be one
-// the API accepts, and max_client must match it — 0 when sharing is off, 2-48
-// when it is on. USER_INSTALL pools install their own driver, so the platform
-// does not manage sharing for them at all and the block must be left unset.
+// validateGpuSharing checks the gpu_sharing block, which covers both MIG
+// partitioning and client sharing. Each half constrains its own pair: a
+// mig_strategy of NONE forbids a profile while SINGLE/MIXED require one, and a
+// sharing_client_type of NONE pins max_client to 0 while the others need 2-48.
+//
+// USER_INSTALL pools install their own driver, so the platform manages neither
+// MIG nor sharing for them and the whole block must be left unset.
 func validateGpuSharing(poolName string, driverInstallationType string, gpuSharing types.Object) *diag2.ErrorDiagnostic {
 	if gpuSharing.IsNull() || gpuSharing.IsUnknown() {
 		return nil
@@ -123,12 +127,83 @@ func validateGpuSharing(poolName string, driverInstallationType string, gpuShari
 	if driverInstallationType == driverInstallationTypeUserInstall {
 		d := diag2.NewErrorDiagnostic(
 			"Unexpected gpu_sharing",
-			fmt.Sprintf("gpu_sharing may not be set for pool '%s' when gpu_driver.installation_type = %s (the user installs their own driver, so the platform does not manage GPU sharing)", poolName, driverInstallationTypeUserInstall),
+			fmt.Sprintf("gpu_sharing may not be set for pool '%s' when gpu_driver.installation_type = %s (the user installs their own driver, so the platform manages neither MIG nor GPU sharing)", poolName, driverInstallationTypeUserInstall),
 		)
 		return &d
 	}
 
-	clientType, maxClient := gpuSharingFields(gpuSharing)
+	migStrategy, migProfile, clientType, maxClient := gpuSharingFields(gpuSharing)
+
+	if d := validateGpuSharingMig(poolName, migStrategy, migProfile); d != nil {
+		return d
+	}
+	return validateGpuSharingClients(poolName, clientType, maxClient)
+}
+
+// validateGpuSharingMig checks the MIG half of gpu_sharing. Both fields are
+// optional together: a block that only configures client sharing leaves them
+// unset.
+func validateGpuSharingMig(poolName, migStrategy, migProfile string) *diag2.ErrorDiagnostic {
+	if migStrategy == "" {
+		if migProfile != "" {
+			d := diag2.NewErrorDiagnostic(
+				"Missing gpu_sharing.mig_strategy",
+				fmt.Sprintf("gpu_sharing.mig_strategy is required for pool '%s' when mig_profile is set", poolName),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	validStrategy := false
+	for _, allowed := range allowedMigStrategies {
+		if migStrategy == allowed {
+			validStrategy = true
+			break
+		}
+	}
+	if !validStrategy {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid gpu_sharing.mig_strategy",
+			fmt.Sprintf("gpu_sharing.mig_strategy must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedMigStrategies, ", "), poolName, migStrategy),
+		)
+		return &d
+	}
+
+	if migStrategy == gpuValueNone {
+		if migProfile != "" {
+			d := diag2.NewErrorDiagnostic(
+				"Unexpected gpu_sharing.mig_profile",
+				fmt.Sprintf("gpu_sharing.mig_profile must be left empty for pool '%s' when mig_strategy is %s", poolName, gpuValueNone),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	if migProfile == "" {
+		d := diag2.NewErrorDiagnostic(
+			"Missing gpu_sharing.mig_profile",
+			fmt.Sprintf("gpu_sharing.mig_profile is required for pool '%s' when mig_strategy is %s", poolName, migStrategy),
+		)
+		return &d
+	}
+
+	return nil
+}
+
+// validateGpuSharingClients checks the client-sharing half of gpu_sharing.
+func validateGpuSharingClients(poolName, clientType string, maxClient int64) *diag2.ErrorDiagnostic {
+	if clientType == "" {
+		if maxClient != 0 {
+			d := diag2.NewErrorDiagnostic(
+				"Missing gpu_sharing.sharing_client_type",
+				fmt.Sprintf("gpu_sharing.sharing_client_type is required for pool '%s' when max_client is set", poolName),
+			)
+			return &d
+		}
+		return nil
+	}
 
 	validType := false
 	for _, allowed := range allowedSharingClientTypes {
@@ -139,8 +214,8 @@ func validateGpuSharing(poolName string, driverInstallationType string, gpuShari
 	}
 	if !validType {
 		d := diag2.NewErrorDiagnostic(
-			"Invalid gpu_sharing.client_type",
-			fmt.Sprintf("gpu_sharing.client_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedSharingClientTypes, ", "), poolName, clientType),
+			"Invalid gpu_sharing.sharing_client_type",
+			fmt.Sprintf("gpu_sharing.sharing_client_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedSharingClientTypes, ", "), poolName, clientType),
 		)
 		return &d
 	}
@@ -149,7 +224,7 @@ func validateGpuSharing(poolName string, driverInstallationType string, gpuShari
 		if maxClient != 0 {
 			d := diag2.NewErrorDiagnostic(
 				"Invalid gpu_sharing.max_client",
-				fmt.Sprintf("gpu_sharing.max_client must be 0 for pool '%s' when client_type is %s, got: %d", poolName, gpuValueNone, maxClient),
+				fmt.Sprintf("gpu_sharing.max_client must be 0 for pool '%s' when sharing_client_type is %s, got: %d", poolName, gpuValueNone, maxClient),
 			)
 			return &d
 		}
@@ -159,62 +234,7 @@ func validateGpuSharing(poolName string, driverInstallationType string, gpuShari
 	if maxClient < maxClientMin || maxClient > maxClientMax {
 		d := diag2.NewErrorDiagnostic(
 			"Invalid gpu_sharing.max_client",
-			fmt.Sprintf("gpu_sharing.max_client must be between %d and %d for pool '%s' when client_type is %s, got: %d", maxClientMin, maxClientMax, poolName, clientType, maxClient),
-		)
-		return &d
-	}
-
-	return nil
-}
-
-// validateMig checks the mig block: the strategy must be one the API accepts,
-// and SINGLE/MIXED need a profile to partition into while NONE must not carry
-// one. Like gpu_sharing, MIG is not available on USER_INSTALL pools.
-func validateMig(poolName string, driverInstallationType string, mig types.Object) *diag2.ErrorDiagnostic {
-	if mig.IsNull() || mig.IsUnknown() {
-		return nil
-	}
-
-	if driverInstallationType == driverInstallationTypeUserInstall {
-		d := diag2.NewErrorDiagnostic(
-			"Unexpected mig",
-			fmt.Sprintf("mig may not be set for pool '%s' when gpu_driver.installation_type = %s (the user installs their own driver, so the platform does not manage MIG)", poolName, driverInstallationTypeUserInstall),
-		)
-		return &d
-	}
-
-	strategy, profile := migFields(mig)
-
-	validStrategy := false
-	for _, allowed := range allowedMigStrategies {
-		if strategy == allowed {
-			validStrategy = true
-			break
-		}
-	}
-	if !validStrategy {
-		d := diag2.NewErrorDiagnostic(
-			"Invalid mig.strategy",
-			fmt.Sprintf("mig.strategy must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedMigStrategies, ", "), poolName, strategy),
-		)
-		return &d
-	}
-
-	if strategy == gpuValueNone {
-		if profile != "" {
-			d := diag2.NewErrorDiagnostic(
-				"Unexpected mig.profile",
-				fmt.Sprintf("mig.profile must be left empty for pool '%s' when mig.strategy is %s", poolName, gpuValueNone),
-			)
-			return &d
-		}
-		return nil
-	}
-
-	if profile == "" {
-		d := diag2.NewErrorDiagnostic(
-			"Missing mig.profile",
-			fmt.Sprintf("mig.profile is required for pool '%s' when mig.strategy is %s", poolName, strategy),
+			fmt.Sprintf("gpu_sharing.max_client must be between %d and %d for pool '%s' when sharing_client_type is %s, got: %d", maxClientMin, maxClientMax, poolName, clientType, maxClient),
 		)
 		return &d
 	}
@@ -223,8 +243,8 @@ func validateMig(poolName string, driverInstallationType string, mig types.Objec
 }
 
 // validatePoolGpu runs the GPU checks that span more than one block: the
-// driver catalog lookup, then sharing and MIG, both of which depend on which
-// driver installation type the pool picked.
+// driver catalog lookup, then gpu_sharing, which depends on which driver
+// installation type the pool picked.
 func validatePoolGpu(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion, poolName string, pool *managedGpuClusterPool) *diag2.ErrorDiagnostic {
 	if d := validateGpuDriver(ctx, client, vpcId, platform, k8sVersion, poolName, pool); d != nil {
 		return d
@@ -234,10 +254,7 @@ func validatePoolGpu(ctx context.Context, client *MgpuClusterApiClient, vpcId, p
 	}
 
 	driverInstallationType, _ := gpuDriverFields(pool.GpuDriver)
-	if d := validateGpuSharing(poolName, driverInstallationType, pool.GpuSharing); d != nil {
-		return d
-	}
-	return validateMig(poolName, driverInstallationType, pool.Mig)
+	return validateGpuSharing(poolName, driverInstallationType, pool.GpuSharing)
 }
 
 func validatePool(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion string, pools []*managedGpuClusterPool) *diag2.ErrorDiagnostic {
@@ -531,17 +548,16 @@ func validateExpander(expander string) *diag2.ErrorDiagnostic {
 // softwareTypeGpuOperator is the one software type that also takes a MIG strategy.
 const softwareTypeGpuOperator = "gpu_operator"
 
-// allowedSoftwareVersions lists the versions each software type offers.
-var allowedSoftwareVersions = map[string][]string{
-	softwareTypeGpuOperator: {"v25.10.1", "v24.9.1", "v24.3.0"},
-	"network_operator":      {"v24.10.1", "v23.4.0"},
-	"slurm_operator":        {"2.0.5", "1.15.3", "1.14.10"},
-	"vgpu_scheduler":        {"2.8.0", "2.5.2", "2.5.0"},
-}
-
-// softwareTypes is allowedSoftwareVersions' key set in a stable order, for
+// operatorTypeNames lists a catalog's operator types in a stable order, for
 // error messages.
-var softwareTypes = []string{softwareTypeGpuOperator, "network_operator", "slurm_operator", "vgpu_scheduler"}
+func operatorTypeNames(catalog map[string][]string) []string {
+	names := make([]string, 0, len(catalog))
+	for name := range catalog {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // validateClusterMigStrategy checks the GPU operator MIG strategy.
 func validateClusterMigStrategy(strategy string) *diag2.ErrorDiagnostic {
@@ -555,24 +571,58 @@ func validateClusterMigStrategy(strategy string) *diag2.ErrorDiagnostic {
 	return &d
 }
 
-// validateSoftware checks the selected software: the type must be one of the
-// four, the version must be one that type offers, and cluster_mig_strategy is
-// required for gpu_operator and rejected for the others. The software block
-// itself is optional — when omitted, nothing is sent to the API.
-func validateSoftware(software types.Object) *diag2.ErrorDiagnostic {
-	if software.IsNull() || software.IsUnknown() {
+// validateSoftware checks the operators to install against the live
+// operator-versions catalog: each type must be one it offers, its version must
+// be one that type offers, and cluster_mig_strategy is required for
+// gpu_operator and rejected for the others. No type may appear twice — the API
+// keys them by type. The set itself is optional; when omitted, no operator is
+// installed.
+func validateSoftware(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, software types.Set) *diag2.ErrorDiagnostic {
+	if software.IsNull() || software.IsUnknown() || len(software.Elements()) == 0 {
 		return nil
 	}
 
-	attrs := software.Attributes()
-
-	softwareType, ok := attrs["software_type"].(types.String)
-	if !ok || softwareType.IsNull() || softwareType.IsUnknown() || softwareType.ValueString() == "" {
-		d := diag2.NewErrorDiagnostic("Missing software_type", "software.software_type is required and must be one of: "+strings.Join(softwareTypes, ", "))
+	catalog, err := client.fetchOperatorVersions(ctx, vpcId, platform)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error fetching operator versions", err.Error())
 		return &d
 	}
 
-	versions, known := allowedSoftwareVersions[softwareType.ValueString()]
+	seen := map[string]bool{}
+	for _, element := range software.Elements() {
+		entry, ok := element.(types.Object)
+		if !ok {
+			d := diag2.NewErrorDiagnostic("Invalid gpu_software entry", "each gpu_software entry must be an object with software_type, software_version and cluster_mig_strategy")
+			return &d
+		}
+
+		softwareType := objectString(entry.Attributes(), "software_type")
+		if seen[softwareType] {
+			d := diag2.NewErrorDiagnostic("Duplicate software_type", fmt.Sprintf("software_type %q is listed more than once; each operator can only be installed at one version", softwareType))
+			return &d
+		}
+		seen[softwareType] = true
+
+		if d := validateSoftwareEntry(entry, catalog); d != nil {
+			return d
+		}
+	}
+
+	return nil
+}
+
+// validateSoftwareEntry checks one operator entry against the catalog.
+func validateSoftwareEntry(entry types.Object, catalog map[string][]string) *diag2.ErrorDiagnostic {
+	attrs := entry.Attributes()
+	softwareTypes := operatorTypeNames(catalog)
+
+	softwareType, ok := attrs["software_type"].(types.String)
+	if !ok || softwareType.IsNull() || softwareType.IsUnknown() || softwareType.ValueString() == "" {
+		d := diag2.NewErrorDiagnostic("Missing software_type", "gpu_software.software_type is required and must be one of: "+strings.Join(softwareTypes, ", "))
+		return &d
+	}
+
+	versions, known := catalog[softwareType.ValueString()]
 	if !known {
 		d := diag2.NewErrorDiagnostic("Invalid software_type", "software_type must be one of: "+strings.Join(softwareTypes, ", "))
 		return &d
@@ -580,7 +630,7 @@ func validateSoftware(software types.Object) *diag2.ErrorDiagnostic {
 
 	version, ok := attrs["software_version"].(types.String)
 	if !ok || version.IsNull() || version.IsUnknown() || version.ValueString() == "" {
-		d := diag2.NewErrorDiagnostic("Missing software_version", "software.software_version is required")
+		d := diag2.NewErrorDiagnostic("Missing software_version", "gpu_software.software_version is required")
 		return &d
 	}
 	versionOk := false
@@ -603,7 +653,7 @@ func validateSoftware(software types.Object) *diag2.ErrorDiagnostic {
 
 	if softwareType.ValueString() == softwareTypeGpuOperator {
 		if !strategySet {
-			d := diag2.NewErrorDiagnostic("Missing cluster_mig_strategy", "software.cluster_mig_strategy is required when software_type is "+softwareTypeGpuOperator)
+			d := diag2.NewErrorDiagnostic("Missing cluster_mig_strategy", "gpu_software.cluster_mig_strategy is required when software_type is "+softwareTypeGpuOperator)
 			return &d
 		}
 		return validateClusterMigStrategy(strategy.ValueString())
@@ -612,7 +662,7 @@ func validateSoftware(software types.Object) *diag2.ErrorDiagnostic {
 	if strategySet {
 		d := diag2.NewErrorDiagnostic(
 			"Unexpected cluster_mig_strategy",
-			"software.cluster_mig_strategy may only be set when software_type is "+softwareTypeGpuOperator,
+			"gpu_software.cluster_mig_strategy may only be set when software_type is "+softwareTypeGpuOperator,
 		)
 		return &d
 	}
@@ -664,7 +714,7 @@ func ValidateCreate(ctx context.Context, client *MgpuClusterApiClient, vpcId, pl
 		return false
 	}
 	// Validate software operators
-	if diag := validateSoftware(state.Software); diag != nil {
+	if diag := validateSoftware(ctx, client, vpcId, platform, state.Software); diag != nil {
 		response.Diagnostics.Append(diag)
 		return false
 	}
@@ -933,6 +983,12 @@ func ValidateUpdate(ctx context.Context, client *MgpuClusterApiClient, vpcId, pl
 	}
 	// Deny changing container_runtime in worker pool
 	if diag := validateImmutablePoolStringField(plan.Pools, state.Pools); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Operators can be added, changed and removed after the cluster exists,
+	// so the same catalog check has to run on update as on create.
+	if diag := validateSoftware(ctx, client, vpcId, platform, plan.Software); diag != nil {
 		response.Diagnostics.Append(diag)
 		return false
 	}

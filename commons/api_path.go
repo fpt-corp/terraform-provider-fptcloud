@@ -144,6 +144,7 @@ var ApiPath = struct {
 	ManagedGpuClusterGpuSoftwareActivate       func(vpcId string, clusterName string) string
 	ManagedGpuClusterGpuSoftwareActivateV2     func(vpcId string, clusterName string) string
 	ManagedGpuClusterMigProfiles               func(vpcId string, gpuType string, migMode string) string
+	ManagedGpuClusterOperatorVersions          func(vpcId string) string
 
 	// GPU
 	GetGPUInfo func(vpcId string) string
@@ -852,6 +853,12 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v2/xplat/fke-gpu/common/vpc/%s/mig-profiles?gpu_type=%s&mig_mode=%s",
 			vpcId, url.QueryEscape(gpuType), url.QueryEscape(migMode),
+		)
+	},
+	ManagedGpuClusterOperatorVersions: func(vpcId string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/operator-versions",
+			vpcId,
 		)
 	},
 

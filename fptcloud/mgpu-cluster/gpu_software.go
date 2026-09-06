@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"terraform-provider-fptcloud/commons"
 	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -69,19 +71,7 @@ func gpuSoftwareRegion(region string) string {
 // clusterName is the real, suffixed name create-cluster returned — the GPU
 // software is addressed by it, not by the name the user typed.
 func buildGpuSoftwareRequest(state *managedGpuCluster, clusterName, platform, region, tenantId string, isV2 bool) *gpuSoftwareRequest {
-	operatorVersion := map[string]string{}
-	var migStrategy *string
-
-	if software := softwareToJson(state.Software); software != nil {
-		operatorVersion[software.SoftwareType] = software.SoftwareVersion
-		// mig_strategy is the cluster-level counterpart of the per-pool mig
-		// block, and only the GPU operator has one. The API spells it in
-		// upper case where the create-cluster body spells it lower case.
-		if software.ClusterMigStrategy != "" {
-			s := strings.ToUpper(software.ClusterMigStrategy)
-			migStrategy = &s
-		}
-	}
+	operatorVersion, migStrategy := softwareToOperatorVersion(state.Software)
 
 	workerGroups := make([]*gpuSoftwareWorkerJson, 0, len(state.Pools))
 	for _, pool := range state.Pools {
@@ -106,6 +96,83 @@ func buildGpuSoftwareRequest(state *managedGpuCluster, clusterName, platform, re
 	}
 }
 
+// softwareAttrTypes is the software set element's attribute type map.
+var softwareAttrTypes = map[string]attr.Type{
+	"software_type":        types.StringType,
+	"software_version":     types.StringType,
+	"cluster_mig_strategy": types.StringType,
+}
+
+// softwareToOperatorVersion turns the software set into the operator_version
+// map the API expects, plus the cluster-level mig_strategy that only the GPU
+// operator carries. The API spells the strategy in upper case where the
+// Terraform config spells it lower case.
+func softwareToOperatorVersion(software types.Set) (map[string]string, *string) {
+	operatorVersion := map[string]string{}
+	var migStrategy *string
+
+	if software.IsNull() || software.IsUnknown() {
+		return operatorVersion, nil
+	}
+
+	for _, element := range software.Elements() {
+		entry, ok := element.(types.Object)
+		if !ok {
+			continue
+		}
+		attrs := entry.Attributes()
+
+		softwareType := objectString(attrs, "software_type")
+		if softwareType == "" {
+			continue
+		}
+		operatorVersion[softwareType] = objectString(attrs, "software_version")
+
+		if softwareType == softwareTypeGpuOperator {
+			if strategy := objectString(attrs, "cluster_mig_strategy"); strategy != "" {
+				s := strings.ToUpper(strategy)
+				migStrategy = &s
+			}
+		}
+	}
+
+	return operatorVersion, migStrategy
+}
+
+// softwareSetValue rebuilds the software set from what the API reports.
+// Operators the cluster does not have come back as an empty version — that is
+// how the console uninstalls one, by blanking the value rather than dropping
+// the key — so those entries are skipped.
+func softwareSetValue(operatorVersion map[string]string, migStrategy string) types.Set {
+	elementType := types.ObjectType{AttrTypes: softwareAttrTypes}
+
+	names := make([]string, 0, len(operatorVersion))
+	for name, version := range operatorVersion {
+		if version != "" {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return types.SetNull(elementType)
+	}
+	sort.Strings(names)
+
+	elements := make([]attr.Value, 0, len(names))
+	for _, name := range names {
+		strategy := ""
+		if name == softwareTypeGpuOperator {
+			strategy = strings.ToLower(migStrategy)
+		}
+		elements = append(elements, types.ObjectValueMust(softwareAttrTypes, map[string]attr.Value{
+			"software_type":        types.StringValue(name),
+			"software_version":     types.StringValue(operatorVersion[name]),
+			"cluster_mig_strategy": stringOrNull(strategy),
+		}))
+	}
+
+	return types.SetValueMust(elementType, elements)
+}
+
 // gpuSoftwareWorkerFromPool maps one Terraform pool onto its worker_groups
 // entry.
 //
@@ -118,8 +185,7 @@ func buildGpuSoftwareRequest(state *managedGpuCluster, clusterName, platform, re
 // does, and mig_profile alone carries "all-disabled" to say MIG is off.
 func gpuSoftwareWorkerFromPool(pool *managedGpuClusterPool) *gpuSoftwareWorkerJson {
 	driverType, driverVersion := gpuDriverFields(pool.GpuDriver)
-	sharingClientType, maxClient := gpuSharingFields(pool.GpuSharing)
-	migMode, migProfile := migFields(pool.Mig)
+	migMode, migProfile, sharingClientType, maxClient := gpuSharingFields(pool.GpuSharing)
 
 	if driverType == driverInstallationTypeUserInstall {
 		migModeNone := gpuValueNone
@@ -187,37 +253,153 @@ func stringOrNull(value string) types.String {
 	return types.StringValue(value)
 }
 
-// fetchGpuSoftwareWorkers reads a cluster's GPU-software worker groups, keyed
-// by pool name. Errors are swallowed on purpose: the GPU software is a second,
+// gpuSoftwareState is what a read of the GPU-software backend contributes to
+// Terraform state: the per-pool settings the shoot does not report, and the
+// cluster's installed operators.
+type gpuSoftwareState struct {
+	workers  map[string]gpuSoftwareWorkerRead
+	software types.Set
+}
+
+// readGpuSoftwareState reads a cluster's GPU software into the shape state
+// needs. Errors are swallowed on purpose: the GPU software is a second,
 // independent backend, and a cluster whose install never completed simply has
 // no record there — that must not make the cluster itself unreadable.
-func fetchGpuSoftwareWorkers(
+//
+// A 404 is exactly that case, and it self-heals: activating recreates the
+// record, the same thing the console does when its detail page finds none.
+func readGpuSoftwareState(
 	ctx context.Context,
 	mgpuClient *MgpuClusterApiClient,
 	vpcClient fptcloud_vpc.Service,
 	region, vpcId, clusterName, platform, k8sVersion string,
-) map[string]gpuSoftwareWorkerRead {
-	workers := map[string]gpuSoftwareWorkerRead{}
+) gpuSoftwareState {
+	out := gpuSoftwareState{
+		workers:  map[string]gpuSoftwareWorkerRead{},
+		software: types.SetNull(types.ObjectType{AttrTypes: softwareAttrTypes}),
+	}
 
 	tenant, err := vpcClient.GetTenant(ctx)
 	if err != nil || tenant == nil || tenant.Id == "" {
 		tflog.Info(ctx, "Skipping GPU software read: could not resolve tenant id")
-		return workers
+		return out
 	}
 
-	resp, err := mgpuClient.fetchGpuSoftware(
-		ctx, vpcId, clusterName, platform,
-		tenant.Id, gpuSoftwareRegion(region), requiresV2API(k8sVersion),
-	)
+	isV2 := requiresV2API(k8sVersion)
+	apiRegion := gpuSoftwareRegion(region)
+
+	resp, err := mgpuClient.fetchGpuSoftware(ctx, vpcId, clusterName, platform, tenant.Id, apiRegion, isV2)
+	if err != nil && isNotFoundError(err) {
+		tflog.Info(ctx, "No GPU software record for cluster "+clusterName+", activating")
+		if activateErr := mgpuClient.activateGpuSoftware(ctx, vpcId, clusterName, platform, apiRegion, tenant.Id, isV2); activateErr != nil {
+			tflog.Info(ctx, "Could not activate GPU software for cluster "+clusterName+": "+activateErr.Error())
+			return out
+		}
+		resp, err = mgpuClient.fetchGpuSoftware(ctx, vpcId, clusterName, platform, tenant.Id, apiRegion, isV2)
+	}
 	if err != nil {
 		tflog.Info(ctx, "Skipping GPU software read for cluster "+clusterName+": "+err.Error())
-		return workers
+		return out
 	}
 
 	for _, w := range resp.WorkerGroups {
-		workers[w.Name] = w
+		out.workers[w.Name] = w
 	}
-	return workers
+	out.software = softwareSetValue(resp.OperatorVersion, resp.MigStrategy)
+
+	return out
+}
+
+// syncGpuSoftware pushes a cluster's operator selection and worker groups to
+// the GPU-software backend after its pools or software changed. It is a
+// read-modify-write: the endpoint replaces the whole record, so the body is
+// whatever the API just returned with only the two fields this provider owns
+// swapped in.
+//
+// Uninstalling an operator means setting its version to the empty string, not
+// dropping its key — that is how the console removes one, and dropping the key
+// instead leaves the operator installed.
+func syncGpuSoftware(
+	ctx context.Context,
+	mgpuClient *MgpuClusterApiClient,
+	vpcClient fptcloud_vpc.Service,
+	region string,
+	state *managedGpuCluster,
+	clusterName, platform string,
+) error {
+	tenant, err := vpcClient.GetTenant(ctx)
+	if err != nil {
+		return fmt.Errorf("error resolving tenant: %w", err)
+	}
+	if tenant == nil || tenant.Id == "" {
+		return fmt.Errorf("could not resolve tenant id")
+	}
+
+	isV2 := requiresV2API(state.K8SVersion.ValueString())
+	apiRegion := gpuSoftwareRegion(region)
+	vpcId := state.VpcId.ValueString()
+
+	_, body, err := mgpuClient.fetchGpuSoftwareRaw(ctx, vpcId, clusterName, platform, tenant.Id, apiRegion, isV2)
+	if err != nil {
+		return fmt.Errorf("error reading GPU software before update: %w", err)
+	}
+
+	desired, migStrategy := softwareToOperatorVersion(state.Software)
+
+	// Operators the config no longer lists have to be blanked rather than
+	// omitted, so start from the keys the backend already knows about.
+	operatorVersion := map[string]string{}
+	if existing, ok := body["operator_version"].(map[string]interface{}); ok {
+		for name := range existing {
+			operatorVersion[name] = ""
+		}
+	}
+	for name, version := range desired {
+		operatorVersion[name] = version
+	}
+	body["operator_version"] = operatorVersion
+
+	if migStrategy != nil {
+		body["mig_strategy"] = *migStrategy
+	} else {
+		body["mig_strategy"] = nil
+	}
+
+	workerGroups := make([]*gpuSoftwareWorkerJson, 0, len(state.Pools))
+	for _, pool := range state.Pools {
+		if pool == nil {
+			continue
+		}
+		workerGroups = append(workerGroups, gpuSoftwareWorkerFromPool(pool))
+	}
+	body["worker_groups"] = workerGroups
+
+	return mgpuClient.updateGpuSoftware(ctx, vpcId, clusterName, platform, isV2, body)
+}
+
+// fetchOperatorVersions reads the catalog of installable operators and the
+// versions each offers, keyed by operator type. This is the authority for
+// validating gpu_software — hardcoding the list means new versions are
+// rejected until the provider is rebuilt.
+func (m *MgpuClusterApiClient) fetchOperatorVersions(ctx context.Context, vpcId, platform string) (map[string][]string, error) {
+	path := commons.ApiPath.ManagedGpuClusterOperatorVersions(vpcId)
+	tflog.Info(ctx, "Fetching operator versions: "+path)
+
+	a, err := m.sendGet(path, strings.ToUpper(platform))
+	if err != nil {
+		return nil, err
+	}
+
+	var resp map[string]operatorVersionEntry
+	if err := json.Unmarshal(a, &resp); err != nil {
+		return nil, fmt.Errorf("error unmarshalling operator-versions response: %w", err)
+	}
+
+	out := make(map[string][]string, len(resp))
+	for name, entry := range resp {
+		out[name] = entry.SoftwareVersion
+	}
+	return out, nil
 }
 
 // installGpuSoftware performs the second half of cluster creation: installing
@@ -242,6 +424,15 @@ func (m *MgpuClusterApiClient) installGpuSoftware(ctx context.Context, vpcId, cl
 // for a pool's gpu_type, sharing and MIG settings — get-shoot-specific does
 // not report any of them.
 func (m *MgpuClusterApiClient) fetchGpuSoftware(ctx context.Context, vpcId, clusterName, platform, tenantId, region string, isV2 bool) (*gpuSoftwareReadResponse, error) {
+	resp, _, err := m.fetchGpuSoftwareRaw(ctx, vpcId, clusterName, platform, tenantId, region, isV2)
+	return resp, err
+}
+
+// fetchGpuSoftwareRaw is fetchGpuSoftware plus the response decoded into a
+// plain map. Updates are replace-the-whole-record, so they have to start from
+// everything the API returned — including fields this provider does not model
+// — rather than from the typed struct, which would silently drop them.
+func (m *MgpuClusterApiClient) fetchGpuSoftwareRaw(ctx context.Context, vpcId, clusterName, platform, tenantId, region string, isV2 bool) (*gpuSoftwareReadResponse, map[string]interface{}, error) {
 	path := commons.ApiPath.ManagedGpuClusterGpuSoftwareGet(vpcId, clusterName, tenantId, region)
 	if isV2 {
 		path = commons.ApiPath.ManagedGpuClusterGpuSoftwareGetV2(vpcId, clusterName, tenantId, region)
@@ -250,15 +441,68 @@ func (m *MgpuClusterApiClient) fetchGpuSoftware(ctx context.Context, vpcId, clus
 
 	a, err := m.sendGet(path, strings.ToUpper(platform))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var resp gpuSoftwareReadResponse
 	if err := json.Unmarshal(a, &resp); err != nil {
-		return nil, fmt.Errorf("error unmarshalling gpu-clusters response: %w", err)
+		return nil, nil, fmt.Errorf("error unmarshalling gpu-clusters response: %w", err)
 	}
 
-	return &resp, nil
+	var raw map[string]interface{}
+	if err := json.Unmarshal(a, &raw); err != nil {
+		return nil, nil, fmt.Errorf("error unmarshalling gpu-clusters response: %w", err)
+	}
+
+	return &resp, raw, nil
+}
+
+// updateGpuSoftware writes a modified GPU-software object back. The endpoint
+// replaces the whole record, so callers must build body from what
+// fetchGpuSoftware returned and change only the fields they mean to — never
+// assemble one from scratch, or fields this provider does not model would be
+// wiped.
+func (m *MgpuClusterApiClient) updateGpuSoftware(ctx context.Context, vpcId, clusterName, platform string, isV2 bool, body map[string]interface{}) error {
+	path := commons.ApiPath.ManagedGpuClusterGpuSoftwareInstall(vpcId, clusterName)
+	if isV2 {
+		path = commons.ApiPath.ManagedGpuClusterGpuSoftwareInstallV2(vpcId, clusterName)
+	}
+	tflog.Info(ctx, "Updating GPU software: "+path)
+
+	a, err := m.sendPut(ctx, path, strings.ToUpper(platform), body)
+	if err != nil {
+		return err
+	}
+
+	return gpuSoftwareResponseError(a)
+}
+
+// activateGpuSoftware recreates a cluster's GPU-software record. Cluster
+// creation spans two backends with no rollback, so a cluster can end up
+// existing with no GPU-software record at all — reads then 404. The console
+// self-heals that by activating, and so does this provider.
+func (m *MgpuClusterApiClient) activateGpuSoftware(ctx context.Context, vpcId, clusterName, platform, region, tenantId string, isV2 bool) error {
+	path := commons.ApiPath.ManagedGpuClusterGpuSoftwareActivate(vpcId, clusterName)
+	if isV2 {
+		path = commons.ApiPath.ManagedGpuClusterGpuSoftwareActivateV2(vpcId, clusterName)
+	}
+	tflog.Info(ctx, "Activating GPU software: "+path)
+
+	// Activation takes only the cluster's identity — unlike install, which
+	// carries the full operator and worker-group configuration.
+	body := map[string]string{
+		"name":       clusterName,
+		"infra_type": strings.ToUpper(platform),
+		"region":     region,
+		"tenant_id":  tenantId,
+	}
+
+	a, err := m.sendPost(ctx, path, strings.ToUpper(platform), body)
+	if err != nil {
+		return err
+	}
+
+	return gpuSoftwareResponseError(a)
 }
 
 // deleteGpuSoftware removes a cluster's GPU software. It runs after the

@@ -94,8 +94,9 @@ resource "fptcloud_managed_gpu_cluster" "gpu_driver_example" {
 
 ### Software (GPU Information)
 
-`software` picks one operator to install on the cluster. Optional — omit the
-whole block to install nothing.
+`gpu_software` lists the operators to install on the cluster, one entry each — a
+cluster can run several at once. Optional; omit it entirely to install nothing.
+Operators can be added, changed, or removed after the cluster exists.
 
 ```hcl
 resource "fptcloud_managed_gpu_cluster" "with_software" {
@@ -105,11 +106,13 @@ resource "fptcloud_managed_gpu_cluster" "with_software" {
   ssh_key_id          = data.fptcloud_ssh_key.ssh_key.id
   internal_subnet_lb  = data.fptcloud_subnet.subnet.subnets[0].id
 
-  software = {
-    software_type        = "gpu_operator"
-    software_version     = "v25.10.1"
-    cluster_mig_strategy = "single" # required for gpu_operator; single | mixed
-  }
+  gpu_software = [
+    {
+      software_type        = "gpu_operator"
+      software_version     = "v25.10.1"
+      cluster_mig_strategy = "single" # required for gpu_operator; single | mixed
+    },
+  ]
 
   pools {
     name              = "worker-pool1"
@@ -268,12 +271,15 @@ resource "fptcloud_managed_gpu_cluster" "complete_example" {
     expander                         = "least-waste"
   }
 
-  # Optional, no default — omit entirely to install nothing.
-  software = {
-    software_type        = "gpu_operator"
-    software_version     = "v25.10.1"
-    cluster_mig_strategy = "single"
-  }
+  # Optional, no default — omit entirely to install nothing. One entry per
+  # operator; a cluster can run several at once.
+  gpu_software = [
+    {
+      software_type        = "gpu_operator"
+      software_version     = "v25.10.1"
+      cluster_mig_strategy = "single"
+    },
+  ]
 
   pools {
     # ── Required ─────────────────────────────────────────────────────
@@ -299,13 +305,10 @@ resource "fptcloud_managed_gpu_cluster" "complete_example" {
     }
 
     gpu_sharing = {
-      client_type = "TIMESLICING" # NONE | MPS | TIMESLICING
-      max_client  = 2             # 0 when NONE, otherwise 2-48
-    }
-
-    mig = {
-      strategy = "SINGLE"      # NONE | SINGLE | MIXED
-      profile  = "all-1g.35gb" # required for SINGLE/MIXED
+      mig_strategy        = "SINGLE"      # NONE | SINGLE | MIXED
+      mig_profile         = "all-1g.35gb" # required for SINGLE/MIXED
+      sharing_client_type = "TIMESLICING" # NONE | MPS | TIMESLICING
+      max_client          = 2             # 0 when NONE, otherwise 2-48
     }
   }
 
@@ -346,8 +349,8 @@ The following arguments are supported:
 * `k8s_max_pod` - (Optional) Maximum number of pods per node. Default: `110`. Immutable after creation
 * `network_node_prefix` - (Optional, Computed) Node network prefix length. No default — read back from the worker CIDR after apply
 
-#### Software
-* `software` - (Optional) Software operator installed on the cluster. No default — omit the whole block to install nothing. See [Software Block](#software-block)
+#### GPU Software
+* `gpu_software` - (Optional) Set of operators installed on the cluster, one entry per operator. No default — omit it entirely to install nothing. See [GPU Software](#gpu-software)
 
 #### Auto Upgrade Configuration
 * `is_enable_auto_upgrade` - (Optional) Allow the service to perform automatic Kubernetes version upgrades. Default: `false`
@@ -362,18 +365,46 @@ The following arguments are supported:
 ### Read-Only Arguments
 * `id` - The ID of the cluster
 
-### Software Block
+### GPU Software
 
-The `software` block supports the following. Optional — omit entirely to send
-nothing:
+`gpu_software` is a set with one entry per operator — a cluster can run several at
+once. Optional; omit it entirely to install nothing.
 
-* `software_type` - (Required) One of `gpu_operator`, `network_operator`, `slurm_operator`, `vgpu_scheduler`
-* `software_version` - (Required) Must be one of the versions offered for `software_type`:
+```hcl
+gpu_software = [
+  {
+    software_type        = "gpu_operator"
+    software_version     = "v25.10.1"
+    cluster_mig_strategy = "single"
+  },
+  {
+    software_type        = "network_operator"
+    software_version     = "v24.10.1"
+    cluster_mig_strategy = null # only gpu_operator takes one
+  },
+]
+```
+
+Each entry supports:
+
+* `software_type` - (Required) One of `gpu_operator`, `network_operator`, `slurm_operator`, `vgpu_scheduler`. Each type may appear only once
+* `software_version` - (Required) Must be one of the versions the platform currently offers for `software_type`. The list is read live from the `operator-versions` catalog at plan/apply time, so it stays correct as new versions ship. At the time of writing:
   * `gpu_operator`: `v25.10.1`, `v24.9.1`, `v24.3.0`
   * `network_operator`: `v24.10.1`, `v23.4.0`
   * `slurm_operator`: `2.0.5`, `1.15.3`, `1.14.10`
   * `vgpu_scheduler`: `2.8.0`, `2.5.2`, `2.5.0`
-* `cluster_mig_strategy` - (Required when `software_type = gpu_operator`, forbidden otherwise) `single` or `mixed`
+* `cluster_mig_strategy` - (Required when `software_type = gpu_operator`, must be null otherwise) `single` or `mixed`
+
+Every entry has to spell out `cluster_mig_strategy` even when it does not apply
+— set it to `null` on operators other than `gpu_operator`. Terraform requires
+all attributes of an object type to be present, and this provider speaks
+protocol v5, where truly optional nested attributes are not available.
+
+**Operators can be changed after the cluster exists.** Editing a version,
+changing the MIG strategy, adding an entry, or removing one all take effect on
+the next apply — the provider syncs them to the GPU-software backend the same
+way the console's "GPU Software Information" panel does. Removing an entry
+uninstalls that operator.
 
 ### Hibernation Schedules Block
 
@@ -422,8 +453,7 @@ The `pools` block supports the following arguments. At least one pool is require
 * `worker_base` - (Optional, Computed) Whether this is the base worker pool. Default: `true` for the first pool, `false` otherwise
 * `tags` - (Optional, Computed) List of tag ids for the worker pool. Default: `[]`
 * `gpu_type` - (Optional) GPU type for the pool. Must be one of `A100`, `A30`, `H100`, `H200`. No default
-* `gpu_sharing` - (Optional) How the pool's GPUs are shared between clients. No default. See [GPU Sharing Block](#gpu-sharing-block)
-* `mig` - (Optional) MIG partitioning for the pool. No default. See [MIG Block](#mig-block)
+* `gpu_sharing` - (Optional) How the pool's GPUs are divided up: MIG partitioning and client sharing. No default. See [GPU Sharing Block](#gpu-sharing-block)
 
 **Labels and Taints:**
 * `kv` - (Optional, Computed) Set of key-value labels for the pool. Default: `[]`
@@ -460,46 +490,39 @@ set-once-at-creation; do not change it on an existing pool.
 
 #### GPU Sharing Block
 
-`gpu_sharing` (Optional, no default) controls how the pool's GPUs are shared
-between clients:
+`gpu_sharing` (Optional, no default) controls how the pool's GPUs are divided
+up — both MIG partitioning and client sharing:
 
 ```hcl
 gpu_sharing = {
-  client_type = "TIMESLICING" # NONE | MPS | TIMESLICING
-  max_client  = 2
+  mig_strategy        = "SINGLE"      # NONE | SINGLE | MIXED
+  mig_profile         = "all-1g.35gb"
+  sharing_client_type = "TIMESLICING" # NONE | MPS | TIMESLICING
+  max_client          = 2
 }
 ```
 
-* `client_type` - (Required within the block) One of `NONE`, `MPS`, `TIMESLICING`
-* `max_client` - (Required within the block) Number of clients sharing one GPU. Must be `0` when `client_type = NONE`, and between 2 and 48 otherwise
+* `mig_strategy` - One of `NONE`, `SINGLE`, `MIXED`
+* `mig_profile` - The profile the GPUs are partitioned into, e.g. `all-1g.35gb`. Required for `SINGLE`/`MIXED`, must be empty for `NONE`
+* `sharing_client_type` - One of `NONE`, `MPS`, `TIMESLICING`
+* `max_client` - Number of clients sharing one GPU. Must be `0` when `sharing_client_type = NONE`, and between 2 and 48 otherwise
 
-Not available when `gpu_driver.installation_type = USER_INSTALL` — the user
-installs their own driver, so the platform does not manage GPU sharing. Setting
-the block on such a pool fails validation.
+The two halves are independent: a pool can configure MIG without client
+sharing, or the other way round. Each pair constrains itself, though —
+`mig_profile` needs a `mig_strategy`, and `max_client` needs a
+`sharing_client_type`.
 
-#### MIG Block
-
-`mig` (Optional, no default) controls MIG (Multi-Instance GPU) partitioning:
-
-```hcl
-mig = {
-  strategy = "SINGLE"      # NONE | SINGLE | MIXED
-  profile  = "all-1g.35gb"
-}
-```
-
-* `strategy` - (Required within the block) One of `NONE`, `SINGLE`, `MIXED`
-* `profile` - (Required for `SINGLE`/`MIXED`, must be empty for `NONE`) The profile the GPUs are partitioned into, e.g. `all-1g.35gb`
-
-Not available when `gpu_driver.installation_type = USER_INSTALL`, same as
-`gpu_sharing`.
+The whole block is unavailable when
+`gpu_driver.installation_type = USER_INSTALL` — the user installs their own
+driver, so the platform manages neither MIG nor sharing. Setting it on such a
+pool fails validation.
 
 #### How GPU configuration reaches the backend
 
 A bare-metal cluster spans two backends: the cluster itself, and the GPU
 software (operator, driver, sharing, MIG) installed onto it. Creating a cluster
 therefore makes two calls in sequence — `create-cluster`, then the GPU-software
-install. `gpu_type`, `gpu_sharing` and `mig` are read back from the second one;
+install. `gpu_type` and `gpu_sharing` are read back from the second one;
 `gpu_driver` is read back from the cluster.
 
 The two calls are not atomic and the backend offers no rollback. If the
@@ -536,11 +559,11 @@ The following cannot be changed after creation (attempting to do so fails valida
 * `gpu_type` must be one of `A100`, `A30`, `H100`, `H200`
 * `gpu_driver.installation_type` must be one of `MANAGED`, `PRE_INSTALL`, `USER_INSTALL`
 * `gpu_driver.version` must be one of the versions the live `gpu-drivers` catalog offers for `installation_type`, and must be empty when `installation_type = USER_INSTALL`
-* `gpu_sharing.client_type` must be one of `NONE`, `MPS`, `TIMESLICING`
-* `gpu_sharing.max_client` must be `0` when `client_type = NONE`, and between 2 and 48 otherwise
-* `mig.strategy` must be one of `NONE`, `SINGLE`, `MIXED`
-* `mig.profile` is required for `SINGLE`/`MIXED` and must be empty for `NONE`
-* Neither `gpu_sharing` nor `mig` may be set when `gpu_driver.installation_type = USER_INSTALL`
+* `gpu_sharing.mig_strategy` must be one of `NONE`, `SINGLE`, `MIXED`
+* `gpu_sharing.mig_profile` is required for `SINGLE`/`MIXED` and must be empty for `NONE`
+* `gpu_sharing.sharing_client_type` must be one of `NONE`, `MPS`, `TIMESLICING`
+* `gpu_sharing.max_client` must be `0` when `sharing_client_type = NONE`, and between 2 and 48 otherwise
+* `gpu_sharing` may not be set when `gpu_driver.installation_type = USER_INSTALL`
 
 ### Cluster Autoscaler Validation
 * `expander` must be one of `random`, `least-waste`, `most-pods`, `priority`
@@ -551,7 +574,14 @@ The following cannot be changed after creation (attempting to do so fails valida
 * `type` must be one of `public`, `private`, `mixed`
 * `allow_cidr` entries must be valid CIDR notation
 
-### Software Validation
-* `software_type` must be one of `gpu_operator`, `network_operator`, `slurm_operator`, `vgpu_scheduler`
-* `software_version` must be one of the versions offered for `software_type`
-* `cluster_mig_strategy` is required for `gpu_operator` (`single` or `mixed`) and forbidden for the other types
+### GPU Software Validation
+
+Checked against the live `operator-versions` catalog rather than a list baked
+into the provider, so new operator versions work without a provider upgrade.
+
+* `software_type` must be one the catalog offers, and may appear only once
+* `software_version` must be one of the versions that operator offers
+* `cluster_mig_strategy` is required for `gpu_operator` (`single` or `mixed`) and must be null for the other types
+
+These run on both create and update — operators can be changed after the
+cluster exists.

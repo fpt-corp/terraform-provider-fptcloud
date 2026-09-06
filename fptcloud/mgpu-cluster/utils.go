@@ -170,9 +170,10 @@ func TopFields() map[string]schema.Attribute {
 
 	for _, attribute := range optionalStrings {
 		topLevelAttributes[attribute] = schema.StringAttribute{
-			Optional:    true,
-			Computed:    true,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersString,
+			Description:   descriptions[attribute],
 		}
 	}
 	for _, attribute := range requiredInts {
@@ -184,24 +185,27 @@ func TopFields() map[string]schema.Attribute {
 	}
 	for _, attribute := range optionalInts {
 		topLevelAttributes[attribute] = schema.Int64Attribute{
-			Optional:    true,
-			Computed:    true,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersInt,
+			Description:   descriptions[attribute],
 		}
 	}
 	for _, attribute := range optionalBools {
 		topLevelAttributes[attribute] = schema.BoolAttribute{
-			Optional:    true,
-			Computed:    true,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersBool,
+			Description:   descriptions[attribute],
 		}
 	}
 	for _, attribute := range optionalLists {
 		topLevelAttributes[attribute] = schema.ListAttribute{
-			Optional:    true,
-			Computed:    true,
-			ElementType: types.StringType,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			ElementType:   types.StringType,
+			PlanModifiers: keepStatePlanModifiersList,
+			Description:   descriptions[attribute],
 		}
 	}
 
@@ -214,9 +218,10 @@ func TopFields() map[string]schema.Attribute {
 	}
 
 	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
-		Description: "Configuration for cluster autoscaler.",
-		Optional:    true,
-		Computed:    true,
+		Description:   "Configuration for cluster autoscaler.",
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersObject,
 		AttributeTypes: map[string]attr.Type{
 			"is_enable_auto_scaling":           types.BoolType,
 			"scale_down_delay_after_add":       types.Int64Type,
@@ -229,20 +234,22 @@ func TopFields() map[string]schema.Attribute {
 		},
 	}
 
-	topLevelAttributes["software"] = schema.ObjectAttribute{
-		Description: descriptions["software"],
-		Optional:    true,
-		AttributeTypes: map[string]attr.Type{
-			"software_type":        types.StringType,
-			"software_version":     types.StringType,
-			"cluster_mig_strategy": types.StringType,
-		},
+	// software is a Set: a cluster can carry several operators at once, and
+	// their order carries no meaning — reordering them in config must not
+	// produce a plan diff.
+	topLevelAttributes["gpu_software"] = schema.SetAttribute{
+		Description:   descriptions["gpu_software"],
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersSet,
+		ElementType:   types.ObjectType{AttrTypes: softwareAttrTypes},
 	}
 
 	topLevelAttributes["cluster_endpoint_access"] = schema.ObjectAttribute{
-		Description: "Configuration for cluster endpoint access.",
-		Optional:    true,
-		Computed:    true,
+		Description:   "Configuration for cluster endpoint access.",
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersObject,
 		AttributeTypes: map[string]attr.Type{
 			"type":       types.StringType,
 			"allow_cidr": types.ListType{ElemType: types.StringType},
@@ -291,9 +298,10 @@ func PoolFields() map[string]schema.Attribute {
 	}
 	for _, attribute := range optionalStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
-			Optional:    true,
-			Computed:    true,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersString,
+			Description:   descriptions[attribute],
 		}
 	}
 	for _, attribute := range requiredInts {
@@ -304,9 +312,10 @@ func PoolFields() map[string]schema.Attribute {
 	}
 	for _, attribute := range optionalInts {
 		poolLevelAttributes[attribute] = schema.Int64Attribute{
-			Optional:    true,
-			Computed:    true,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersInt,
+			Description:   descriptions[attribute],
 		}
 	}
 	for _, attribute := range requiredBools {
@@ -318,17 +327,19 @@ func PoolFields() map[string]schema.Attribute {
 
 	for _, attribute := range optionalBools {
 		poolLevelAttributes[attribute] = schema.BoolAttribute{
-			Optional:    true,
-			Computed:    true,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersBool,
+			Description:   descriptions[attribute],
 		}
 	}
 	for _, attribute := range optionalLists {
 		poolLevelAttributes[attribute] = schema.ListAttribute{
-			Optional:    true,
-			Computed:    true,
-			ElementType: types.StringType,
-			Description: descriptions[attribute],
+			Optional:      true,
+			Computed:      true,
+			ElementType:   types.StringType,
+			PlanModifiers: keepStatePlanModifiersList,
+			Description:   descriptions[attribute],
 		}
 	}
 
@@ -337,8 +348,9 @@ func PoolFields() map[string]schema.Attribute {
 	// response order (a Go map, effectively random) must not be rejected as
 	// inconsistent with the plan.
 	poolLevelAttributes["kv"] = schema.SetAttribute{
-		Optional: true,
-		Computed: true,
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersSet,
 		ElementType: types.ObjectType{
 			AttrTypes: map[string]attr.Type{
 				"name":  types.StringType,
@@ -351,8 +363,9 @@ func PoolFields() map[string]schema.Attribute {
 	// reordering them in config must not produce a plan diff, and the API
 	// response order must not be rejected as inconsistent with the plan.
 	poolLevelAttributes["taints"] = schema.SetAttribute{
-		Optional: true,
-		Computed: true,
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersSet,
 		ElementType: types.ObjectType{
 			AttrTypes: map[string]attr.Type{
 				"key":    types.StringType,
@@ -376,12 +389,6 @@ func PoolFields() map[string]schema.Attribute {
 		Optional:       true,
 		Description:    descriptions["gpu_sharing"],
 		AttributeTypes: gpuSharingAttrTypes,
-	}
-
-	poolLevelAttributes["mig"] = schema.ObjectAttribute{
-		Optional:       true,
-		Description:    descriptions["mig"],
-		AttributeTypes: migAttrTypes,
 	}
 
 	return poolLevelAttributes
@@ -486,8 +493,7 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 			return &d
 		}
 
-		sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
-		migStrategy, migProfile := migFields(item.Mig)
+		migStrategy, migProfile, sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
 
 		newItem := &managedGpuClusterPoolJson{
 			HpcFlavorId:            item.HpcFlavorId.ValueString(),
@@ -661,7 +667,9 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 		to.ClusterAutoscaler = clusterAutoscaler
 	}
 
-	to.Software = softwareToJson(from.Software)
+	// software is not part of the create-cluster body: operators are installed
+	// by the separate GPU-software call that follows it (see gpu_software.go).
+	// Real console requests carry no such field either.
 
 	to.TypeCreate = "create"
 
@@ -746,34 +754,23 @@ func gpuDriverObjectValue(installationType, version string) types.Object {
 
 // gpuSharingAttrTypes is the gpu_sharing object's attribute type map.
 var gpuSharingAttrTypes = map[string]attr.Type{
-	"client_type": types.StringType,
-	"max_client":  types.Int64Type,
+	"mig_strategy":        types.StringType,
+	"mig_profile":         types.StringType,
+	"sharing_client_type": types.StringType,
+	"max_client":          types.Int64Type,
 }
 
-// migAttrTypes is the mig object's attribute type map.
-var migAttrTypes = map[string]attr.Type{
-	"strategy": types.StringType,
-	"profile":  types.StringType,
-}
-
-// gpuSharingFields reads client_type and max_client out of the gpu_sharing
-// block, treating a null or unknown block as both fields absent.
-func gpuSharingFields(gpuSharing types.Object) (clientType string, maxClient int64) {
+// gpuSharingFields reads the gpu_sharing block, treating a null or unknown
+// block as every field absent.
+func gpuSharingFields(gpuSharing types.Object) (migStrategy, migProfile, clientType string, maxClient int64) {
 	if gpuSharing.IsNull() || gpuSharing.IsUnknown() {
-		return "", 0
+		return "", "", "", 0
 	}
 	attrs := gpuSharing.Attributes()
-	return objectString(attrs, "client_type"), objectInt64(attrs, "max_client")
-}
-
-// migFields reads strategy and profile out of the mig block, treating a null
-// or unknown block as both fields absent.
-func migFields(mig types.Object) (strategy string, profile string) {
-	if mig.IsNull() || mig.IsUnknown() {
-		return "", ""
-	}
-	attrs := mig.Attributes()
-	return objectString(attrs, "strategy"), objectString(attrs, "profile")
+	return objectString(attrs, "mig_strategy"),
+		objectString(attrs, "mig_profile"),
+		objectString(attrs, "sharing_client_type"),
+		objectInt64(attrs, "max_client")
 }
 
 // migProfileForRequest is the mig profile as create-cluster wants it: a pool
@@ -787,50 +784,19 @@ func migProfileForRequest(profile string) string {
 }
 
 // gpuSharingObjectValue builds the gpu_sharing state value read back from the
-// GPU-software endpoint. Left null when the API reports no sharing at all, so
-// a config that never set gpu_sharing does not see a permanent diff.
-func gpuSharingObjectValue(clientType string, maxClient int64) types.Object {
-	if clientType == "" && maxClient == 0 {
+// GPU-software endpoint. Left null when the API reports neither MIG nor
+// sharing, so a config that never set gpu_sharing does not see a permanent
+// diff.
+func gpuSharingObjectValue(migStrategy, migProfile, clientType string, maxClient int64) types.Object {
+	if migStrategy == "" && migProfile == "" && clientType == "" && maxClient == 0 {
 		return types.ObjectNull(gpuSharingAttrTypes)
 	}
 	return types.ObjectValueMust(gpuSharingAttrTypes, map[string]attr.Value{
-		"client_type": types.StringValue(clientType),
-		"max_client":  types.Int64Value(maxClient),
+		"mig_strategy":        stringOrNull(migStrategy),
+		"mig_profile":         stringOrNull(migProfile),
+		"sharing_client_type": stringOrNull(clientType),
+		"max_client":          types.Int64Value(maxClient),
 	})
-}
-
-// migObjectValue builds the mig state value read back from the GPU-software
-// endpoint. Left null when the API reports no MIG configuration.
-func migObjectValue(strategy, profile string) types.Object {
-	if strategy == "" && profile == "" {
-		return types.ObjectNull(migAttrTypes)
-	}
-	return types.ObjectValueMust(migAttrTypes, map[string]attr.Value{
-		"strategy": types.StringValue(strategy),
-		"profile":  types.StringValue(profile),
-	})
-}
-
-// softwareToJson converts the software block into its request representation.
-// Returns nil when the block is absent so the field is omitted entirely.
-func softwareToJson(software types.Object) *SoftwareJson {
-	if software.IsNull() || software.IsUnknown() {
-		return nil
-	}
-
-	attrs := software.Attributes()
-	out := &SoftwareJson{
-		SoftwareType:    objectString(attrs, "software_type"),
-		SoftwareVersion: objectString(attrs, "software_version"),
-	}
-
-	// The MIG strategy is meaningful only for the GPU operator; sending it
-	// alongside another software type would be wrong.
-	if out.SoftwareType == softwareTypeGpuOperator {
-		out.ClusterMigStrategy = objectString(attrs, "cluster_mig_strategy")
-	}
-
-	return out
 }
 
 // remapPools
@@ -911,8 +877,7 @@ func (r *resourceManagedGpuCluster) remapPools(ctx context.Context, vpcId, platf
 		return nil, err
 	}
 
-	sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
-	migStrategy, migProfile := migFields(item.Mig)
+	migStrategy, migProfile, sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
 
 	newItem := &managedGpuClusterPoolJson{
 		WorkerPoolID:           workerPoolID,
@@ -1105,7 +1070,6 @@ func (r *resourceManagedGpuCluster) DiffPool(ctx context.Context, from *managedG
 			!f.Tags.Equal(t.Tags) ||
 			!f.GpuDriver.Equal(t.GpuDriver) ||
 			!f.GpuSharing.Equal(t.GpuSharing) ||
-			!f.Mig.Equal(t.Mig) ||
 			!reflect.DeepEqual(userDefinedKvMap, userDefinedTvMap) ||
 			!reflect.DeepEqual(taintMap(f), taintMap(t)) {
 			return true
@@ -1274,14 +1238,18 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	// } else {
 	// state.EdgeGatewayId = types.StringNull()
 	// }
-	// edge_gateway_name and edge_gateway_id
+	// edge_gateway_name and edge_gateway_id. A cluster without a gateway (every
+	// OSP one, where these are cleared before create) reads back as the empty
+	// string rather than null: both attributes are Optional+Computed, and a
+	// null state value cannot be carried across plans, so leaving them null
+	// makes every subsequent plan re-announce them as "(known after apply)".
 	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
 	if gatewayRef.Id != "" {
 		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
 		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
 	} else {
-		state.EdgeGatewayName = types.StringNull()
-		state.EdgeGatewayId = types.StringNull()
+		state.EdgeGatewayName = types.StringValue("")
+		state.EdgeGatewayId = types.StringValue("")
 	}
 
 	// is_running reflects the desired hibernation state (spec.hibernation),
@@ -1335,7 +1303,9 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	// cluster itself is readable without it (a cluster whose GPU-software
 	// install failed has no record there at all), so the blocks are just left
 	// null in that case.
-	gpuWorkers := fetchGpuSoftwareWorkers(ctx, r.mgpuClusterClient, r.vpcClient, r.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+	gpuSoftware := readGpuSoftwareState(ctx, r.mgpuClusterClient, r.vpcClient, r.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+	gpuWorkers := gpuSoftware.workers
+	state.Software = gpuSoftware.software
 
 	for _, worker := range data.Spec.Provider.Workers {
 		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, r.mgpuClusterClient, vpcId, platform, worker, &data)
@@ -1367,17 +1337,20 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 			GpuDriver: gpuDriverObjectValue(worker.Machine.Image.DriverInstallationType, worker.Machine.Image.GpuDriverVersion),
 			// worker_base
 			WorkerBase: types.BoolValue(worker.IsWorkerBase()),
-			// gpu_type, gpu_sharing, mig: filled in below from the
+			// gpu_type and gpu_sharing: filled in below from the
 			// GPU-software backend, the only place that reports them.
 			GpuType:    types.StringNull(),
 			GpuSharing: types.ObjectNull(gpuSharingAttrTypes),
-			Mig:        types.ObjectNull(migAttrTypes),
 		}
 
 		if gw, ok := gpuWorkers[worker.Name]; ok {
 			item.GpuType = stringOrNull(gw.GpuType)
-			item.GpuSharing = gpuSharingObjectValue(normalizeGpuNone(gw.SharingClientType), gw.MaxClient)
-			item.Mig = migObjectValue(normalizeGpuNone(gw.MigMode), normalizeGpuNone(gw.MigProfile))
+			item.GpuSharing = gpuSharingObjectValue(
+				normalizeGpuNone(gw.MigMode),
+				normalizeGpuNone(gw.MigProfile),
+				normalizeGpuNone(gw.SharingClientType),
+				gw.MaxClient,
+			)
 			// The GPU-software backend is the authoritative source for the
 			// driver too: the shoot reports machine.image.driverInstallationType
 			// as null even for pools that were created with one.

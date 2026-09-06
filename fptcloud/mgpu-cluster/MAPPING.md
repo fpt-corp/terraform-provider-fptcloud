@@ -82,10 +82,18 @@ dựa trên 1 request `POST .../hpc/v2/create-cluster` thật, response `200` v�
 | `vm_subnet` + `osp_network_id` | **Đã có map** | Không có field Terraform riêng — `network_id` vẫn là field duy nhất người dùng khai (có thể lấy từ data source `fptcloud_hpc_subnet` mới, xem [HPC subnet](#hpc-subnet-vm_subnet--osp_network_id)). Trên OSP, `MapTerraformToJson` tự gọi lại `GET /v2/vmware/vpc/{vpcId}/hpc/subnets`, tìm entry có `id == network_id`, lấy `subnet_cidr` → `vm_subnet` và `osp_network_id` để gửi kèm. Không phải input trực tiếp, không phải omit — là 1 lookup nội bộ theo `network_id`. |
 | `lbInternalNetwork` | **Đã có map** | Không có field Terraform riêng — dựng từ subnet backing `internal_subnet_lb` (trên OSP, giá trị đó là subnet ID). `MapTerraformToJson` gọi `findNetworkSubnetById` (đã có sẵn cho `config-internal-subnet-lb`), lấy `GET /v1/vmware/vpc/{vpcId}/network/subnets`, rồi map: `value`←`id`, `label`←`description`, `label4sending`←`name`, `cidr`←`defaultGateway`+`/`+`subnetPrefixLength`, `networkType`←`networkType` (`lbInternalNetworkFromSubnet` trong `types.go`). Bỏ qua khi `internal_subnet_lb` rỗng, hoặc trên platform khác OSP (ở đó `internal_subnet_lb` là CIDR chứ không phải subnet ID, không tra được theo cách này). |
 | `pools[].gpuType` | **Đã có map (2 chiều)** | Field Terraform `pools[].gpu_type` (Optional string, validate theo `A100`/`A30`/`H100`/`H200`). Gửi lên qua `managedGpuClusterPoolJson.GpuType` (json tag `gpuType`); đọc lại từ API GPU software — xem [GPU software](#gpu-software-api-thu-2-khi-create). |
-| `pools[].migProfile` | **Đã có map (2 chiều)** | Nay nằm trong block `pools[].mig { strategy, profile }` (không còn là field rời `mig_profile`). Gửi lên qua `MigProfile` (json tag `migProfile`) + `WorkerMigStrategy` (json tag `workerMigStrategy`); đọc lại từ API GPU software. |
-| `pools[].workerMigStrategy` | **Đã có map** | `pools[].mig.strategy` — `NONE`/`SINGLE`/`MIXED`. |
-| `pools[].sharingClient` | **Đã có map** | `pools[].gpu_sharing.client_type` — `NONE`/`MPS`/`TIMESLICING`. |
-| `pools[].maxClient` | **Đã có map** | Chuyển từ field rời `max_client` vào `pools[].gpu_sharing.max_client` (chỉ có nghĩa cùng `client_type`). |
+| `pools[].migProfile` | **Đã có map (2 chiều)** | `pools[].gpu_sharing.mig_profile`. Gửi lên qua `MigProfile` (json tag `migProfile`); đọc lại từ API GPU software. |
+| `pools[].workerMigStrategy` | **Đã có map** | `pools[].gpu_sharing.mig_strategy` — `NONE`/`SINGLE`/`MIXED`. |
+| `pools[].sharingClient` | **Đã có map** | `pools[].gpu_sharing.sharing_client_type` — `NONE`/`MPS`/`TIMESLICING`. |
+| `pools[].maxClient` | **Đã có map** | `pools[].gpu_sharing.max_client`. |
+
+> **`gpu_sharing` gộp 4 field.** Cả MIG lẫn client sharing nằm chung 1 block
+> `pools[].gpu_sharing { mig_strategy, mig_profile, sharing_client_type, max_client }`
+> — trước đây tách thành 2 block `gpu_sharing` + `mig`. Lý do gộp: 4 field ràng
+> buộc lẫn nhau và API yêu cầu/cấm chúng theo cặp (`mig_profile` chỉ có nghĩa
+> cùng `mig_strategy`, `max_client` chỉ có nghĩa cùng `sharing_client_type`),
+> nên để chung 1 chỗ dễ đọc hơn. Hai nửa vẫn độc lập: khai được MIG mà không
+> khai sharing, hoặc ngược lại.
 | `hps` | **Đã có map (tạm)** | Không có field Terraform — `managedGpuClusterJson.Hps interface{}` (không `omitempty`) luôn serialize thành `"hps": null`, khớp giá trị null gửi trong request thật. Ý nghĩa của field vẫn chưa xác nhận với backend; giữ `null` cố định cho tới khi có xác nhận. |
 
 ## Body Swagger gốc (để đối chiếu)
@@ -477,6 +485,110 @@ object toàn `NONE` — nếu không sẽ diff vĩnh viễn.
 **Xoá (Delete)** — theo SRS 5.2, `DELETE .../gpu-clusters/{clusterName}?tenant_id=...`
 chỉ chạy **sau khi** xoá cluster thành công.
 
+### GPU software / operator
+
+Field Terraform `gpu_software` là **Set**, mỗi phần tử là 1 operator — không
+phải 1 block đơn như trước (tên cũ là `software`). Lý do: 1 cluster chạy được nhiều operator cùng lúc,
+đúng như bảng "GPU Software Information" của console (có nút Add thêm dòng), và
+API mô hình hoá bằng map `operator_version` key theo loại operator.
+
+```hcl
+gpu_software = [
+  {
+    software_type        = "gpu_operator"
+    software_version     = "v25.10.1"
+    cluster_mig_strategy = "single"
+  },
+  {
+    software_type        = "network_operator"
+    software_version     = "v24.10.1"
+    cluster_mig_strategy = null # chỉ gpu_operator mới có
+  },
+]
+```
+
+`cluster_mig_strategy` phải khai `null` cho operator khác `gpu_operator`:
+Terraform bắt buộc mọi thuộc tính của object type phải có mặt, và provider này
+chạy protocol v5 nên không dùng được `SetNestedAttribute` (nơi nested attribute
+mới thực sự optional được).
+
+| Terraform | JSON (API GPU software) |
+|---|---|
+| `gpu_software[].software_type` | key của `operator_version` |
+| `gpu_software[].software_version` | value của `operator_version` |
+| `gpu_software[].cluster_mig_strategy` | `mig_strategy` (cấp cluster, **upper-case**: `single` → `SINGLE`) |
+
+**Không nằm trong body create-cluster.** Trước đây `MapTerraformToJson` có gửi
+`software` kèm create-cluster; đã bỏ — request thật của console không có field
+này, operator được cài bằng API GPU software gọi ngay sau đó.
+
+**Sửa được sau khi tạo cluster** (Portal xác nhận, kèm chỉ dẫn code UI):
+
+| Thao tác | Cách làm |
+|---|---|
+| Đổi version operator | Sửa `software_version` của entry |
+| Đổi MIG strategy | Sửa `cluster_mig_strategy` của entry `gpu_operator` |
+| Thêm operator | Thêm entry mới vào list |
+| Gỡ operator | Bỏ entry khỏi list |
+
+Tất cả đi qua **một** endpoint duy nhất `PUT .../gpu-clusters/{clusterName}`
+(`syncGpuSoftware` trong `gpu_software.go`), gọi sau khi `configure-worker-cluster`
+xong — đúng thứ tự console dùng. Không có endpoint riêng cho từng thao tác.
+
+**Read-modify-write, bắt buộc.** Endpoint thay thế toàn bộ bản ghi, nên
+`syncGpuSoftware` phải GET trước (`fetchGpuSoftwareRaw`, decode ra
+`map[string]interface{}` chứ không phải struct), rồi chỉ thay đúng 2 field
+provider sở hữu (`operator_version`, `worker_groups`) + `mig_strategy`. Dựng
+body từ đầu bằng struct sẽ **xoá mất** những field API trả về mà provider chưa
+mô hình hoá.
+
+**Gỡ operator = gán `""`, KHÔNG xoá key.** Đây là chi tiết dễ sai nhất: console
+gỡ operator bằng `body.operator_version[name] = ''` rồi PUT, chứ không
+`delete` key. Nếu xoá key, backend giữ nguyên operator đang cài. Vì vậy
+`syncGpuSoftware` khởi tạo map từ **toàn bộ key backend đang có** (gán `""`),
+rồi mới ghi đè bằng những gì config khai. Xác minh thật trên cluster
+`mycluster-2l8v7svf`: cài `gpu_operator` + `network_operator`, rồi bỏ
+`network_operator` khỏi `.tf` → backend trả về
+`{"gpu_operator": "v25.10.1", "network_operator": "", ...}`, đúng như mong đợi.
+
+Chiều đọc lại (`softwareSetValue`) bỏ qua mọi entry có version rỗng, nên state
+chỉ liệt kê operator thực sự đang cài. Cluster không có operator nào đọc ra
+`null` (không phải set rỗng), để config chưa từng khai `software` không bị diff
+vĩnh viễn.
+
+**`activate` KHÔNG nằm trong luồng save.** Nó chỉ là cơ chế self-heal: khi GET
+gpu-software trả **404** (cluster tồn tại nhưng chưa có bản ghi GPU software —
+đúng tình huống create-cluster thành công nhưng install GPU software lỗi),
+console tự gọi `POST .../gpu-clusters/{name}/activate` rồi refetch.
+`readGpuSoftwareState` làm y hệt. Body activate chỉ có 4 field
+(`name`, `infra_type`, `region`, `tenant_id`), khác hẳn body install.
+
+**Validate theo catalog thật, không hardcode** (`validateSoftware`). Trước đây
+danh sách loại operator + version là hằng số trong `validations.go` — đúng ở
+thời điểm viết nhưng sẽ lệch khi FPT thêm version mới. Nay gọi
+`GET /v2/xplat/fke-gpu/common/vpc/{vpcId}/operator-versions`
+(`fetchOperatorVersions`), giống cách `gpu_driver` đã validate qua
+`gpu-drivers`:
+
+```json
+{
+  "gpu_operator":     { "software_version": ["v25.10.1", "v24.9.1", "v24.3.0"] },
+  "network_operator": { "software_version": ["v24.10.1", "v23.4.0"] },
+  "slurm_operator":   { "software_version": ["2.0.5", "1.15.3", "1.14.10"] },
+  "vgpu_scheduler":   { "software_version": ["2.8.0", "2.5.2", "2.5.0"] }
+}
+```
+
+Quy tắc: mỗi `software_type` chỉ được xuất hiện 1 lần (API key theo loại), type
+phải là key catalog trả về, version phải nằm trong `software_version` của loại
+đó, `cluster_mig_strategy` bắt buộc với `gpu_operator` và bị cấm với các loại
+khác. Validate chạy ở **cả create lẫn update** (operator sửa được sau khi tạo
+cluster nên không thể chỉ check lúc tạo).
+
+Đã xác minh thật: khai `network_operator` với version `v25.10.1` (version của
+`gpu_operator`) → apply lỗi rõ ràng `software_version for network_operator must
+be one of: v24.10.1, v23.4.0` — danh sách lấy từ API, không phải hằng số.
+
 **Tính không nguyên tử** — 2 lời gọi tới 2 hệ thống, backend không có rollback
 (SRS 11.1). `Create` xử lý theo đúng khuyến nghị đó: nếu API 2 lỗi thì vẫn ghi
 cluster id vào state **trước** rồi mới trả lỗi, để Terraform không mất dấu
@@ -766,6 +878,13 @@ mới từ body request thật này.
    drift. Nghĩa là nếu cần cơ chế "đổi `gpu_driver` → xoá pool cũ + tạo pool
    mới", hạ tầng để làm điều đó **đã có sẵn**, chỉ còn chờ xác nhận ở đoạn
    trên là có thật sự cần hay không.
+
+5. ~~**Block `software` có sửa được sau khi tạo cluster không?**~~ **Đã có câu
+   trả lời từ Portal — không còn là câu hỏi.** Xem [Software /
+   operator](#software--operator) để biết chi tiết đã triển khai. Tóm tắt:
+   **sửa được** (tab Essential Properties → "GPU Software Information", có
+   Edit/Remove/Add), dùng chính `PUT .../gpu-clusters/{name}` theo kiểu
+   read-modify-write, **không** gọi kèm `activate`.
 
 ## Kết quả rà soát field thừa/thiếu (đối chiếu trực tiếp code, không dựa tài liệu cũ)
 

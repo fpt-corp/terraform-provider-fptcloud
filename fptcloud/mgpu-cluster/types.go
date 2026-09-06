@@ -40,12 +40,13 @@ type managedGpuCluster struct {
 	// Bare-metal-only fields.
 	NetworkNodePrefix types.Int64  `tfsdk:"network_node_prefix"`
 	SshId             types.String `tfsdk:"ssh_key_id"`
-	Software          types.Object `tfsdk:"software"`
+	Software          types.Set    `tfsdk:"gpu_software"`
 }
 
-// Software is the operator installed on the cluster: one of the four types,
-// at one of the versions that type offers. Mirrors the "GPU information" step
-// of the console, where the user picks a single software.
+// Software is one operator installed on the cluster: which type, at which
+// version. A cluster can carry several at once — the console's "GPU Software
+// Information" table lists them with per-row Edit/Remove plus an Add button,
+// and the API models them as an operator_version map keyed by type.
 //
 // cluster_mig_strategy applies only when software_type is gpu_operator.
 type Software struct {
@@ -96,7 +97,6 @@ type managedGpuClusterPool struct {
 	Taints           types.Set    `tfsdk:"taints"`
 	GpuDriver        types.Object `tfsdk:"gpu_driver"`
 	GpuSharing       types.Object `tfsdk:"gpu_sharing"`
-	Mig              types.Object `tfsdk:"mig"`
 	GpuType          types.String `tfsdk:"gpu_type"`
 }
 
@@ -108,20 +108,17 @@ type GpuDriver struct {
 	Version          types.String `tfsdk:"version"`
 }
 
-// GpuSharing groups how a pool's GPUs are shared between clients: the sharing
-// strategy and how many clients may share one GPU. max_client lives here
-// rather than at pool level because it is only meaningful together with
-// client_type (0 when sharing is NONE, 2-48 otherwise).
+// GpuSharing groups everything about how a pool's GPUs are divided up: MIG
+// partitioning (strategy plus the profile to partition into) and client
+// sharing (strategy plus how many clients share one GPU). The four fields
+// constrain each other — max_client is only meaningful alongside
+// sharing_client_type, mig_profile only alongside mig_strategy — and the API
+// requires or forbids them together, so they belong in one block.
 type GpuSharing struct {
-	ClientType types.String `tfsdk:"client_type"`
-	MaxClient  types.Int64  `tfsdk:"max_client"`
-}
-
-// Mig groups the pool's MIG (Multi-Instance GPU) partitioning: the strategy
-// and, for SINGLE/MIXED, the profile the GPUs are partitioned into.
-type Mig struct {
-	Strategy types.String `tfsdk:"strategy"`
-	Profile  types.String `tfsdk:"profile"`
+	MigStrategy       types.String `tfsdk:"mig_strategy"`
+	MigProfile        types.String `tfsdk:"mig_profile"`
+	SharingClientType types.String `tfsdk:"sharing_client_type"`
+	MaxClient         types.Int64  `tfsdk:"max_client"`
 }
 
 type KV struct {
@@ -253,6 +250,12 @@ type managedGpuClusterPoolJson struct {
 	IsOthers           bool `json:"isOthers"`
 	IsEnableAutoRepair bool `json:"isEnableAutoRepair"`
 	WorkerBase         bool `json:"worker_base"`
+}
+
+// operatorVersionEntry is one operator's entry in the operator-versions
+// catalog: the versions that operator can be installed at.
+type operatorVersionEntry struct {
+	SoftwareVersion []string `json:"software_version"`
 }
 
 // gpuSoftwareRequest is the body of the GPU-software endpoints

@@ -61,7 +61,7 @@ output "cluster_pools" {
 - `is_running` (Boolean) Whether the cluster is running (optional)
 - `network_node_prefix` (Number) Node network prefix length (optional)
 - `pools` (Block List) (see [below for nested schema](#nestedblock--pools))
-- `software` (Attributes) Software installed on the cluster: which operator, at which version (see [below for nested schema](#nestedatt--software))
+- `gpu_software` (Set of Object) Operators installed on the cluster, one entry per operator (see [below for nested schema](#nestedatt--gpu_software))
 - `ssh_key_id` (String) SSH key ID to install on the nodes — e.g. from the fptcloud_ssh data source. ssh_name and ssh_public_key are resolved from this automatically
 
 ### Read-Only
@@ -99,12 +99,17 @@ Optional:
 - `end` (String) Cron expression for when hibernation should end
 - `location` (String) Timezone for the hibernation schedule (e.g., Asia/Bangkok)
 
-<a id="nestedatt--software"></a>
-### Nested Schema for `software`
+<a id="nestedatt--gpu_software"></a>
+### Nested Schema for `gpu_software`
 
-- `software_type` (String) Software to install: gpu_operator, network_operator, slurm_operator, or vgpu_scheduler
-- `software_version` (String) Version of the selected software
-- `cluster_mig_strategy` (String) MIG strategy (single or mixed); only for software_type gpu_operator
+Each entry:
+
+- `software_type` (String) Operator type: gpu_operator, network_operator, slurm_operator, or vgpu_scheduler
+- `software_version` (String) Version of that operator
+- `cluster_mig_strategy` (String) MIG strategy (single or mixed); null except on gpu_operator
+
+Operators the cluster does not have installed are omitted from the set — the
+API reports them with an empty version rather than dropping them.
 
 <a id="nestedblock--pools"></a>
 ### Nested Schema for `pools`
@@ -126,12 +131,11 @@ Optional:
 - `tags` (List of String) List of tag IDs for the worker pool (optional)
 - `kv` (List of Map of String) Label for the pool (optional)
 - `gpu_driver` (Attributes) GPU driver selection for the pool (optional) (see [below for nested schema](#nestedatt--pools--gpu_driver))
-- `gpu_sharing` (Attributes) How the pool's GPUs are shared between clients (optional) (see [below for nested schema](#nestedatt--pools--gpu_sharing))
-- `mig` (Attributes) MIG partitioning for the pool (optional) (see [below for nested schema](#nestedatt--pools--mig))
+- `gpu_sharing` (Attributes) How the pool's GPUs are divided up: MIG partitioning and client sharing (optional) (see [below for nested schema](#nestedatt--pools--gpu_sharing))
 
-`gpu_type`, `gpu_sharing` and `mig` are read from the GPU-software backend
-rather than from the cluster itself. A cluster whose GPU-software install never
-completed has no record there, in which case all three come back null.
+`gpu_type` and `gpu_sharing` are read from the GPU-software backend rather than
+from the cluster itself. A cluster whose GPU-software install never completed
+has no record there, in which case both come back null.
 
 <a id="nestedatt--pools--gpu_driver"></a>
 ### Nested Schema for `pools.gpu_driver`
@@ -142,11 +146,7 @@ completed has no record there, in which case all three come back null.
 <a id="nestedatt--pools--gpu_sharing"></a>
 ### Nested Schema for `pools.gpu_sharing`
 
-- `client_type` (String) GPU sharing strategy: NONE, MPS, or TIMESLICING
-- `max_client` (Number) Clients sharing one GPU: 0 when client_type is NONE, 2-48 otherwise
-
-<a id="nestedatt--pools--mig"></a>
-### Nested Schema for `pools.mig`
-
-- `strategy` (String) MIG strategy: NONE, SINGLE, or MIXED
-- `profile` (String) MIG profile the GPUs are partitioned into (e.g. all-1g.35gb)
+- `mig_strategy` (String) MIG strategy: NONE, SINGLE, or MIXED
+- `mig_profile` (String) MIG profile the GPUs are partitioned into (e.g. all-1g.35gb)
+- `sharing_client_type` (String) GPU sharing strategy: NONE, MPS, or TIMESLICING
+- `max_client` (Number) Clients sharing one GPU: 0 when sharing_client_type is NONE, 2-48 otherwise
