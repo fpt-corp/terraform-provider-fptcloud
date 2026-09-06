@@ -608,6 +608,12 @@ type managedGpuClusterEditWorker struct {
 	K8sVersion        string                       `json:"k8s_version"`
 	TypeConfigure     string                       `json:"type_configure"`
 	CurrentNetworking string                       `json:"currentNetworking"`
+	// SshName and SshId carry the cluster's existing SSH key forward. They are
+	// not optional: leaving them out makes the backend mint a brand new key for
+	// the cluster, replacing the one it was created with. Confirmed by live
+	// testing on both API families.
+	SshName string `json:"ssh_name"`
+	SshId   string `json:"ssh_id"`
 }
 
 // HibernationSchedule represents a single hibernation schedule

@@ -221,6 +221,12 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 			item.GpuType = stringOrNull(gw.GpuType)
 			item.GpuSharing = gpuSharingObjectValue(normalizeGpuNone(gw.SharingClientType), gw.MaxClient)
 			item.Mig = migObjectValue(normalizeGpuNone(gw.MigMode), normalizeGpuNone(gw.MigProfile))
+			// The GPU-software backend is the authoritative source for the
+			// driver too: the shoot reports machine.image.driverInstallationType
+			// as null even for pools that were created with one.
+			if driver := gpuDriverObjectValue(gw.DriverType, gw.DriverVersion); !driver.IsNull() {
+				item.GpuDriver = driver
+			}
 		}
 
 		pool = append(pool, item)

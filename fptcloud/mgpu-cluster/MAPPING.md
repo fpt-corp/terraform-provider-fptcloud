@@ -574,6 +574,32 @@ cả 3 field `ssh_id`/`ssh_name`/`ssh_public_key` trong body — giống hệt c
 `vm_subnet`/`osp_network_id` được tự động tra từ `network_id`. Không tìm thấy
 → lỗi rõ ràng.
 
+**Scope: cluster, không phải worker pool.** Về mô hình, SSH key thuộc về cả
+cluster — mọi node dùng chung 1 key, và không có API nào đổi key của cluster
+đã tạo. Vì vậy `ssh_key_id` là **Required + ForceNew**
+(`RequiresReplace`, `TopFields` trong `utils.go`): đổi giá trị thì Terraform
+báo destroy + tạo lại cluster mới, chứ không cố update tại chỗ. Đối lập với
+`internal_subnet_lb` — cũng Required, cũng cấp cluster, nhưng có API update
+riêng nên **không** ForceNew (`TestClusterScopedFieldsForceReplacement` chốt
+đúng cặp đối lập này).
+
+Lưu ý shape response: backend **lưu** key ở `workers[].providerConfig.sshKey`
+(per-pool) chứ không phải ở cấp cluster như mô hình Terraform. `InternalRead`
+đọc từ `workers[0].providerConfig.sshKey.id` và expose thành 1 field cấp
+cluster.
+
+**Bug đã sửa — update pool làm mất SSH key của cluster.** Body
+`configure-worker-cluster` bắt buộc phải mang theo `ssh_name`/`ssh_id` hiện
+tại của cluster (SRS mục 4.1). `managedGpuClusterEditWorker` trước đây **thiếu
+2 field này**, nên mỗi lần update worker pool (kể cả chỉ scale số node),
+backend sinh 1 SSH key hoàn toàn mới cho cluster. Hậu quả dây chuyền: vì
+`ssh_key_id` là ForceNew, state lệch key khiến `terraform plan` lần sau đòi
+**phá huỷ cả cluster** dù người dùng không hề đổi gì. Biểu hiện ngay lúc apply
+là lỗi `Provider produced inconsistent result after apply: .ssh_key_id`.
+Nay `updateWorkerPools` đọc `d.Data.Spec.Provider.Workers[0].ProviderConfig.SshKey`
+rồi gửi kèm, đã verify bằng nhiều lần update thật (scale, thêm/xoá pool, đổi
+labels): key giữ nguyên, không còn drift.
+
 ### lbInternalNetwork
 
 Không có field Terraform riêng — dựng ngầm từ subnet mà `internal_subnet_lb`
@@ -709,31 +735,37 @@ mới từ body request thật này.
    cho biết zone đúng của từng region còn lại (hoặc 1 API tra `region → zone`
    thay vì hardcode) để bổ sung vào `gpuDriverZoneForRegion`.
 
-4. **`gpu_driver` là immutable — cần cơ chế xoá/tạo lại pool thay vì update.**
-   Xác nhận qua test thật trên cluster `mgpu-cluster-01-z0tdfcyl` (2 lần gọi
-   `configure-worker-cluster`/`ConfigWorker` để đổi `driverInstallationType`/
-   `gpuDriverVersion`/`gpuTemplateVersion` trên 1 pool đã tồn tại): API nhận
-   request `200` nhưng **không áp dụng** driver info (đọc lại sau apply vẫn là
-   giá trị cũ), và có side effect ngoài ý muốn — **tự sinh SSH key mới** cho
-   pool đó, vì payload endpoint này không có field `sshKey` để giữ nguyên key
-   cũ. Anh Kiên xác nhận (kèm ảnh UI console FPT Cloud: form "Worker Group",
-   mục GPU Driver chỉ xuất hiện ở form **tạo mới**, không có ở form **sửa**)
-   đây là hành vi thiết kế đúng: `gpu_driver` chỉ set được lúc tạo pool, không
-   sửa được sau đó.
+4. **`gpu_driver` có thật sự immutable không?** Kết luận trước đây ("update
+   không áp dụng driver, và tự đổi SSH key") dựa trên 2 quan sát mà **cả hai
+   nay đã biết là do lỗi phía provider**, nên câu hỏi cần đặt lại từ đầu:
 
-   Nguyện vọng: khi `gpu_driver` của 1 pool đổi trong `.tf`, muốn Terraform
-   **xoá pool đó và tạo pool khác thay thế trong cùng cluster** (không phá huỷ
-   toàn bộ cluster) — vì "1 cluster có thể có nhiều worker pool". Đã tìm trong
-   code hiện có (`utils.go`): cơ chế "tạo pool mới" đã tồn tại (dòng ~748,
-   `remapPools` — tên pool rỗng/`worker-new`/`WorkerPoolID` null hoặc unknown
-   thì `worker_pool_id` gửi `null`, backend tạo pool mới), nhưng **chưa rõ**
-   `configure-worker-cluster` có hỗ trợ xoá 1 pool khỏi cluster hay không (vd.
-   gửi `pools[]` không còn liệt kê pool đó nữa — có bị backend hiểu là "xoá
-   pool" không, hay chỉ đơn giản bị bỏ qua/giữ nguyên?), và có API xoá 1 worker
-   pool riêng biệt không. Cần anh Kiên xác nhận cơ chế đúng trước khi code (để
-   tránh lặp lại sai lầm như các API khác đã bị đoán nhầm catalog trước đây)
-   rồi mới cài đặt: `DiffPool` phát hiện `gpu_driver` đổi → coi đó là
-   xoá-pool-cũ + tạo-pool-mới thay vì gọi update in-place.
+   - *"Tự sinh SSH key mới"* — **là bug của provider, đã sửa.** Body
+     `configure-worker-cluster` thiếu `ssh_name`/`ssh_id` (SRS mục 4.1 ghi rõ
+     là bắt buộc), nên backend sinh key mới. Nay gửi kèm rồi, đã verify bằng
+     nhiều lần update thật: key giữ nguyên. Xem [SSH key](#ssh-key).
+   - *"Đọc lại sau apply vẫn là giá trị cũ"* — **đọc nhầm nguồn.** Shoot API
+     (`get-shoot-specific`) trả `machine.image.driverInstallationType: null`
+     và `gpuDriverVersion: null` **kể cả với pool được tạo bằng
+     `PRE_INSTALL`** — xác minh trực tiếp trên cluster `mycluster-h12kg0f2`.
+     Nguồn đúng là API GPU software, nơi trả đầy đủ `driver_type:
+     "PRE_INSTALL"`, `driver_version: "550.90.07"`. `InternalRead` nay ưu tiên
+     nguồn này.
+
+   Anh Kiên vẫn xác nhận `gpu_driver` là immutable theo thiết kế (kèm ảnh UI
+   console: form "Worker Group" chỉ có mục GPU Driver ở form **tạo mới**,
+   không có ở form **sửa**) — nên nhiều khả năng kết luận cuối vẫn đúng, chỉ
+   là 2 bằng chứng ban đầu thì không có giá trị. **Chưa test lại** việc đổi
+   `gpu_driver` trên pool đã tồn tại sau khi sửa 2 lỗi trên; cần làm để biết
+   backend thật sự bỏ qua hay có áp dụng.
+
+   Còn **cơ chế xoá pool thì đã xác minh được, không cần hỏi nữa**:
+   `configure-worker-cluster` đúng là semantics thay thế toàn bộ như SRS mục
+   4.2 mô tả — bỏ 1 pool khỏi mảng `pools[]` là backend xoá pool đó. Đã test
+   thật trên `mycluster-h12kg0f2`: thêm pool `worker-pool2`, rồi xoá khỏi
+   `.tf`, apply → pool biến mất, cluster và pool còn lại nguyên vẹn, không
+   drift. Nghĩa là nếu cần cơ chế "đổi `gpu_driver` → xoá pool cũ + tạo pool
+   mới", hạ tầng để làm điều đó **đã có sẵn**, chỉ còn chờ xác nhận ở đoạn
+   trên là có thật sự cần hay không.
 
 ## Kết quả rà soát field thừa/thiếu (đối chiếu trực tiếp code, không dựa tài liệu cũ)
 

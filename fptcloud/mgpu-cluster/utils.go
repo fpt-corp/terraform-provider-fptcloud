@@ -1378,6 +1378,12 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 			item.GpuType = stringOrNull(gw.GpuType)
 			item.GpuSharing = gpuSharingObjectValue(normalizeGpuNone(gw.SharingClientType), gw.MaxClient)
 			item.Mig = migObjectValue(normalizeGpuNone(gw.MigMode), normalizeGpuNone(gw.MigProfile))
+			// The GPU-software backend is the authoritative source for the
+			// driver too: the shoot reports machine.image.driverInstallationType
+			// as null even for pools that were created with one.
+			if driver := gpuDriverObjectValue(gw.DriverType, gw.DriverVersion); !driver.IsNull() {
+				item.GpuDriver = driver
+			}
 		}
 
 		// kv
@@ -2030,12 +2036,27 @@ func (r *resourceManagedGpuCluster) updateWorkerPools(ctx context.Context, from 
 		pools = append(pools, item)
 	}
 
-	// Prepare request body
+	// The cluster's current SSH key has to be echoed back: without it the
+	// backend mints a brand new key for the cluster, silently replacing the one
+	// it was created with. Verified twice on live clusters, on both API
+	// families — omitting the pair fails the apply with an inconsistent-result
+	// error on ssh_key_id.
+	var sshName, sshId string
+	if workers := d.Data.Spec.Provider.Workers; len(workers) > 0 && workers[0] != nil {
+		sshName = workers[0].ProviderConfig.SshKey.Name
+		sshId = workers[0].ProviderConfig.SshKey.ID
+	}
+
+	// currentNetworking echoes the cluster's node network back. Live testing
+	// showed the backend tolerates its absence for pool operations (scale, add,
+	// remove), but the console always sends it and it costs nothing to match.
 	body := managedGpuClusterEditWorker{
 		K8sVersion:        to.K8SVersion.ValueString(),
 		CurrentNetworking: d.Data.Spec.Networking.Nodes,
 		Pools:             pools,
 		TypeConfigure:     "configure",
+		SshName:           sshName,
+		SshId:             sshId,
 	}
 
 	// Call API to configure workers
