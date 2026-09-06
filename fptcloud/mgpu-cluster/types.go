@@ -305,17 +305,17 @@ type gpuSoftwareWorkerJson struct {
 // get-shoot-specific endpoint backing the rest of the read does not report
 // them.
 type gpuSoftwareReadResponse struct {
-	ClusterId         string                    `json:"cluster_id"`
-	Name              string                    `json:"name"`
-	Region            string                    `json:"region"`
-	InfraType         string                    `json:"infra_type"`
-	VpcId             string                    `json:"vpc_id"`
-	TenantId          string                    `json:"tenant_id"`
-	KubernetesVersion string                    `json:"kubernetes_version"`
-	OperatorVersion   map[string]string         `json:"operator_version"`
-	MigStrategy       string                    `json:"mig_strategy"`
-	WorkerGroups      []gpuSoftwareWorkerRead   `json:"worker_groups"`
-	Status            string                    `json:"status"`
+	ClusterId         string                  `json:"cluster_id"`
+	Name              string                  `json:"name"`
+	Region            string                  `json:"region"`
+	InfraType         string                  `json:"infra_type"`
+	VpcId             string                  `json:"vpc_id"`
+	TenantId          string                  `json:"tenant_id"`
+	KubernetesVersion string                  `json:"kubernetes_version"`
+	OperatorVersion   map[string]string       `json:"operator_version"`
+	MigStrategy       string                  `json:"mig_strategy"`
+	WorkerGroups      []gpuSoftwareWorkerRead `json:"worker_groups"`
+	Status            string                  `json:"status"`
 }
 
 // gpuSoftwareWorkerRead is one entry of the GPU-software read response's

@@ -15,7 +15,6 @@ import (
 	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 	"time"
-	"unicode"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
@@ -1497,21 +1496,6 @@ func getClusterName(name string) string {
 	last := indices[len(indices)-1]
 	clusterName := string([]rune(name)[:last])
 	return clusterName
-}
-
-// parseNumber
-func parseNumber(s string) int {
-	out := ""
-	for _, c := range s {
-		if unicode.IsDigit(c) {
-			out += string(c)
-		}
-	}
-	if out == "" {
-		out = "0"
-	}
-	f, _ := strconv.Atoi(out)
-	return f
 }
 
 // errorCallingApi
