@@ -271,11 +271,11 @@ func PoolFields() map[string]schema.Attribute {
 		"name", "hpc_flavor_id",
 	}
 	// Optional string fields
-	optionalStrings := []string{"network_name", "network_id", "container_runtime", "hpc_flavor_name", "gpu_type", "mig_profile"}
+	optionalStrings := []string{"network_name", "network_id", "container_runtime", "hpc_flavor_name", "gpu_type"}
 	// Required int fields
 	requiredInts := []string{"hpc_number_server"}
 	// Optional int fields
-	optionalInts := []string{"max_client"}
+	optionalInts := []string{}
 	// Required bool fields
 	requiredBools := []string{}
 	// Optional bool fields
@@ -362,15 +362,26 @@ func PoolFields() map[string]schema.Attribute {
 		},
 	}
 
-	// gpu_driver is optional and not computed: when the user does not set it,
-	// nothing is sent to the API for either field.
+	// The three GPU blocks are optional and not computed: when the user does
+	// not set one, nothing is sent to the API for any of its fields. They
+	// mirror how the console splits GPU configuration for a worker group:
+	// which driver, how GPUs are shared, and how they are partitioned.
 	poolLevelAttributes["gpu_driver"] = schema.ObjectAttribute{
-		Optional:    true,
-		Description: descriptions["gpu_driver"],
-		AttributeTypes: map[string]attr.Type{
-			"installation_type": types.StringType,
-			"version":           types.StringType,
-		},
+		Optional:       true,
+		Description:    descriptions["gpu_driver"],
+		AttributeTypes: gpuDriverAttrTypes,
+	}
+
+	poolLevelAttributes["gpu_sharing"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["gpu_sharing"],
+		AttributeTypes: gpuSharingAttrTypes,
+	}
+
+	poolLevelAttributes["mig"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["mig"],
+		AttributeTypes: migAttrTypes,
 	}
 
 	return poolLevelAttributes
@@ -475,13 +486,16 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 			return &d
 		}
 
+		sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
+		migStrategy, migProfile := migFields(item.Mig)
+
 		newItem := &managedGpuClusterPoolJson{
 			HpcFlavorId:            item.HpcFlavorId.ValueString(),
 			HpcFlavorName:          item.HpcFlavorName.ValueString(),
 			HpcNumberServer:        item.HpcNumberServer.ValueInt64(),
 			WorkerPoolID:           &name,
 			WorkerBase:             item.WorkerBase.ValueBool(),
-			MaxClient:              item.MaxClient.ValueInt64(),
+			MaxClient:              maxClient,
 			GpuDriverVersion:       gpuDriverVersion,
 			DriverInstallationType: driverInstallationType,
 			GpuTemplateVersion:     gpuTemplateVersion,
@@ -491,13 +505,15 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 			IsOthers:               false,
 			// Bare metal pools are a fixed server count, so there is no
 			// min/max range to autoscale between.
-			AutoScale:        false,
-			IsDisplayGPU:     false,
-			ContainerRuntime: item.ContainerRuntime.ValueString(),
-			Kv:               kvs,
-			Taints:           taints,
-			GpuType:          item.GpuType.ValueString(),
-			MigProfile:       item.MigProfile.ValueString(),
+			AutoScale:         false,
+			IsDisplayGPU:      false,
+			ContainerRuntime:  item.ContainerRuntime.ValueString(),
+			Kv:                kvs,
+			Taints:            taints,
+			GpuType:           item.GpuType.ValueString(),
+			MigProfile:        migProfileForRequest(migProfile),
+			WorkerMigStrategy: migStrategy,
+			SharingClient:     sharingClient,
 		}
 
 		if item.NetworkName.ValueString() == "" && item.NetworkID.ValueString() == "" {
@@ -662,6 +678,15 @@ func objectString(attrs map[string]attr.Value, name string) string {
 	return v.ValueString()
 }
 
+// objectInt64 is objectString's counterpart for numeric attributes.
+func objectInt64(attrs map[string]attr.Value, name string) int64 {
+	v, ok := attrs[name].(types.Int64)
+	if !ok || v.IsNull() || v.IsUnknown() {
+		return 0
+	}
+	return v.ValueInt64()
+}
+
 // gpuDriverFields reads installation_type and version out of the gpu_driver
 // block, treating a null or unknown block as both fields absent.
 func gpuDriverFields(gpuDriver types.Object) (installationType string, version string) {
@@ -716,6 +741,73 @@ func gpuDriverObjectValue(installationType, version string) types.Object {
 	return types.ObjectValueMust(gpuDriverAttrTypes, map[string]attr.Value{
 		"installation_type": types.StringValue(installationType),
 		"version":           types.StringValue(version),
+	})
+}
+
+// gpuSharingAttrTypes is the gpu_sharing object's attribute type map.
+var gpuSharingAttrTypes = map[string]attr.Type{
+	"client_type": types.StringType,
+	"max_client":  types.Int64Type,
+}
+
+// migAttrTypes is the mig object's attribute type map.
+var migAttrTypes = map[string]attr.Type{
+	"strategy": types.StringType,
+	"profile":  types.StringType,
+}
+
+// gpuSharingFields reads client_type and max_client out of the gpu_sharing
+// block, treating a null or unknown block as both fields absent.
+func gpuSharingFields(gpuSharing types.Object) (clientType string, maxClient int64) {
+	if gpuSharing.IsNull() || gpuSharing.IsUnknown() {
+		return "", 0
+	}
+	attrs := gpuSharing.Attributes()
+	return objectString(attrs, "client_type"), objectInt64(attrs, "max_client")
+}
+
+// migFields reads strategy and profile out of the mig block, treating a null
+// or unknown block as both fields absent.
+func migFields(mig types.Object) (strategy string, profile string) {
+	if mig.IsNull() || mig.IsUnknown() {
+		return "", ""
+	}
+	attrs := mig.Attributes()
+	return objectString(attrs, "strategy"), objectString(attrs, "profile")
+}
+
+// migProfileForRequest is the mig profile as create-cluster wants it: a pool
+// with no MIG still carries a profile saying so ("all-disabled") rather than
+// omitting the field.
+func migProfileForRequest(profile string) string {
+	if profile == "" {
+		return gpuMigDisabled
+	}
+	return profile
+}
+
+// gpuSharingObjectValue builds the gpu_sharing state value read back from the
+// GPU-software endpoint. Left null when the API reports no sharing at all, so
+// a config that never set gpu_sharing does not see a permanent diff.
+func gpuSharingObjectValue(clientType string, maxClient int64) types.Object {
+	if clientType == "" && maxClient == 0 {
+		return types.ObjectNull(gpuSharingAttrTypes)
+	}
+	return types.ObjectValueMust(gpuSharingAttrTypes, map[string]attr.Value{
+		"client_type": types.StringValue(clientType),
+		"max_client":  types.Int64Value(maxClient),
+	})
+}
+
+// migObjectValue builds the mig state value read back from the GPU-software
+// endpoint. Left null when the API reports no MIG configuration.
+func migObjectValue(strategy, profile string) types.Object {
+	if strategy == "" && profile == "" {
+		return types.ObjectNull(migAttrTypes)
+	}
+	return types.ObjectValueMust(migAttrTypes, map[string]attr.Value{
+		"strategy": types.StringValue(strategy),
+		"profile":  types.StringValue(profile),
 	})
 }
 
@@ -819,12 +911,15 @@ func (r *resourceManagedGpuCluster) remapPools(ctx context.Context, vpcId, platf
 		return nil, err
 	}
 
+	sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
+	migStrategy, migProfile := migFields(item.Mig)
+
 	newItem := &managedGpuClusterPoolJson{
 		WorkerPoolID:           workerPoolID,
 		HpcFlavorId:            item.HpcFlavorId.ValueString(),
 		HpcFlavorName:          item.HpcFlavorName.ValueString(),
 		HpcNumberServer:        item.HpcNumberServer.ValueInt64(),
-		MaxClient:              item.MaxClient.ValueInt64(),
+		MaxClient:              maxClient,
 		NetworkID:              networkID,
 		NetworkName:            networkName,
 		DriverInstallationType: driverInstallationType,
@@ -835,7 +930,9 @@ func (r *resourceManagedGpuCluster) remapPools(ctx context.Context, vpcId, platf
 		Kv:                     kvs,
 		Taints:                 taints,
 		GpuType:                item.GpuType.ValueString(),
-		MigProfile:             item.MigProfile.ValueString(),
+		MigProfile:             migProfileForRequest(migProfile),
+		WorkerMigStrategy:      migStrategy,
+		SharingClient:          sharingClient,
 		// Bare metal pools are a fixed server count, so there is no min/max
 		// range to autoscale between.
 		AutoScale:    false,
@@ -998,12 +1095,6 @@ func (r *resourceManagedGpuCluster) DiffPool(ctx context.Context, from *managedG
 		f := fromPool[pool.WorkerPoolID.ValueString()]
 		t := toPool[pool.WorkerPoolID.ValueString()]
 
-		// Debug logging for MaxClient comparison
-		if f.MaxClient.ValueInt64() != t.MaxClient.ValueInt64() {
-			fmt.Printf("DEBUG: MaxClient changed from %d to %d for pool %s\n",
-				f.MaxClient.ValueInt64(), t.MaxClient.ValueInt64(), pool.WorkerPoolID.ValueString())
-		}
-
 		// Skip KV comparison for system-generated labels (like nvidia.com/device-plugin.config)
 		userDefinedKvMap := filterUserDefinedKV(kvMap(f))
 		userDefinedTvMap := filterUserDefinedKV(kvMap(t))
@@ -1012,8 +1103,9 @@ func (r *resourceManagedGpuCluster) DiffPool(ctx context.Context, from *managedG
 			f.HpcFlavorId != t.HpcFlavorId ||
 			f.WorkerBase != t.WorkerBase ||
 			!f.Tags.Equal(t.Tags) ||
-			f.MaxClient != t.MaxClient ||
 			!f.GpuDriver.Equal(t.GpuDriver) ||
+			!f.GpuSharing.Equal(t.GpuSharing) ||
+			!f.Mig.Equal(t.Mig) ||
 			!reflect.DeepEqual(userDefinedKvMap, userDefinedTvMap) ||
 			!reflect.DeepEqual(taintMap(f), taintMap(t)) {
 			return true
@@ -1237,6 +1329,14 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	// pools
 	apiPools := make([]*managedGpuClusterPool, 0)
 
+	// gpu_type, gpu_sharing and mig live in the GPU-software backend, not in
+	// the shoot: get-shoot-specific reports none of them. Read them here so a
+	// pool's GPU configuration round-trips. A failure is not fatal — the
+	// cluster itself is readable without it (a cluster whose GPU-software
+	// install failed has no record there at all), so the blocks are just left
+	// null in that case.
+	gpuWorkers := fetchGpuSoftwareWorkers(ctx, r.mgpuClusterClient, r.vpcClient, r.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+
 	for _, worker := range data.Spec.Provider.Workers {
 		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, r.mgpuClusterClient, vpcId, platform, worker, &data)
 		if e != nil {
@@ -1267,20 +1367,17 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 			GpuDriver: gpuDriverObjectValue(worker.Machine.Image.DriverInstallationType, worker.Machine.Image.GpuDriverVersion),
 			// worker_base
 			WorkerBase: types.BoolValue(worker.IsWorkerBase()),
-			// gpu_type, mig_profile: not exposed by the get-shoot-specific
-			// response, so there is no way to read them back. Always null.
+			// gpu_type, gpu_sharing, mig: filled in below from the
+			// GPU-software backend, the only place that reports them.
 			GpuType:    types.StringNull(),
-			MigProfile: types.StringNull(),
+			GpuSharing: types.ObjectNull(gpuSharingAttrTypes),
+			Mig:        types.ObjectNull(migAttrTypes),
 		}
 
-		// max_client
-		if worker.ProviderConfig.VGpuID != "" {
-			// Read MaxClient from addons configuration
-			maxClientFromAPI := r.MaxClientFromAddons(&data.Spec, worker.Name)
-			item.MaxClient = types.Int64Value(maxClientFromAPI)
-		} else {
-			// Non-GPU pools: set default values
-			item.MaxClient = types.Int64Value(0)
+		if gw, ok := gpuWorkers[worker.Name]; ok {
+			item.GpuType = stringOrNull(gw.GpuType)
+			item.GpuSharing = gpuSharingObjectValue(normalizeGpuNone(gw.SharingClientType), gw.MaxClient)
+			item.Mig = migObjectValue(normalizeGpuNone(gw.MigMode), normalizeGpuNone(gw.MigProfile))
 		}
 
 		// kv

@@ -9,9 +9,11 @@ import (
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_ssh "terraform-provider-fptcloud/fptcloud/ssh"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
+	path2 "github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -170,7 +172,20 @@ func (r *resourceManagedGpuCluster) Create(ctx context.Context, request resource
 
 	tflog.Info(ctx, "Created cluster with id "+slug)
 
+	// A bare-metal cluster is only half-created at this point: the GPU
+	// software (operator, driver, sharing, MIG) lives in a second backend and
+	// must be installed onto the cluster that was just made. The two calls are
+	// not atomic and the backend has no rollback, so from here on the cluster
+	// exists no matter what happens — every failure path below persists the
+	// id first, otherwise Terraform loses track of a live cluster.
+	gpuSoftwareErr := r.installGpuSoftware(ctx, &state, slug, platform, f.IsV2)
+
 	if _, err = r.InternalRead(ctx, slug, &state); err != nil {
+		if gpuSoftwareErr != nil {
+			response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error installing GPU software", gpuSoftwareErr.Error()))
+		}
+		state.Id = types.StringValue(slug)
+		response.State.SetAttribute(ctx, path2.Root("id"), slug)
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading cluster state", err.Error()))
 		return
 	}
@@ -180,6 +195,40 @@ func (r *resourceManagedGpuCluster) Create(ctx context.Context, request resource
 	if response.Diagnostics.HasError() {
 		return
 	}
+
+	if gpuSoftwareErr != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(
+			"Error installing GPU software",
+			"The cluster was created but its GPU software could not be installed: "+gpuSoftwareErr.Error()+
+				"\n\nThe cluster has been recorded in state. Run terraform apply again to retry installing the GPU software.",
+		))
+		return
+	}
+}
+
+// installGpuSoftware performs the second half of cluster creation. clusterName
+// is the real name create-cluster returned, which carries the random suffix
+// the backend appended — the GPU software is addressed by that name, not by
+// the id Terraform stores.
+func (r *resourceManagedGpuCluster) installGpuSoftware(ctx context.Context, state *managedGpuCluster, clusterName, platform string, isV2 bool) error {
+	tenant, err := r.vpcClient.GetTenant(ctx)
+	if err != nil {
+		return fmt.Errorf("error resolving tenant for GPU software installation: %w", err)
+	}
+	if tenant == nil || tenant.Id == "" {
+		return fmt.Errorf("could not resolve tenant id for tenant name %q", r.client.TenantName)
+	}
+
+	body := buildGpuSoftwareRequest(
+		state,
+		clusterName,
+		platform,
+		gpuSoftwareRegion(r.client.Region),
+		tenant.Id,
+		isV2,
+	)
+
+	return r.mgpuClusterClient.installGpuSoftware(ctx, state.VpcId.ValueString(), clusterName, platform, isV2, body)
 }
 
 func (r *resourceManagedGpuCluster) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) {
@@ -294,7 +343,36 @@ func (r *resourceManagedGpuCluster) Delete(ctx context.Context, request resource
 		return
 	}
 
+	// The GPU software is a separate backend and outlives the cluster unless
+	// it is deleted too, so this runs after — and only after — the cluster
+	// itself is gone, matching the console's ordering.
+	if err := r.deleteGpuSoftware(ctx, &state, clusterId, platform); err != nil {
+		tflog.Error(ctx, "Error deleting GPU software for cluster "+cluster+": "+err.Error())
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic(
+			"Error deleting GPU software",
+			"The cluster was deleted but its GPU software could not be removed: "+err.Error(),
+		))
+		return
+	}
+
 	tflog.Info(ctx, "Successfully deleted cluster "+cluster)
+}
+
+// deleteGpuSoftware removes the GPU software belonging to a cluster. Called
+// after the cluster's own delete succeeds.
+func (r *resourceManagedGpuCluster) deleteGpuSoftware(ctx context.Context, state *managedGpuCluster, clusterName, platform string) error {
+	tenant, err := r.vpcClient.GetTenant(ctx)
+	if err != nil {
+		return fmt.Errorf("error resolving tenant: %w", err)
+	}
+	if tenant == nil || tenant.Id == "" {
+		return fmt.Errorf("could not resolve tenant id for tenant name %q", r.client.TenantName)
+	}
+
+	return r.mgpuClusterClient.deleteGpuSoftware(
+		ctx, state.VpcId.ValueString(), clusterName, platform,
+		tenant.Id, requiresV2API(state.K8SVersion.ValueString()),
+	)
 }
 
 func (r *resourceManagedGpuCluster) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) {
@@ -359,4 +437,5 @@ func (r *resourceManagedGpuCluster) Configure(_ context.Context, request resourc
 	r.subnetClient = fptcloud_subnet.NewSubnetService(r.client)
 	r.sshClient = fptcloud_ssh.NewSSHKeyService(r.client)
 	r.tenancyClient = fptcloud_dfke.NewTenancyApiClient(r.client)
+	r.vpcClient = fptcloud_vpc.NewService(r.client)
 }

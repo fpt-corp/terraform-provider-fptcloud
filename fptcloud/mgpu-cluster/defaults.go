@@ -141,13 +141,8 @@ func SetDefaults(state *managedGpuCluster) {
 			}
 		}
 
-		// Handle MaxClient for GPU pools
-		if pool.MaxClient.IsNull() || pool.MaxClient.IsUnknown() {
-			pool.MaxClient = types.Int64Value(0)
-		}
-
-		// gpu_driver is left as-is: null when the user does not set it, so
-		// nothing is sent to the API for either of its fields.
+		// gpu_driver, gpu_sharing and mig are left as-is: null when the user
+		// does not set them, so nothing is sent to the API for their fields.
 	}
 
 	if state.IsRunning.IsNull() || state.IsRunning.IsUnknown() {
@@ -281,15 +276,10 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 		// Note: kv is a Set, so plan.Pools[i].Kv doesn't need any reordering
 		// here - Terraform compares Set values regardless of element order.
 		// Don't change null/unknown values - let them stay as they are
-		if plan.Pools[i].MaxClient.IsNull() || plan.Pools[i].MaxClient.IsUnknown() {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].MaxClient = state.Pools[i].MaxClient
-			} else {
-				plan.Pools[i].MaxClient = types.Int64Value(0)
-			}
-		}
-		// gpu_driver is left as-is: not computed, so a null plan value means
-		// the user genuinely left it unset (or is clearing it).
+		//
+		// gpu_driver, gpu_sharing and mig are left as-is: not computed, so a
+		// null plan value means the user genuinely left them unset (or is
+		// clearing them).
 		if plan.Pools[i].WorkerBase.IsNull() || plan.Pools[i].WorkerBase.IsUnknown() {
 			if i < len(state.Pools) && state.Pools[i] != nil {
 				plan.Pools[i].WorkerBase = state.Pools[i].WorkerBase

@@ -135,6 +135,15 @@ var ApiPath = struct {
 	ManagedGpuClusterK8sVersionsV2             func(vpcId string, platform string) string
 	ManagedGpuClusterGpuDrivers                func(vpcId string, driverType string, zone string, k8sVersion string) string
 	ManagedGpuClusterHpcSubnets                func(vpcId string, page int, pageSize int) string
+	ManagedGpuClusterGpuSoftwareInstall        func(vpcId string, clusterName string) string
+	ManagedGpuClusterGpuSoftwareInstallV2      func(vpcId string, clusterName string) string
+	ManagedGpuClusterGpuSoftwareGet            func(vpcId string, clusterName string, tenantId string, region string) string
+	ManagedGpuClusterGpuSoftwareGetV2          func(vpcId string, clusterName string, tenantId string, region string) string
+	ManagedGpuClusterGpuSoftwareDelete         func(vpcId string, clusterName string, tenantId string) string
+	ManagedGpuClusterGpuSoftwareDeleteV2       func(vpcId string, clusterName string, tenantId string) string
+	ManagedGpuClusterGpuSoftwareActivate       func(vpcId string, clusterName string) string
+	ManagedGpuClusterGpuSoftwareActivateV2     func(vpcId string, clusterName string) string
+	ManagedGpuClusterMigProfiles               func(vpcId string, gpuType string, migMode string) string
 
 	// GPU
 	GetGPUInfo func(vpcId string) string
@@ -784,6 +793,65 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v2/vmware/vpc/%s/hpc/subnets?page=%d&pageSize=%d",
 			vpcId, page, pageSize,
+		)
+	},
+	// GPU software (the second backend a bare-metal cluster lives in): installed
+	// right after create-cluster, read/updated alongside worker-pool changes,
+	// and deleted after the cluster itself. Note the path has no /m-fke segment.
+	// Each endpoint comes in a v1 and a v2 form, matching whichever API family
+	// the cluster itself was created with.
+	ManagedGpuClusterGpuSoftwareInstall: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterGpuSoftwareInstallV2: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterGpuSoftwareGet: func(vpcId string, clusterName string, tenantId string, region string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s&region=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId), url.QueryEscape(region),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareGetV2: func(vpcId string, clusterName string, tenantId string, region string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s&region=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId), url.QueryEscape(region),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareDelete: func(vpcId string, clusterName string, tenantId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareDeleteV2: func(vpcId string, clusterName string, tenantId string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareActivate: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s/activate",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterGpuSoftwareActivateV2: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s/activate",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterMigProfiles: func(vpcId string, gpuType string, migMode string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/mig-profiles?gpu_type=%s&mig_mode=%s",
+			vpcId, url.QueryEscape(gpuType), url.QueryEscape(migMode),
 		)
 	},
 

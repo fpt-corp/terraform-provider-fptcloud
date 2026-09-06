@@ -79,6 +79,167 @@ func validateGpuDriver(ctx context.Context, client *MgpuClusterApiClient, vpcId,
 	return &d
 }
 
+// allowedGpuTypes are the GPU models a bare-metal pool can report.
+var allowedGpuTypes = []string{"A100", "A30", "H100", "H200"}
+
+// allowedMigStrategies are the values the mig block's strategy accepts.
+var allowedMigStrategies = []string{"NONE", "SINGLE", "MIXED"}
+
+// allowedSharingClientTypes are the values the gpu_sharing block's client_type
+// accepts.
+var allowedSharingClientTypes = []string{"NONE", "MPS", "TIMESLICING"}
+
+// maxClient bounds when GPU sharing is actually enabled. With sharing off the
+// only valid value is 0.
+const maxClientMin, maxClientMax = 2, 48
+
+// validateGpuType checks gpu_type against the models the platform offers. The
+// field is optional; an unset value is not validated.
+func validateGpuType(poolName string, gpuType types.String) *diag2.ErrorDiagnostic {
+	if gpuType.IsNull() || gpuType.IsUnknown() || gpuType.ValueString() == "" {
+		return nil
+	}
+	for _, allowed := range allowedGpuTypes {
+		if gpuType.ValueString() == allowed {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic(
+		"Invalid gpu_type",
+		fmt.Sprintf("gpu_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedGpuTypes, ", "), poolName, gpuType.ValueString()),
+	)
+	return &d
+}
+
+// validateGpuSharing checks the gpu_sharing block: the strategy must be one
+// the API accepts, and max_client must match it — 0 when sharing is off, 2-48
+// when it is on. USER_INSTALL pools install their own driver, so the platform
+// does not manage sharing for them at all and the block must be left unset.
+func validateGpuSharing(poolName string, driverInstallationType string, gpuSharing types.Object) *diag2.ErrorDiagnostic {
+	if gpuSharing.IsNull() || gpuSharing.IsUnknown() {
+		return nil
+	}
+
+	if driverInstallationType == driverInstallationTypeUserInstall {
+		d := diag2.NewErrorDiagnostic(
+			"Unexpected gpu_sharing",
+			fmt.Sprintf("gpu_sharing may not be set for pool '%s' when gpu_driver.installation_type = %s (the user installs their own driver, so the platform does not manage GPU sharing)", poolName, driverInstallationTypeUserInstall),
+		)
+		return &d
+	}
+
+	clientType, maxClient := gpuSharingFields(gpuSharing)
+
+	validType := false
+	for _, allowed := range allowedSharingClientTypes {
+		if clientType == allowed {
+			validType = true
+			break
+		}
+	}
+	if !validType {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid gpu_sharing.client_type",
+			fmt.Sprintf("gpu_sharing.client_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedSharingClientTypes, ", "), poolName, clientType),
+		)
+		return &d
+	}
+
+	if clientType == gpuValueNone {
+		if maxClient != 0 {
+			d := diag2.NewErrorDiagnostic(
+				"Invalid gpu_sharing.max_client",
+				fmt.Sprintf("gpu_sharing.max_client must be 0 for pool '%s' when client_type is %s, got: %d", poolName, gpuValueNone, maxClient),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	if maxClient < maxClientMin || maxClient > maxClientMax {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid gpu_sharing.max_client",
+			fmt.Sprintf("gpu_sharing.max_client must be between %d and %d for pool '%s' when client_type is %s, got: %d", maxClientMin, maxClientMax, poolName, clientType, maxClient),
+		)
+		return &d
+	}
+
+	return nil
+}
+
+// validateMig checks the mig block: the strategy must be one the API accepts,
+// and SINGLE/MIXED need a profile to partition into while NONE must not carry
+// one. Like gpu_sharing, MIG is not available on USER_INSTALL pools.
+func validateMig(poolName string, driverInstallationType string, mig types.Object) *diag2.ErrorDiagnostic {
+	if mig.IsNull() || mig.IsUnknown() {
+		return nil
+	}
+
+	if driverInstallationType == driverInstallationTypeUserInstall {
+		d := diag2.NewErrorDiagnostic(
+			"Unexpected mig",
+			fmt.Sprintf("mig may not be set for pool '%s' when gpu_driver.installation_type = %s (the user installs their own driver, so the platform does not manage MIG)", poolName, driverInstallationTypeUserInstall),
+		)
+		return &d
+	}
+
+	strategy, profile := migFields(mig)
+
+	validStrategy := false
+	for _, allowed := range allowedMigStrategies {
+		if strategy == allowed {
+			validStrategy = true
+			break
+		}
+	}
+	if !validStrategy {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid mig.strategy",
+			fmt.Sprintf("mig.strategy must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedMigStrategies, ", "), poolName, strategy),
+		)
+		return &d
+	}
+
+	if strategy == gpuValueNone {
+		if profile != "" {
+			d := diag2.NewErrorDiagnostic(
+				"Unexpected mig.profile",
+				fmt.Sprintf("mig.profile must be left empty for pool '%s' when mig.strategy is %s", poolName, gpuValueNone),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	if profile == "" {
+		d := diag2.NewErrorDiagnostic(
+			"Missing mig.profile",
+			fmt.Sprintf("mig.profile is required for pool '%s' when mig.strategy is %s", poolName, strategy),
+		)
+		return &d
+	}
+
+	return nil
+}
+
+// validatePoolGpu runs the GPU checks that span more than one block: the
+// driver catalog lookup, then sharing and MIG, both of which depend on which
+// driver installation type the pool picked.
+func validatePoolGpu(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion, poolName string, pool *managedGpuClusterPool) *diag2.ErrorDiagnostic {
+	if d := validateGpuDriver(ctx, client, vpcId, platform, k8sVersion, poolName, pool); d != nil {
+		return d
+	}
+	if d := validateGpuType(poolName, pool.GpuType); d != nil {
+		return d
+	}
+
+	driverInstallationType, _ := gpuDriverFields(pool.GpuDriver)
+	if d := validateGpuSharing(poolName, driverInstallationType, pool.GpuSharing); d != nil {
+		return d
+	}
+	return validateMig(poolName, driverInstallationType, pool.Mig)
+}
+
 func validatePool(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion string, pools []*managedGpuClusterPool) *diag2.ErrorDiagnostic {
 	if len(pools) == 0 {
 		d := diag2.NewErrorDiagnostic("Invalid configuration", "At least a worker pool must be configured")
@@ -156,9 +317,9 @@ func validatePool(ctx context.Context, client *MgpuClusterApiClient, vpcId, plat
 			}
 		}
 
-		// Validate driver_installation_type and gpu_driver_version against
-		// the live gpu-drivers catalog.
-		if d := validateGpuDriver(ctx, client, vpcId, platform, k8sVersion, name, pool); d != nil {
+		// Validate the pool's GPU configuration: driver (against the live
+		// gpu-drivers catalog), gpu_type, sharing and MIG.
+		if d := validatePoolGpu(ctx, client, vpcId, platform, k8sVersion, name, pool); d != nil {
 			return d
 		}
 	}
@@ -848,7 +1009,7 @@ func ValidateUpdate(ctx context.Context, client *MgpuClusterApiClient, vpcId, pl
 			}
 		}
 
-		if d := validateGpuDriver(ctx, client, vpcId, platform, plan.K8SVersion.ValueString(), pool.WorkerPoolID.ValueString(), pool); d != nil {
+		if d := validatePoolGpu(ctx, client, vpcId, platform, plan.K8SVersion.ValueString(), pool.WorkerPoolID.ValueString(), pool); d != nil {
 			response.Diagnostics.Append(d)
 			return false
 		}

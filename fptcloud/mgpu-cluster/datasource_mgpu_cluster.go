@@ -9,6 +9,7 @@ import (
 	"terraform-provider-fptcloud/commons"
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -28,6 +29,9 @@ type datasourceManagedGpuCluster struct {
 	mgpuClusterClient *MgpuClusterApiClient
 	subnetClient      fptcloud_subnet.SubnetService
 	tenancyClient     *fptcloud_dfke.TenancyApiClient
+	// vpcClient resolves the account's tenant id, which the GPU-software
+	// endpoints require as a query parameter.
+	vpcClient fptcloud_vpc.Service
 }
 
 func (d *datasourceManagedGpuCluster) Configure(ctx context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) {
@@ -49,6 +53,7 @@ func (d *datasourceManagedGpuCluster) Configure(ctx context.Context, request dat
 	d.mgpuClusterClient = newMgpuClusterApiClient(d.client)
 	d.subnetClient = fptcloud_subnet.NewSubnetService(d.client)
 	d.tenancyClient = fptcloud_dfke.NewTenancyApiClient(d.client)
+	d.vpcClient = fptcloud_vpc.NewService(d.client)
 }
 
 func (d *datasourceManagedGpuCluster) Metadata(ctx context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
@@ -175,6 +180,11 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 
 	var pool []*managedGpuClusterPool
 
+	// gpu_type, gpu_sharing and mig live in the GPU-software backend, which
+	// get-shoot-specific does not report. See fetchGpuSoftwareWorkers on why
+	// a failure here leaves those blocks null rather than failing the read.
+	gpuWorkers := fetchGpuSoftwareWorkers(ctx, d.mgpuClusterClient, d.vpcClient, d.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+
 	for _, name := range poolNames {
 		w, ok := workers[name]
 		if !ok {
@@ -200,20 +210,17 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 			GpuDriver:       gpuDriverObjectValue(w.Machine.Image.DriverInstallationType, w.Machine.Image.GpuDriverVersion),
 			WorkerBase:      types.BoolValue(w.IsWorkerBase()),
 			Tags:            tagsStringToList(w.Tags()),
-			// gpu_type, mig_profile: not exposed by the get-shoot-specific
-			// response, so there is no way to read them back. Always null.
+			// gpu_type, gpu_sharing, mig: filled in below from the
+			// GPU-software backend, the only place that reports them.
 			GpuType:    types.StringNull(),
-			MigProfile: types.StringNull(),
+			GpuSharing: types.ObjectNull(gpuSharingAttrTypes),
+			Mig:        types.ObjectNull(migAttrTypes),
 		}
 
-		// For GPU pools, read values from addons configuration
-		if w.ProviderConfig.VGpuID != "" {
-			// Read MaxClient from addons configuration
-			maxClientFromAPI := d.MaxClientFromAddons(&data.Spec, w.Name)
-			item.MaxClient = types.Int64Value(maxClientFromAPI)
-		} else {
-			// Non-GPU pools: set default values
-			item.MaxClient = types.Int64Value(0)
+		if gw, ok := gpuWorkers[w.Name]; ok {
+			item.GpuType = stringOrNull(gw.GpuType)
+			item.GpuSharing = gpuSharingObjectValue(normalizeGpuNone(gw.SharingClientType), gw.MaxClient)
+			item.Mig = migObjectValue(normalizeGpuNone(gw.MigMode), normalizeGpuNone(gw.MigProfile))
 		}
 
 		pool = append(pool, item)
@@ -398,11 +405,11 @@ func (d *datasourceManagedGpuCluster) poolFields() map[string]schema.Attribute {
 		"name", "hpc_flavor_id", "network_id",
 	}
 	// Optional string fields
-	optionalStrings := []string{"container_runtime", "network_name", "hpc_flavor_name", "gpu_type", "mig_profile"}
+	optionalStrings := []string{"container_runtime", "network_name", "hpc_flavor_name", "gpu_type"}
 	// Required int fields
 	requiredInts := []string{"hpc_number_server"}
 	// Optional int fields
-	optionalInts := []string{"max_client"}
+	optionalInts := []string{}
 	// Required bool fields
 	requiredBools := []string{"auto_scale"}
 	// Optional bool fields
@@ -463,6 +470,16 @@ func (d *datasourceManagedGpuCluster) poolFields() map[string]schema.Attribute {
 		Optional:       true,
 		Description:    descriptions["gpu_driver"],
 		AttributeTypes: gpuDriverAttrTypes,
+	}
+	poolLevelAttributes["gpu_sharing"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["gpu_sharing"],
+		AttributeTypes: gpuSharingAttrTypes,
+	}
+	poolLevelAttributes["mig"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["mig"],
+		AttributeTypes: migAttrTypes,
 	}
 	return poolLevelAttributes
 }

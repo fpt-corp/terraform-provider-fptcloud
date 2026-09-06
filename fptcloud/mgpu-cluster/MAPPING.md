@@ -81,8 +81,11 @@ dựa trên 1 request `POST .../hpc/v2/create-cluster` thật, response `200` v�
 | `os_version` | **Đã bỏ** | Field từng tồn tại trong `managedGpuClusterJson` (`OsVersion interface{}`) nhưng chưa từng được gán giá trị ở đâu — request thật cho thấy nó là 1 catalog cực lớn (mọi zone × mọi driver), không phải input hợp lý cho Terraform. Đã xoá field khỏi struct theo quyết định của bạn. |
 | `vm_subnet` + `osp_network_id` | **Đã có map** | Không có field Terraform riêng — `network_id` vẫn là field duy nhất người dùng khai (có thể lấy từ data source `fptcloud_hpc_subnet` mới, xem [HPC subnet](#hpc-subnet-vm_subnet--osp_network_id)). Trên OSP, `MapTerraformToJson` tự gọi lại `GET /v2/vmware/vpc/{vpcId}/hpc/subnets`, tìm entry có `id == network_id`, lấy `subnet_cidr` → `vm_subnet` và `osp_network_id` để gửi kèm. Không phải input trực tiếp, không phải omit — là 1 lookup nội bộ theo `network_id`. |
 | `lbInternalNetwork` | **Đã có map** | Không có field Terraform riêng — dựng từ subnet backing `internal_subnet_lb` (trên OSP, giá trị đó là subnet ID). `MapTerraformToJson` gọi `findNetworkSubnetById` (đã có sẵn cho `config-internal-subnet-lb`), lấy `GET /v1/vmware/vpc/{vpcId}/network/subnets`, rồi map: `value`←`id`, `label`←`description`, `label4sending`←`name`, `cidr`←`defaultGateway`+`/`+`subnetPrefixLength`, `networkType`←`networkType` (`lbInternalNetworkFromSubnet` trong `types.go`). Bỏ qua khi `internal_subnet_lb` rỗng, hoặc trên platform khác OSP (ở đó `internal_subnet_lb` là CIDR chứ không phải subnet ID, không tra được theo cách này). |
-| `pools[].gpuType` | **Đã có map (gửi lên), chưa đọc lại được** | Field Terraform mới `pools[].gpu_type` (Optional+Computed string). `MapTerraformToJson`/`remapPools` gửi `item.GpuType.ValueString()` vào `managedGpuClusterPoolJson.GpuType` (json tag `gpuType`). Đọc lại (Read/refresh) chưa làm được — xem [GPU type / MIG profile](#gpu-type--mig-profile-pools-gpu_type--pools-mig_profile). |
-| `pools[].migProfile` | **Đã có map (gửi lên), chưa đọc lại được** | Field Terraform mới `pools[].mig_profile` (Optional+Computed string). `MapTerraformToJson`/`remapPools` gửi `item.MigProfile.ValueString()` vào `managedGpuClusterPoolJson.MigProfile` (json tag `migProfile`). Đọc lại (Read/refresh) chưa làm được — xem [GPU type / MIG profile](#gpu-type--mig-profile-pools-gpu_type--pools-mig_profile). |
+| `pools[].gpuType` | **Đã có map (2 chiều)** | Field Terraform `pools[].gpu_type` (Optional string, validate theo `A100`/`A30`/`H100`/`H200`). Gửi lên qua `managedGpuClusterPoolJson.GpuType` (json tag `gpuType`); đọc lại từ API GPU software — xem [GPU software](#gpu-software-api-thu-2-khi-create). |
+| `pools[].migProfile` | **Đã có map (2 chiều)** | Nay nằm trong block `pools[].mig { strategy, profile }` (không còn là field rời `mig_profile`). Gửi lên qua `MigProfile` (json tag `migProfile`) + `WorkerMigStrategy` (json tag `workerMigStrategy`); đọc lại từ API GPU software. |
+| `pools[].workerMigStrategy` | **Đã có map** | `pools[].mig.strategy` — `NONE`/`SINGLE`/`MIXED`. |
+| `pools[].sharingClient` | **Đã có map** | `pools[].gpu_sharing.client_type` — `NONE`/`MPS`/`TIMESLICING`. |
+| `pools[].maxClient` | **Đã có map** | Chuyển từ field rời `max_client` vào `pools[].gpu_sharing.max_client` (chỉ có nghĩa cùng `client_type`). |
 | `hps` | **Đã có map (tạm)** | Không có field Terraform — `managedGpuClusterJson.Hps interface{}` (không `omitempty`) luôn serialize thành `"hps": null`, khớp giá trị null gửi trong request thật. Ý nghĩa của field vẫn chưa xác nhận với backend; giữ `null` cố định cho tới khi có xác nhận. |
 
 ## Body Swagger gốc (để đối chiếu)
@@ -391,43 +394,94 @@ when the API reports both empty, the block is read back as `null` rather than
 `gpu_driver` does not see a permanent diff (`gpuDriverObjectValue` in
 `utils.go`).
 
-### GPU type / MIG profile (`pools[].gpu_type` / `pools[].mig_profile`)
+### GPU software (API thứ 2 khi create)
 
-Hai field Terraform mới trong block `pools`, cả hai đều Optional+Computed
-string, mirror đúng cách `hpc_flavor_name` được xử lý (không có default riêng
-trong `defaults.go`/`validations.go`, gửi lên API dạng chuỗi tự do không
-validate theo allow-list):
+Theo SRS mục 1 và 2.3: **một MGPU cluster là 2 tài nguyên backend riêng biệt**,
+phải thao tác tuần tự. Tạo xong `create-cluster` mới chỉ là một nửa — GPU
+operator/driver/sharing/MIG nằm ở backend thứ 2 và phải cài bằng 1 request
+riêng, nếu không cluster tạo ra không có GPU software gì cả.
 
-```hcl
-pools {
-  ...
-  gpu_type    = "H200"          # optional — thường suy ra từ hpc_flavor_id
-  mig_profile = "all-disabled"  # optional
-}
-```
+| # | Hệ thống | Endpoint |
+|---|---|---|
+| 1 | m-fke cluster | `POST .../fke/vpc/{vpcId}/m-fke/{platform}/hpc[/v2]/create-cluster` |
+| 2 | GPU software | `POST .../xplat/fke-gpu/common/vpc/{vpcId}/gpu-clusters/{clusterName}` |
 
-**Gửi lên (create/update)** — `MapTerraformToJson` và `remapPools`
-(`utils.go`) đều gửi `item.GpuType.ValueString()` /
-`item.MigProfile.ValueString()` vào 2 field mới trên
-`managedGpuClusterPoolJson`: `GpuType` (json tag `gpuType`) và `MigProfile`
-(json tag `migProfile`), khớp đúng tên trong body request thật:
+Lưu ý URL API 2 **không có** segment `/m-fke`, và prefix `/v1` hay `/v2` bám
+theo đúng family mà cluster được tạo (`gpuSoftwareApiVersion` trong
+`commons/api_path.go`).
 
-```json
-{ "gpuType": "H200", "migProfile": "all-disabled" }
-```
+**`tenant_id`** — API 2 cần `tenant_id` trong body (và trong query khi
+GET/DELETE). Provider lấy qua `vpc.GetTenant()` (`GET /v2/tenant/{tenant_name}`,
+service đã có sẵn trong `fptcloud/vpc`), dùng `tenant_name` từ provider config.
+Đã verify bằng call thật: tenant `NCP-PRODUCT-DEV-JP` trả về
+`afb02abc-1e90-4bf6-a8a1-283c69e37032`, trùng đúng `tenant_id` trong body
+request thật của console (và trùng header `OrgId`). Không cần duyệt
+tenant/region/VPC, không cần field Terraform mới.
 
-**Đọc lại (Read/refresh)** — **chưa làm được**. Endpoint get-shoot-specific
-chính (`ManagedGpuClusterGet`/`GetV2`, response `managedGpuClusterReadResponse`)
-mà `InternalRead`/`internalRead` dùng làm nguồn chính không trả về 2 field
-này. Có 1 endpoint thứ hai (`GET .../fke-gpu/common/vpc/{vpcId}/gpu-clusters/
-{clusterId}?tenant_id=...&region=...`) có trả về `worker_groups[].gpu_type`/
-`worker_groups[].mig_profile`, nhưng đã **thử và bỏ**: endpoint đó cần
-`tenant_id`, và cách duy nhất để tra `tenant_id` từ `vpc_id` là duyệt toàn bộ
-tenant/region/VPC của tài khoản (phải thêm 1 method mới vào
-`fptcloud/dfke.TenancyApiClient`) — kéo theo phức tạp không tương xứng với
-lợi ích, nên đã revert. `InternalRead`/`internalRead` hiện luôn set
-`GpuType`/`MigProfile` về `types.StringNull()`, giống mọi field optional
-khác chưa có nguồn đọc lại.
+**`region`** — body API 2 nhận đúng giá trị mà header `fpt-region` dùng
+(`JP/JCSI2` → `tokyo-jp`). `gpuSoftwareRegion` trong `gpu_software.go` giữ
+chung 1 mapping với `sendRequestWithHeader` để 2 chỗ không lệch nhau.
+
+Body gửi lên (`gpuSoftwareRequest`, `types.go`):
+
+| JSON | Nguồn |
+|---|---|
+| `isV2` | đồng bộ với API 1 (`requiresV2API(k8s_version)`) |
+| `name` | tên cluster thật (đã có hậu tố random) |
+| `infra_type` | platform, upper-case (`OSP`) |
+| `region` | `gpuSoftwareRegion(client.Region)` |
+| `tenant_id` | `vpc.GetTenant().Id` |
+| `kubernetes_version` | `k8s_version` |
+| `operator_version` | `{ <software.software_type>: <software.software_version> }` |
+| `cluster_type` | hardcode `"BM"` |
+| `mig_strategy` | `software.cluster_mig_strategy`, upper-case (`single` → `SINGLE`) |
+| `worker_groups[]` | 1-1 với `pools[]`, khớp theo tên |
+| `status` | hardcode `"NOTREADY"` |
+
+`worker_groups[]` (`gpuSoftwareWorkerJson`):
+
+| JSON | Nguồn Terraform |
+|---|---|
+| `name` | `pools[].name` |
+| `mig_mode` | `pools[].mig.strategy` (`NONE` nếu không khai) |
+| `mig_profile` | `pools[].mig.profile` (`NONE` nếu không khai) |
+| `sharing_client_type` | `pools[].gpu_sharing.client_type` (`NONE` nếu không khai) |
+| `max_client` | `pools[].gpu_sharing.max_client` |
+| `gpu_scheduler` | luôn `NONE` — không có field Terraform, console cũng chỉ gửi `NONE` |
+| `driver_type` | `pools[].gpu_driver.installation_type` |
+| `driver_version` | `pools[].gpu_driver.version` |
+| `enable_operand` | hardcode `true` |
+| `gpu_type` | `pools[].gpu_type` |
+
+Riêng pool có `driver_type = USER_INSTALL`: người dùng tự cài driver nên
+platform không quản MIG/sharing — mọi field đó bị ép về giá trị tắt
+(`mig_mode`/`mig_profile`/`gpu_scheduler` = `NONE`, `sharing_client_type` =
+`all-disabled`, `max_client` = 0, `driver_version` = `""`), và validate cấm
+khai `gpu_sharing`/`mig` cho pool đó.
+
+**Đọc lại (Read/refresh)** — `GET .../gpu-clusters/{clusterName}?tenant_id=...&region=...`
+là nguồn duy nhất cho `gpu_type`, `gpu_sharing`, `mig` (get-shoot-specific
+không trả field nào trong số đó). `fetchGpuSoftwareWorkers` gọi nó trong
+`InternalRead` và trong data source, key theo tên pool. Lỗi ở bước này
+**không** làm hỏng cả lần read: GPU software là backend độc lập và một cluster
+cài lỗi thì đơn giản là không có bản ghi ở đó, nên 3 block chỉ để `null`.
+
+Response GET dùng `deploy_operand` cho đúng thứ request gọi là
+`enable_operand`, và `max_client` trả về dạng số (dù request gửi chuỗi) —
+`gpuSoftwareWorkerRead` phản ánh đúng shape đó.
+
+Giá trị `NONE`/`all-disabled` khi đọc lại được `normalizeGpuNone` map ngược về
+rỗng, để pool chưa từng khai sharing/MIG đọc ra block `null` chứ không phải
+object toàn `NONE` — nếu không sẽ diff vĩnh viễn.
+
+**Xoá (Delete)** — theo SRS 5.2, `DELETE .../gpu-clusters/{clusterName}?tenant_id=...`
+chỉ chạy **sau khi** xoá cluster thành công.
+
+**Tính không nguyên tử** — 2 lời gọi tới 2 hệ thống, backend không có rollback
+(SRS 11.1). `Create` xử lý theo đúng khuyến nghị đó: nếu API 2 lỗi thì vẫn ghi
+cluster id vào state **trước** rồi mới trả lỗi, để Terraform không mất dấu
+cluster đã tạo; thông báo lỗi nói rõ chạy `terraform apply` lại để cài lại GPU
+software.
 
 ### Pool identity
 
@@ -610,14 +664,14 @@ mới từ body request thật này.
    cho update/edit-worker.
 5. **`hps`** xác nhận ý nghĩa thật với backend — hiện tạm gửi `null` cố định,
    đúng như request thật quan sát được, nhưng chưa biết nó dùng để làm gì.
-6. **Đọc lại `pools[].gpu_type`/`pools[].mig_profile` (Read/refresh)** — hiện
-   luôn `null` sau khi apply vì endpoint get-shoot-specific chính không trả
-   2 field này. Có API khác trả được (`GET .../fke-gpu/common/vpc/{vpcId}/
-   gpu-clusters/{clusterId}`) nhưng cần `tenant_id`, và cách duy nhất để tra
-   `tenant_id` từ `vpc_id` là duyệt toàn bộ tenant/region/VPC — đã thử và
-   quyết định bỏ vì quá phức tạp so với lợi ích. Nếu sau này có cách đơn giản
-   hơn để lấy `tenant_id` (hoặc endpoint get-shoot-specific được bổ sung 2
-   field này), quay lại làm tiếp.
+6. **Đồng bộ GPU software khi Update pool** (SRS 4.1, phần "Đồng bộ GPU
+   software"). Hiện `Create` và `Delete` đã gọi đủ 2 backend, nhưng `Update`
+   thì **chưa**: sau `configure-worker-cluster` cần `PUT .../gpu-clusters/
+   {clusterName}` theo kiểu read-modify-write (GET trước, thay
+   `worker_groups`, PUT lại toàn bộ — không được tự dựng body từ đầu). Chưa
+   làm vì còn vướng vấn đề `gpu_driver` immutable ở mục 4 phần "Điều cần hỏi
+   anh Kiên" (cơ chế xoá/tạo lại pool) — làm xong cái đó rồi mới nối phần này
+   cho khớp.
 
 ## Điều cần hỏi anh Kiên
 
@@ -636,21 +690,13 @@ mới từ body request thật này.
    `fptcloud_hpc_subnet`) — hiện `main.tf` phải để `hpc_flavor_id`/
    `hpc_flavor_name` trống, người dùng tự điền tay UUID.
 
-2. **API get-shoot-detail thứ hai — `GET /v2/xplat/fke-gpu/common/vpc/{vpcId}/
-   gpu-clusters/{clusterId}?tenant_id=...&region=...`.** Đây là API duy nhất
-   trả về `worker_groups[].gpu_type`/`worker_groups[].mig_profile` (dùng để
-   đọc lại `pools[].gpu_type`/`pools[].mig_profile` sau khi apply — endpoint
-   get-shoot-specific chính không có 2 field này). Đã thử triển khai (gọi
-   thêm endpoint này trong `InternalRead`/data source, best-effort) nhưng
-   **revert lại** vì cần `tenant_id`, và cách duy nhất để tra `tenant_id` từ
-   `vpc_id` là duyệt toàn bộ danh sách tenant → region → VPC của tài khoản
-   (không có API tra thẳng `vpc_id → tenant_id`) — phải thêm hẳn 1 method mới
-   vào `TenancyApiClient` (`fptcloud/dfke`) chỉ để phục vụ việc này, quá phức
-   tạp so với lợi ích. Cần hỏi anh Kiên: có API nào tra `tenant_id` trực tiếp
-   từ `vpc_id` không, hoặc endpoint get-shoot-specific chính có thể được bổ
-   sung `gpu_type`/`mig_profile` luôn không (đỡ phải gọi thêm 1 API riêng).
-   Hiện tại `pools[].gpu_type`/`pools[].mig_profile` vẫn gửi lên được khi
-   create/update, chỉ là sau khi apply xong sẽ luôn đọc lại là `null`.
+2. **`os_version` trong body create-cluster.** SRS mục 2.2 đánh dấu field này
+   là **bắt buộc**, và request thật của console có gửi (một catalog rất lớn:
+   mọi zone × mọi driver). Provider hiện **không gửi** field này, nhưng
+   create-cluster vẫn trả `200` và cluster vẫn tạo thành công qua nhiều lần
+   test thật — nên nhiều khả năng backend tự điền khi vắng mặt. Cần xác nhận:
+   có thật sự bắt buộc không, hay chỉ là UI gửi kèm cho đủ? Nếu bắt buộc thì
+   provider cần lấy catalog đó từ đâu (API `get_k8s_versions` trả kèm?).
 
 3. **Zone cho API `gpu-drivers` (`gpuDriverZoneForRegion` trong `utils.go`).**
    API `GET /v2/xplat/fke-gpu/common/vpc/{vpcId}/gpu-drivers` (dùng để

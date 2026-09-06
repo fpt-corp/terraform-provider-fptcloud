@@ -6,6 +6,7 @@ import (
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_ssh "terraform-provider-fptcloud/fptcloud/ssh"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -75,6 +76,10 @@ type resourceManagedGpuCluster struct {
 	subnetClient      fptcloud_subnet.SubnetService
 	sshClient         fptcloud_ssh.SSHKeyService
 	tenancyClient     *fptcloud_dfke.TenancyApiClient
+	// vpcClient resolves the account's tenant id, which the GPU-software
+	// endpoints require as a query/body parameter while Terraform config only
+	// ever names the VPC.
+	vpcClient fptcloud_vpc.Service
 }
 
 type managedGpuClusterPool struct {
@@ -89,10 +94,10 @@ type managedGpuClusterPool struct {
 	Tags             types.List   `tfsdk:"tags"`
 	Kv               types.Set    `tfsdk:"kv"`
 	Taints           types.Set    `tfsdk:"taints"`
-	MaxClient        types.Int64  `tfsdk:"max_client"`
 	GpuDriver        types.Object `tfsdk:"gpu_driver"`
+	GpuSharing       types.Object `tfsdk:"gpu_sharing"`
+	Mig              types.Object `tfsdk:"mig"`
 	GpuType          types.String `tfsdk:"gpu_type"`
-	MigProfile       types.String `tfsdk:"mig_profile"`
 }
 
 // GpuDriver groups the two fields that pick a GPU driver for a pool:
@@ -101,6 +106,22 @@ type managedGpuClusterPool struct {
 type GpuDriver struct {
 	InstallationType types.String `tfsdk:"installation_type"`
 	Version          types.String `tfsdk:"version"`
+}
+
+// GpuSharing groups how a pool's GPUs are shared between clients: the sharing
+// strategy and how many clients may share one GPU. max_client lives here
+// rather than at pool level because it is only meaningful together with
+// client_type (0 when sharing is NONE, 2-48 otherwise).
+type GpuSharing struct {
+	ClientType types.String `tfsdk:"client_type"`
+	MaxClient  types.Int64  `tfsdk:"max_client"`
+}
+
+// Mig groups the pool's MIG (Multi-Instance GPU) partitioning: the strategy
+// and, for SINGLE/MIXED, the profile the GPUs are partitioned into.
+type Mig struct {
+	Strategy types.String `tfsdk:"strategy"`
+	Profile  types.String `tfsdk:"profile"`
 }
 
 type KV struct {
@@ -210,6 +231,8 @@ type managedGpuClusterPoolJson struct {
 	Kubernetes             string `json:"kubernetes,omitempty"`
 	GpuType                string `json:"gpuType,omitempty"`
 	MigProfile             string `json:"migProfile,omitempty"`
+	WorkerMigStrategy      string `json:"workerMigStrategy,omitempty"`
+	SharingClient          string `json:"sharingClient,omitempty"`
 
 	// Resource shape of the pool. Derived from the selected HPC flavor;
 	// left empty until a flavor lookup endpoint is available, in which case
@@ -230,6 +253,84 @@ type managedGpuClusterPoolJson struct {
 	IsOthers           bool `json:"isOthers"`
 	IsEnableAutoRepair bool `json:"isEnableAutoRepair"`
 	WorkerBase         bool `json:"worker_base"`
+}
+
+// gpuSoftwareRequest is the body of the GPU-software endpoints
+// (POST/PUT .../fke-gpu/common/vpc/{vpcId}/gpu-clusters/{clusterName}). A
+// bare-metal cluster lives in two backends: the m-fke cluster created by
+// create-cluster, and the GPU software installed by this call right after it.
+// Creating only the first leaves a cluster with no GPU operator or driver.
+type gpuSoftwareRequest struct {
+	IsV2              bool                     `json:"isV2"`
+	Name              string                   `json:"name"`
+	InfraType         string                   `json:"infra_type"`
+	Region            string                   `json:"region"`
+	TenantId          string                   `json:"tenant_id"`
+	KubernetesVersion string                   `json:"kubernetes_version"`
+	OperatorVersion   map[string]string        `json:"operator_version"`
+	ClusterType       string                   `json:"cluster_type"`
+	MigStrategy       *string                  `json:"mig_strategy"`
+	WorkerGroups      []*gpuSoftwareWorkerJson `json:"worker_groups"`
+	Status            string                   `json:"status"`
+}
+
+// gpuSoftwareWorkerJson is one entry of the GPU-software worker_groups array.
+// It must line up 1-1 with the create-cluster pools array, matched by name.
+//
+// Note the asymmetry with the read side: this request field is enable_operand,
+// while the GET response reports the same thing as deploy_operand.
+//
+// MigMode and SharingClientType are pointers so they can be omitted entirely:
+// the console leaves both out of the payload for a pool that configures
+// neither MIG nor GPU sharing, rather than sending a placeholder value.
+type gpuSoftwareWorkerJson struct {
+	Name              string  `json:"name"`
+	MigMode           *string `json:"mig_mode,omitempty"`
+	MigProfile        string  `json:"mig_profile"`
+	SharingClientType *string `json:"sharing_client_type,omitempty"`
+	MaxClient         int64   `json:"max_client"`
+	GpuScheduler      string  `json:"gpu_scheduler"`
+	DriverType        string  `json:"driver_type"`
+	DriverVersion     string  `json:"driver_version"`
+	EnableOperand     bool    `json:"enable_operand"`
+	GpuType           string  `json:"gpu_type"`
+}
+
+// gpuSoftwareReadResponse is the response of
+// GET .../fke-gpu/common/vpc/{vpcId}/gpu-clusters/{clusterName}. It is the
+// only source for a pool's GPU sharing/MIG/gpu_type settings — the
+// get-shoot-specific endpoint backing the rest of the read does not report
+// them.
+type gpuSoftwareReadResponse struct {
+	ClusterId         string                    `json:"cluster_id"`
+	Name              string                    `json:"name"`
+	Region            string                    `json:"region"`
+	InfraType         string                    `json:"infra_type"`
+	VpcId             string                    `json:"vpc_id"`
+	TenantId          string                    `json:"tenant_id"`
+	KubernetesVersion string                    `json:"kubernetes_version"`
+	OperatorVersion   map[string]string         `json:"operator_version"`
+	MigStrategy       string                    `json:"mig_strategy"`
+	WorkerGroups      []gpuSoftwareWorkerRead   `json:"worker_groups"`
+	Status            string                    `json:"status"`
+}
+
+// gpuSoftwareWorkerRead is one entry of the GPU-software read response's
+// worker_groups. max_client comes back as a number here even though the
+// request sends it as one too; deploy_operand is this side's name for the
+// request's enable_operand.
+type gpuSoftwareWorkerRead struct {
+	WorkerGroupId     string `json:"worker_group_id"`
+	Name              string `json:"name"`
+	MigMode           string `json:"mig_mode"`
+	MigProfile        string `json:"mig_profile"`
+	SharingClientType string `json:"sharing_client_type"`
+	MaxClient         int64  `json:"max_client"`
+	DriverType        string `json:"driver_type"`
+	DriverVersion     string `json:"driver_version"`
+	DeployOperand     bool   `json:"deploy_operand"`
+	GpuType           string `json:"gpu_type"`
+	GpuScheduler      string `json:"gpu_scheduler"`
 }
 
 // hpcSubnet is one entry of GET .../vmware/vpc/{vpcId}/hpc/subnets. This is
