@@ -23,6 +23,9 @@ var ApiPath = struct {
 	RenameInstance             func(vpcId string, instanceId string) string
 	ChangeStatusInstance       func(vpcId string, instanceId string) string
 	ResizeInstance             func(vpcId string, instanceId string) string
+	InstanceStorages           func(vpcId string, instanceId string) string
+	InstanceStoragesInfra      func(vpcId string, instanceId string) string
+	ResizeInstanceRootDisk     func(vpcId string, instanceId string) string
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
 	Snapshot                   func(vpcId string) string
 	SnapshotDetail             func(vpcId string, snapshotId string) string
@@ -248,6 +251,15 @@ var ApiPath = struct {
 	},
 	ResizeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
+	},
+	InstanceStorages: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storagesv2", vpcId, instanceId)
+	},
+	InstanceStoragesInfra: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storages", vpcId, instanceId)
+	},
+	ResizeInstanceRootDisk: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storages/resize", vpcId, instanceId)
 	},
 	UpdateInstanceTags: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/instance/%s/tags", vpcId, instanceId)

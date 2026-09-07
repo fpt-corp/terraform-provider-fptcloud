@@ -1,3 +1,9 @@
+## [0.3.65] - 2026-08-27
+
+### Resource
+
+- Feat: resize the root disk of `fptcloud_instance` in place, `storage_size_gb` and `storage_policy_id` no longer replace the instance
+
 ## [0.3.64] - 2026-08-27
 
 ### Resource
