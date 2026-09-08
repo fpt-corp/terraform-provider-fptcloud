@@ -122,54 +122,6 @@ resource "fptcloud_managed_gpu_cluster" "with_software" {
 }
 ```
 
-### With Hibernation Schedules
-
-```hcl
-resource "fptcloud_managed_gpu_cluster" "with_hibernation" {
-  vpc_id              = data.fptcloud_vpc.vpc.id
-  cluster_name        = "hibernation-example"
-  network_id          = data.fptcloud_hpc_subnet.hpc_subnet.subnets[0].id
-  ssh_key_id          = data.fptcloud_ssh_key.ssh_key.id
-  internal_subnet_lb  = data.fptcloud_subnet.subnet.subnets[0].id
-
-  hibernation_schedules = [
-    {
-      start    = "0 22 * * *" # every day at 10 PM
-      end      = "0 6 * * *"  # every day at 6 AM
-      location = "Asia/Bangkok"
-    }
-  ]
-
-  pools {
-    name              = "worker-pool1"
-    hpc_flavor_id     = "3eb8a0c2-f810-11ef-838f-005056b46212"
-    hpc_number_server = 1
-  }
-}
-```
-
-### Configure Automatic Kubernetes Version Upgrades
-
-```hcl
-resource "fptcloud_managed_gpu_cluster" "with_auto_upgrade" {
-  vpc_id              = data.fptcloud_vpc.vpc.id
-  cluster_name        = "auto-upgrade-example"
-  network_id          = data.fptcloud_hpc_subnet.hpc_subnet.subnets[0].id
-  ssh_key_id          = data.fptcloud_ssh_key.ssh_key.id
-  internal_subnet_lb  = data.fptcloud_subnet.subnet.subnets[0].id
-
-  is_enable_auto_upgrade  = true
-  auto_upgrade_expression = ["0 2 * * 0"] # every Sunday at 02:00
-  auto_upgrade_timezone   = "Asia/Bangkok"
-
-  pools {
-    name              = "worker-pool1"
-    hpc_flavor_id     = "3eb8a0c2-f810-11ef-838f-005056b46212"
-    hpc_number_server = 1
-  }
-}
-```
-
 ### Multiple Worker Pools
 
 Exactly one pool must have `worker_base = true` (defaults to the first pool
@@ -214,7 +166,7 @@ resource "fptcloud_managed_gpu_cluster" "multi_pool" {
 resource "fptcloud_managed_gpu_cluster" "complete_example" {
   # ── Required ──────────────────────────────────────────────────────────
   vpc_id       = data.fptcloud_vpc.vpc.id
-  cluster_name = "complete-cluster-example"
+  cluster_name = "complete-example"
 
   # HPC subnet catalog id (fptcloud_hpc_subnet), not fptcloud_subnet.
   network_id = data.fptcloud_hpc_subnet.hpc_subnet.subnets[0].id
@@ -239,21 +191,7 @@ resource "fptcloud_managed_gpu_cluster" "complete_example" {
   service_prefix  = "13"         # default "13"
   k8s_max_pod     = 110          # default 110
 
-  is_enable_auto_upgrade  = false         # default false
-  auto_upgrade_expression = []            # default []
-  auto_upgrade_timezone   = "Asia/Saigon" # default "Asia/Saigon"
-
   network_node_prefix = 24 # no default — read back from the created cluster's worker CIDR prefix
-
-  is_running = true # default true; toggle to hibernate/wake the cluster
-
-  hibernation_schedules = [
-    {
-      start    = "0 22 * * *"
-      end      = "0 6 * * *"
-      location = "Asia/Bangkok"
-    }
-  ]
 
   cluster_endpoint_access = { # default { type = "public", allow_cidr = ["0.0.0.0/0"] }
     type       = "public"
@@ -328,7 +266,7 @@ The following arguments are supported:
 ### Required Arguments
 
 * `vpc_id` - (Required) VPC ID where the cluster will be created
-* `cluster_name` - (Required) Name of the cluster. An 8-character random suffix is appended automatically unless the name already ends in one
+* `cluster_name` - (Required) Name of the cluster, 3-20 characters. An 8-character random suffix is appended automatically unless the name already ends in one, so the resource's `id` is longer than what you write here. The limit is not cosmetic: a longer name produces a cluster whose GPU-software step cannot authenticate
 * `network_id` - (Required) HPC subnet catalog id, from `fptcloud_hpc_subnet` — **not** `fptcloud_subnet`, the two catalogs do not share ids. `vm_subnet` and `osp_network_id` are resolved from this automatically
 * `ssh_key_id` - (Required) SSH key id, from `fptcloud_ssh_key`. `ssh_name` and `ssh_public_key` are resolved from this automatically
 * `internal_subnet_lb` - (Required) OSP subnet id (from `fptcloud_subnet`, not `fptcloud_hpc_subnet`) backing the cluster's internal load balancer. No default. Changing this value updates the load balancer in place through a dedicated API call — it does **not** force cluster replacement
@@ -336,29 +274,23 @@ The following arguments are supported:
 ### Optional Arguments
 
 #### Cluster Configuration
-* `k8s_version` - (Optional) Kubernetes version. Default: `"1.34.6"`. Allowed values: `1.36.2`, `1.35.6`, `1.34.6`, `1.33.12`, `1.32.5`, `1.31.4`, `1.30.8`, `1.29.8`. Cannot be downgraded; each update can advance by at most one minor version
-* `purpose` - (Optional) Cluster purpose. Must be `"public"`, `"private"`, or `"firewall"`. Default: `"public"`. Immutable after creation
-* `network_type` - (Optional) Container network interface type. Must be `"calico"` or `"cilium"`. Default: `"calico"`. Immutable after creation
-* `is_running` - (Optional) Whether the cluster is running (hibernation control). Default: `true`
+* `k8s_version` - (Optional) Kubernetes version. Default: `"1.34.6"`. Allowed values: `1.36.2`, `1.35.6`, `1.34.6`, `1.33.12`, `1.32.5`, `1.31.4`, `1.30.8`, `1.29.8`. **Changing it destroys and recreates the cluster** — bare metal has no in-place upgrade, see [Operations Not Supported on Bare Metal](#operations-not-supported-on-bare-metal)
+* `purpose` - (Optional) Cluster purpose. Must be `"public"`, `"private"`, or `"firewall"`. Default: `"public"`. Changing it is rejected at apply time
+* `network_type` - (Optional) Container network interface type. Must be `"calico"` or `"cilium"`. Default: `"calico"`. **Changing it destroys and recreates the cluster**
 
 #### Network Configuration
-* `pod_network` - (Optional) Pod network CIDR. Default: `"100.96.0.0"`. Immutable after creation
-* `pod_prefix` - (Optional) Pod network prefix length. Default: `"11"`. Immutable after creation
-* `service_network` - (Optional) Service network CIDR. Default: `"100.64.0.0"`. Immutable after creation
-* `service_prefix` - (Optional) Service network prefix length. Default: `"13"`. Immutable after creation
-* `k8s_max_pod` - (Optional) Maximum number of pods per node. Default: `110`. Immutable after creation
+* `pod_network` - (Optional) Pod network CIDR. Default: `"100.96.0.0"`. **Changing it destroys and recreates the cluster**
+* `pod_prefix` - (Optional) Pod network prefix length. Default: `"11"`. **Changing it destroys and recreates the cluster**
+* `service_network` - (Optional) Service network CIDR. Default: `"100.64.0.0"`. **Changing it destroys and recreates the cluster**
+* `service_prefix` - (Optional) Service network prefix length. Default: `"13"`. **Changing it destroys and recreates the cluster**
+* `k8s_max_pod` - (Optional) Maximum number of pods per node. Default: `110`. Changing it is rejected at apply time
 * `network_node_prefix` - (Optional, Computed) Node network prefix length. No default — read back from the worker CIDR after apply
 
 #### GPU Software
 * `gpu_software` - (Optional) Set of operators installed on the cluster, one entry per operator. No default — omit it entirely to install nothing. See [GPU Software](#gpu-software)
 
-#### Auto Upgrade Configuration
-* `is_enable_auto_upgrade` - (Optional) Allow the service to perform automatic Kubernetes version upgrades. Default: `false`
-* `auto_upgrade_expression` - (Optional) List of five-field cron expressions (`minute hour day-of-month month day-of-week`) defining when an automatic upgrade may run. Default: `[]`
-* `auto_upgrade_timezone` - (Optional) IANA timezone used to evaluate `auto_upgrade_expression`. Default: `"Asia/Saigon"`
 
 #### Advanced Configuration
-* `hibernation_schedules` - (Optional) List of hibernation schedules for the cluster. No default
 * `cluster_autoscaler` - (Optional, Computed) Cluster autoscaler configuration block. See [Cluster Autoscaler Block](#cluster-autoscaler-block) for defaults
 * `cluster_endpoint_access` - (Optional, Computed) Cluster endpoint access configuration block. See [Cluster Endpoint Access Block](#cluster-endpoint-access-block) for defaults
 
@@ -406,14 +338,6 @@ the next apply — the provider syncs them to the GPU-software backend the same
 way the console's "GPU Software Information" panel does. Removing an entry
 uninstalls that operator.
 
-### Hibernation Schedules Block
-
-The `hibernation_schedules` block supports the following:
-
-* `start` - (Required) Cron expression for when hibernation should start
-* `end` - (Required) Cron expression for when hibernation should end
-* `location` - (Required) Timezone for the hibernation schedule (e.g., `Asia/Bangkok`)
-
 ### Cluster Autoscaler Block
 
 The `cluster_autoscaler` block supports the following:
@@ -442,14 +366,14 @@ The `pools` block supports the following arguments. At least one pool is require
 
 **Required:**
 * `name` - (Required) Pool name. Cannot be `"worker-new"` (reserved). Must be unique within the cluster
-* `hpc_flavor_id` - (Required) HPC bare-metal flavor id for the pool. There is currently no dedicated data source for this catalog — `fptcloud_flavor` is **not** the right catalog (confirmed: different ids/names). Obtain the id from a known-good create-cluster request or the console until a data source exists
+* `hpc_flavor_id` - (Required) HPC bare-metal flavor id for the pool. **Changing it destroys and recreates the cluster** — the backend ignores a new flavor on a pool that already exists. There is currently no dedicated data source for this catalog; `fptcloud_flavor` is **not** it (different ids and names), so take the id from the console until a data source exists
 * `hpc_number_server` - (Required) Fixed number of bare-metal servers in the pool. Must be ≥ 1
 
 **Optional:**
 * `hpc_flavor_name` - (Optional, Computed) Display name for `hpc_flavor_id`. No default
 * `network_id` - (Optional, Computed) Subnet id for the pool. Defaults to the cluster's `network_id` when omitted — must resolve against the same HPC subnet catalog, not `fptcloud_subnet`
 * `network_name` - (Optional, Computed) Subnet name for the pool. Defaults to the cluster's network name when omitted
-* `container_runtime` - (Optional, Computed) Container runtime. Default: `"containerd"`. Immutable after creation
+* `container_runtime` - (Optional, Computed) Container runtime. Default: `"containerd"`. Changing it on an existing pool is rejected at apply time
 * `worker_base` - (Optional, Computed) Whether this is the base worker pool. Default: `true` for the first pool, `false` otherwise
 * `tags` - (Optional, Computed) List of tag ids for the worker pool. Default: `[]`
 * `gpu_type` - (Optional) GPU type for the pool. Must be one of `A100`, `A30`, `H100`, `H200`. No default
@@ -537,16 +461,33 @@ silently dropped from state.
 
 ### Kubernetes Version Validation
 * Allowed versions: `1.36.2`, `1.35.6`, `1.34.6`, `1.33.12`, `1.32.5`, `1.31.4`, `1.30.8`, `1.29.8`
-* Downgrades are rejected; each update can advance by at most one minor version
 
-### Immutable Fields
-The following cannot be changed after creation (attempting to do so fails validation):
+### Fields That Cannot Be Changed In Place
+
+The backend has no endpoint to change these on a live cluster. They fall into
+three groups by what actually happens when you edit one.
+
+**Terraform recreates the cluster** (plan shows `# forces replacement`):
+
+* `vpc_id`, `cluster_name`, `network_id`, `ssh_key_id`
+* `k8s_version` — bare metal has no in-place upgrade
+* `network_type`, `pod_network`, `pod_prefix`, `service_network`, `service_prefix`
+* `pools[].hpc_flavor_id` — the pool's flavor is fixed once the pool exists
+
+**The apply is rejected with a validation error:**
+
 * `purpose`
-* `network_type`
-* `pod_network`, `pod_prefix`, `service_network`, `service_prefix`, `k8s_max_pod`
+* `k8s_max_pod`
 * `pools[].container_runtime`
-* `pools[].gpu_driver` (not enforced by validation, but ineffective — see [GPU Driver Block](#gpu-driver-block))
-* `cluster_endpoint_access.type` cannot transition to/from `public`
+* `cluster_endpoint_access.type` cannot transition to or from `public`
+
+**Accepted but silently ineffective** — avoid:
+
+* `pools[].gpu_driver` on a pool that already exists. See [GPU Driver Block](#gpu-driver-block)
+
+Two things that look immutable but are not: `internal_subnet_lb` has its own
+update endpoint, and renaming a pool (`pools[].name`) replaces just that pool
+while leaving the rest of the cluster alone.
 
 ### Worker Pool Validation
 * `hpc_number_server` must be ≥ 1

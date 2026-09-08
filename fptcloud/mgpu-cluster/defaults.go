@@ -12,15 +12,6 @@ func SetDefaults(state *managedGpuCluster) {
 	if state.NetworkType.IsNull() || state.NetworkType.IsUnknown() || state.NetworkType.ValueString() == "" {
 		state.NetworkType = types.StringValue("calico")
 	}
-	if state.IsEnableAutoUpgrade.IsNull() || state.IsEnableAutoUpgrade.IsUnknown() {
-		state.IsEnableAutoUpgrade = types.BoolValue(false)
-	}
-	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
-		state.AutoUpgradeExpression, _ = types.ListValue(types.StringType, []attr.Value{})
-	}
-	if state.AutoUpgradeTimezone.IsNull() || state.AutoUpgradeTimezone.IsUnknown() {
-		state.AutoUpgradeTimezone = types.StringValue("Asia/Saigon")
-	}
 	if state.EdgeGatewayName.IsNull() || state.EdgeGatewayName.IsUnknown() {
 		state.EdgeGatewayName = types.StringValue("")
 	}
@@ -145,9 +136,6 @@ func SetDefaults(state *managedGpuCluster) {
 		// does not set them, so nothing is sent to the API for their fields.
 	}
 
-	if state.IsRunning.IsNull() || state.IsRunning.IsUnknown() {
-		state.IsRunning = types.BoolValue(true)
-	}
 }
 
 func SetDefaultsUpdate(plan, state *managedGpuCluster) {
@@ -159,15 +147,6 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 	}
 	if plan.NetworkType.IsNull() || plan.NetworkType.IsUnknown() || plan.NetworkType.ValueString() == "" {
 		plan.NetworkType = state.NetworkType
-	}
-	if plan.IsEnableAutoUpgrade.IsNull() || plan.IsEnableAutoUpgrade.IsUnknown() {
-		plan.IsEnableAutoUpgrade = state.IsEnableAutoUpgrade
-	}
-	if plan.AutoUpgradeExpression.IsNull() || plan.AutoUpgradeExpression.IsUnknown() {
-		plan.AutoUpgradeExpression = state.AutoUpgradeExpression
-	}
-	if plan.AutoUpgradeTimezone.IsNull() || plan.AutoUpgradeTimezone.IsUnknown() {
-		plan.AutoUpgradeTimezone = state.AutoUpgradeTimezone
 	}
 	// internal_subnet_lb is now Required — no default needed.
 	if plan.EdgeGatewayName.IsNull() || plan.EdgeGatewayName.IsUnknown() {
@@ -193,10 +172,6 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 	}
 	if plan.K8SVersion.IsNull() || plan.K8SVersion.IsUnknown() || plan.K8SVersion.ValueString() == "" {
 		plan.K8SVersion = state.K8SVersion
-	}
-
-	if plan.IsRunning.IsNull() || plan.IsRunning.IsUnknown() {
-		plan.IsRunning = state.IsRunning
 	}
 
 	// cluster_endpoint_access: always set default when not provided in plan
@@ -230,17 +205,6 @@ func SetDefaultsUpdate(plan, state *managedGpuCluster) {
 		)
 	}
 
-	// For hibernation_schedules, if not provided in config, keep it as null
-	// This allows users to explicitly remove schedules by not specifying them
-	if plan.HibernationSchedules.IsNull() || plan.HibernationSchedules.IsUnknown() {
-		plan.HibernationSchedules = types.ListNull(types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		})
-	}
 	// Pools: default optional fields in each pool
 	for i := range plan.Pools {
 		if plan.Pools[i].NetworkID.IsNull() || plan.Pools[i].NetworkID.IsUnknown() || plan.Pools[i].NetworkID.ValueString() == "" {

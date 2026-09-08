@@ -221,7 +221,10 @@ func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id strin
 
 		if gw, ok := gpuWorkers[w.Name]; ok {
 			item.GpuType = stringOrNull(gw.GpuType)
+			// A data source has no prior value to disambiguate an all-off
+			// reading against, so it reports null in that case.
 			item.GpuSharing = gpuSharingObjectValue(
+				types.ObjectNull(gpuSharingAttrTypes),
 				normalizeGpuNone(gw.MigMode),
 				normalizeGpuNone(gw.MigProfile),
 				normalizeGpuNone(gw.SharingClientType),
@@ -295,16 +298,16 @@ func (d *datasourceManagedGpuCluster) topFields() map[string]schema.Attribute {
 	}
 	// Optional string fields
 	optionalStrings := []string{
-		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone", "ssh_key_id",
+		"internal_subnet_lb", "edge_gateway_name", "ssh_key_id",
 	}
 	// Required int fields
 	requiredInts := []string{}
 	// Optional int fields
 	optionalInts := []string{"k8s_max_pod", "network_node_prefix"}
 	// Optional bool fields
-	optionalBools := []string{"is_enable_auto_upgrade", "is_running"}
+	optionalBools := []string{}
 	// Optional list fields
-	optionalLists := []string{"auto_upgrade_expression"}
+	optionalLists := []string{}
 
 	for _, attribute := range requiredStrings {
 		topLevelAttributes[attribute] = schema.StringAttribute{
@@ -380,18 +383,6 @@ func (d *datasourceManagedGpuCluster) topFields() map[string]schema.Attribute {
 		Computed:    true,
 		Description: descriptions["gpu_software"],
 		ElementType: types.ObjectType{AttrTypes: softwareAttrTypes},
-	}
-
-	topLevelAttributes["hibernation_schedules"] = schema.ListAttribute{
-		Computed:    true,
-		Description: descriptions["hibernation_schedules"],
-		ElementType: types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		},
 	}
 
 	topLevelAttributes["network_type"] = schema.StringAttribute{

@@ -55,7 +55,12 @@ func TestGpuSoftwareWorkerPayload(t *testing.T) {
 		},
 		{
 			// USER_INSTALL: the user brings their own driver, so the platform
-			// manages neither MIG nor sharing (SRS 2.3).
+			// manages neither MIG nor sharing.
+			//
+			// Note this departs from SRS 2.3, which says sharing_client_type
+			// is "all-disabled" here — the API rejects that with HTTP 422
+			// ("must be one of: ['MPS', 'TIMESLICING', 'NONE', '']"). Only
+			// mig_profile takes all-disabled.
 			name: "user install",
 			pool: &managedGpuClusterPool{
 				WorkerPoolID: types.StringValue("worker-userinstall"),
@@ -66,7 +71,7 @@ func TestGpuSoftwareWorkerPayload(t *testing.T) {
 				}),
 				GpuSharing: types.ObjectNull(gpuSharingAttrTypes),
 			},
-			want: `{"name":"worker-userinstall","mig_mode":"NONE","mig_profile":"NONE","sharing_client_type":"all-disabled","max_client":0,"gpu_scheduler":"NONE","driver_type":"USER_INSTALL","driver_version":"","enable_operand":true,"gpu_type":"H200"}`,
+			want: `{"name":"worker-userinstall","mig_mode":"NONE","mig_profile":"all-disabled","sharing_client_type":"NONE","max_client":0,"gpu_scheduler":"NONE","driver_type":"USER_INSTALL","driver_version":"","enable_operand":true,"gpu_type":"H200"}`,
 		},
 	}
 
@@ -148,6 +153,56 @@ func TestSoftwareToOperatorVersion(t *testing.T) {
 	if migStrategy != nil {
 		t.Errorf("mig_strategy: expected nil without a gpu_operator, got %q", *migStrategy)
 	}
+}
+
+// TestGpuSharingObjectValueAllOff covers the ambiguity at the heart of reading
+// gpu_sharing back: the API reports a pool that never configured sharing and
+// one that configured NONE everywhere identically, so the previous state value
+// has to break the tie. Getting it wrong either fails the apply with "was
+// object, but now null" or leaves an unconfigured pool diffing forever.
+func TestGpuSharingObjectValueAllOff(t *testing.T) {
+	// The API's "off" values, after normalizeGpuNone has blanked them.
+	const offMig, offProfile, offClient = "", "", ""
+
+	t.Run("never configured stays null", func(t *testing.T) {
+		got := gpuSharingObjectValue(types.ObjectNull(gpuSharingAttrTypes), offMig, offProfile, offClient, 0)
+		if !got.IsNull() {
+			t.Errorf("expected null so an unset block does not diff, got %v", got)
+		}
+	})
+
+	t.Run("configured as NONE keeps the object", func(t *testing.T) {
+		prior := types.ObjectValueMust(gpuSharingAttrTypes, map[string]attr.Value{
+			"mig_strategy":        types.StringValue("NONE"),
+			"mig_profile":         types.StringNull(),
+			"sharing_client_type": types.StringValue("NONE"),
+			"max_client":          types.Int64Value(0),
+		})
+
+		got := gpuSharingObjectValue(prior, offMig, offProfile, offClient, 0)
+		if got.IsNull() {
+			t.Fatal("expected an object: collapsing to null breaks the plan's promise and fails the apply")
+		}
+
+		attrs := got.Attributes()
+		if v := attrs["mig_strategy"].(types.String).ValueString(); v != "NONE" {
+			t.Errorf("mig_strategy: got %q, want NONE", v)
+		}
+		if v := attrs["sharing_client_type"].(types.String).ValueString(); v != "NONE" {
+			t.Errorf("sharing_client_type: got %q, want NONE", v)
+		}
+	})
+
+	t.Run("actual settings win over prior", func(t *testing.T) {
+		got := gpuSharingObjectValue(types.ObjectNull(gpuSharingAttrTypes), "SINGLE", "all-1g.35gb", "TIMESLICING", 2)
+		attrs := got.Attributes()
+		if v := attrs["mig_strategy"].(types.String).ValueString(); v != "SINGLE" {
+			t.Errorf("mig_strategy: got %q, want SINGLE", v)
+		}
+		if v := attrs["max_client"].(types.Int64).ValueInt64(); v != 2 {
+			t.Errorf("max_client: got %d, want 2", v)
+		}
+	})
 }
 
 // TestOperatorVersionsCatalogParsing pins the shape of the operator-versions

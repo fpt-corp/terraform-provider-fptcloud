@@ -347,6 +347,34 @@ func validatePool(ctx context.Context, client *MgpuClusterApiClient, vpcId, plat
 	return nil
 }
 
+// clusterNameMinLen and clusterNameMaxLen bound the name the user supplies,
+// before the 8-character random suffix is appended. The console enforces the
+// same range (SRS mục 8). Overshooting it produces a shoot name Gardener
+// accepts but cannot mint an admin token for, which surfaces much later as an
+// opaque "Invalid Admin Token" from the GPU-software install.
+const clusterNameMinLen, clusterNameMaxLen = 3, 20
+
+// validateClusterName checks the length of the user-supplied cluster name. A
+// name that already carries a random suffix is measured without it, so
+// re-applying a config whose name came back suffixed still validates.
+func validateClusterName(clusterName string) *diag2.ErrorDiagnostic {
+	name := clusterName
+	if hasRandomSuffix(name) {
+		name = name[:len(name)-9] // strip "-XXXXXXXX"
+	}
+
+	if len(name) < clusterNameMinLen || len(name) > clusterNameMaxLen {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid cluster_name",
+			fmt.Sprintf("cluster_name must be between %d and %d characters, got %d (%q). A random 8-character suffix is appended on top of this, and a longer name produces a cluster the GPU-software step cannot authenticate against.",
+				clusterNameMinLen, clusterNameMaxLen, len(name), name),
+		)
+		return &d
+	}
+
+	return nil
+}
+
 // allowedK8sVersions lists every Kubernetes version the platform can provision.
 var allowedK8sVersions = []string{"1.36.2", "1.35.6", "1.34.6", "1.33.12", "1.32.5", "1.31.4", "1.30.8", "1.29.8"}
 
@@ -358,18 +386,6 @@ func validateK8sVersion(version string) *diag2.ErrorDiagnostic {
 	}
 	d := diag2.NewErrorDiagnostic("Invalid Kubernetes version", "k8s_version must be one of: "+strings.Join(allowedK8sVersions, ", "))
 	return &d
-}
-
-func parseK8sMinorVersion(version string) (int, error) {
-	parts := strings.Split(version, ".")
-	if len(parts) < 2 {
-		return 0, fmt.Errorf("invalid version format: %s", version)
-	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return 0, err
-	}
-	return minor, nil
 }
 
 // v2MinK8sMajor and v2MinK8sMinor are the minimum Kubernetes version at which
@@ -394,50 +410,6 @@ func requiresV2API(k8sVersion string) bool {
 		return false
 	}
 	return major > v2MinK8sMajor || (major == v2MinK8sMajor && minor >= v2MinK8sMinor)
-}
-
-func validateK8sVersionUpdate(planVersion, stateVersion types.String) diag2.Diagnostic {
-	if planVersion.IsNull() || planVersion.IsUnknown() || planVersion.ValueString() == "" {
-		return nil
-	}
-	plan := planVersion.ValueString()
-	found := false
-	for _, v := range allowedK8sVersions {
-		if plan == v {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return diag2.NewErrorDiagnostic(
-			"Invalid k8s_version",
-			fmt.Sprintf("k8s_version must be one of: %s", strings.Join(allowedK8sVersions, ", ")),
-		)
-	}
-	if stateVersion.IsNull() || stateVersion.IsUnknown() || stateVersion.ValueString() == "" {
-		return nil
-	}
-	planMinor, err1 := parseK8sMinorVersion(plan)
-	stateMinor, err2 := parseK8sMinorVersion(stateVersion.ValueString())
-	if err1 != nil || err2 != nil {
-		return diag2.NewErrorDiagnostic(
-			"Invalid k8s_version format",
-			fmt.Sprintf("Failed to parse k8s_version: plan=%s, state=%s", plan, stateVersion.ValueString()),
-		)
-	}
-	if planMinor < stateMinor {
-		return diag2.NewErrorDiagnostic(
-			"k8s_version downgrade not allowed",
-			fmt.Sprintf("Cannot downgrade k8s_version from %s to %s", stateVersion.ValueString(), plan),
-		)
-	}
-	if planMinor > stateMinor+1 {
-		return diag2.NewErrorDiagnostic(
-			"k8s_version upgrade too large",
-			fmt.Sprintf("Can only upgrade k8s_version by one minor version at a time (from %s to %s)", stateVersion.ValueString(), plan),
-		)
-	}
-	return nil
 }
 
 // Call this from validateNetwork (or validatePool if more appropriate)
@@ -703,6 +675,11 @@ func validateClusterEndpointAccess(accessType string) *diag2.ErrorDiagnostic {
 }
 
 func ValidateCreate(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, state *managedGpuCluster, response *resource.CreateResponse) bool {
+	// Validate cluster_name length
+	if diag := validateClusterName(state.ClusterName.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
 	// Validate k8s_version
 	if diag := validateK8sVersion(state.K8SVersion.ValueString()); diag != nil {
 		response.Diagnostics.Append(diag)
@@ -935,11 +912,6 @@ func validateImmutablePoolStringField(planPools, statePools []*managedGpuCluster
 }
 
 func ValidateUpdate(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, state, plan *managedGpuCluster, response *resource.UpdateResponse) bool {
-	// Validate k8s_version and prevent downgrade
-	if diag := validateK8sVersionUpdate(plan.K8SVersion, state.K8SVersion); diag != nil {
-		response.Diagnostics.Append(diag)
-		return false
-	}
 	// Deny changing purpose
 	if diag := validatePurposeUpdate(plan.Purpose, state.Purpose); diag != nil {
 		response.Diagnostics.Append(diag)
@@ -960,7 +932,12 @@ func ValidateUpdate(ctx context.Context, client *MgpuClusterApiClient, vpcId, pl
 		response.Diagnostics.Append(diag)
 		return false
 	}
-	// Deny changing PodNetwork, PodPrefix, ServiceNetwork, ServicePrefix, K8SMaxPod
+	// Deny changing PodNetwork, PodPrefix, ServiceNetwork, ServicePrefix, K8SMaxPod.
+	//
+	// network_type and the CIDR fields also carry RequiresReplace in the
+	// schema, so Terraform recreates the cluster before Update is ever
+	// reached. These checks stay as a backstop in case a plan modifier is
+	// dropped, and because k8s_max_pod has no modifier of its own.
 	if diag := validateImmutableStringField("pod_network", plan.PodNetwork, state.PodNetwork); diag != nil {
 		response.Diagnostics.Append(diag)
 		return false

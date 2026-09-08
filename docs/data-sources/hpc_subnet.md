@@ -74,14 +74,14 @@ a list, even when the filter matches exactly one entry. Index into it
 
 ### Optional
 
-* `filter` - (Optional) One or more filter blocks, combined with AND semantics across blocks and OR semantics within a block's `values`. Omit entirely to list every HPC subnet in the VPC.
+* `filter` - (Optional) One or more filter blocks. A subnet must match every block, and within a block it matches if its field equals any of the listed values. Omit entirely to list every HPC subnet in the VPC.
   * `key` - (Required) Field to filter on: `id` or `name`
   * `values` - (Required) Values to match — a subnet matches if its field equals any of these
 
 ### Read-Only
 
 * `subnets` - List of HPC subnets matching the filter (every subnet in the VPC when no filter is set). Each entry:
-  * `id` (String) - Subnet id. This is the value to pass as `network_id` (and, on the same catalog, `internal_subnet_lb` is **not** taken from here — see the note below)
+  * `id` (String) - Subnet id. Pass this as `fptcloud_managed_gpu_cluster.network_id`. Do **not** use it for `internal_subnet_lb` — that one comes from `fptcloud_subnet`, see the note below
   * `name` (String) - Subnet name
   * `subnet_cidr` (String) - The subnet's CIDR — sent as `vm_subnet` by `fptcloud_managed_gpu_cluster`
   * `description` (String)

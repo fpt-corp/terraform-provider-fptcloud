@@ -40,11 +40,11 @@ const (
 	// gpuMigDisabled is the mig_profile a pool carries when MIG is off. Note
 	// this is a profile name, not an enum value: the profile field says
 	// "partitioned into nothing" rather than being omitted.
+	//
+	// It belongs to mig_profile only. sharing_client_type has its own enum
+	// (MPS, TIMESLICING, NONE, "") and rejects this value with HTTP 422, so a
+	// pool with sharing switched off sends gpuValueNone there instead.
 	gpuMigDisabled = "all-disabled"
-
-	// gpuSharingDisabled is the sharing_client_type reported for a pool whose
-	// driver is USER_INSTALL, where sharing is not available at all.
-	gpuSharingDisabled = "all-disabled"
 )
 
 // gpuSoftwareRegion is the region value the GPU-software body carries. It is
@@ -188,13 +188,17 @@ func gpuSoftwareWorkerFromPool(pool *managedGpuClusterPool) *gpuSoftwareWorkerJs
 	migMode, migProfile, sharingClientType, maxClient := gpuSharingFields(pool.GpuSharing)
 
 	if driverType == driverInstallationTypeUserInstall {
+		// mig_mode and sharing_client_type share the same enum, whose "off"
+		// value is NONE. mig_profile is a profile name, not an enum, and says
+		// "partitioned into nothing" with all-disabled. Sending all-disabled
+		// as a sharing_client_type is rejected with HTTP 422.
 		migModeNone := gpuValueNone
-		sharingDisabled := gpuSharingDisabled
+		sharingNone := gpuValueNone
 		return &gpuSoftwareWorkerJson{
 			Name:              pool.WorkerPoolID.ValueString(),
 			MigMode:           &migModeNone,
-			MigProfile:        gpuValueNone,
-			SharingClientType: &sharingDisabled,
+			MigProfile:        gpuMigDisabled,
+			SharingClientType: &sharingNone,
 			MaxClient:         0,
 			GpuScheduler:      gpuValueNone,
 			DriverType:        driverType,
@@ -340,6 +344,16 @@ func syncGpuSoftware(
 	vpcId := state.VpcId.ValueString()
 
 	_, body, err := mgpuClient.fetchGpuSoftwareRaw(ctx, vpcId, clusterName, platform, tenant.Id, apiRegion, isV2)
+	if err != nil && isNotFoundError(err) {
+		// The cluster has no GPU-software record at all. That happens when
+		// creation got half-way: the cluster exists and its id is in state,
+		// but the install call failed. There is nothing to read-modify-write,
+		// so install from scratch instead — otherwise every later apply reads
+		// a 404 and the cluster can never be repaired.
+		tflog.Info(ctx, "No GPU software record for cluster "+clusterName+", installing instead of updating")
+		installBody := buildGpuSoftwareRequest(state, clusterName, platform, apiRegion, tenant.Id, isV2)
+		return mgpuClient.installGpuSoftware(ctx, vpcId, clusterName, platform, isV2, installBody)
+	}
 	if err != nil {
 		return fmt.Errorf("error reading GPU software before update: %w", err)
 	}

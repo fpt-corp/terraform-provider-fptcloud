@@ -67,6 +67,14 @@ var (
 	keepStatePlanModifiersObject = []planmodifier.Object{
 		objectplanmodifier.UseStateForUnknown(),
 	}
+
+	// keepStateForceNewPlanModifiersString is for Optional+Computed attributes
+	// that cannot be changed on a live cluster: keep the stored value out of
+	// unrelated plans, but recreate the resource when one genuinely changes.
+	keepStateForceNewPlanModifiersString = []planmodifier.String{
+		stringplanmodifier.UseStateForUnknown(),
+		stringplanmodifier.RequiresReplace(),
+	}
 )
 
 const (
@@ -134,7 +142,7 @@ func (r *resourceManagedGpuCluster) Create(ctx context.Context, request resource
 		return
 	}
 
-	if checkClusterName(f.ClusterName) {
+	if !hasRandomSuffix(f.ClusterName) {
 		originalName := f.ClusterName
 		randomSuffix := GenerateRandomSuffix()
 		f.ClusterName = fmt.Sprintf("%s-%s", f.ClusterName, randomSuffix)
@@ -336,13 +344,18 @@ func (r *resourceManagedGpuCluster) Update(ctx context.Context, request resource
 		return
 	}
 
-	_, err = r.InternalRead(ctx, state.Id.ValueString(), &state)
-	if err != nil {
+	// Refresh into the plan, not the prior state: what Terraform will accept
+	// afterwards is what the plan promised, and InternalRead uses the value it
+	// is handed to disambiguate readings the API reports the same either way
+	// (see gpuSharingObjectValue). Reading into the old state instead would
+	// resurrect blocks the config has just removed.
+	plan.Id = state.Id
+	if _, err = r.InternalRead(ctx, state.Id.ValueString(), &plan); err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))
 		return
 	}
 
-	diags = response.State.Set(ctx, &state)
+	diags = response.State.Set(ctx, &plan)
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
 		return

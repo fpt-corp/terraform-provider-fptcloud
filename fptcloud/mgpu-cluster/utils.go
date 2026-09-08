@@ -19,7 +19,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -39,9 +38,11 @@ func GenerateRandomSuffix() string {
 	return string(result)
 }
 
-// checkClusterName checks if cluster_name ends with exactly 8 characters after a dash
-// Pattern: *-XXXXXXXX where X is any alphanumeric character (exactly 8 chars after last dash)
-func checkClusterName(clusterName string) bool {
+// hasRandomSuffix reports whether cluster_name already ends in the 8-character
+// suffix the platform expects (*-XXXXXXXX, alphanumeric). A name that has one
+// is passed through untouched; one that does not gets a freshly generated
+// suffix appended before create.
+func hasRandomSuffix(clusterName string) bool {
 	pattern := regexp.MustCompile(`-[a-zA-Z0-9]{8}$`)
 	return pattern.MatchString(clusterName)
 }
@@ -139,17 +140,30 @@ func TopFields() map[string]schema.Attribute {
 	}
 	// Optional string fields
 	optionalStrings := []string{
-		"k8s_version", "edge_gateway_name", "auto_upgrade_timezone", "edge_gateway_id", "network_type",
-		"purpose", "pod_network", "pod_prefix", "service_network", "service_prefix",
+		"edge_gateway_name", "edge_gateway_id", "purpose",
+	}
+	// Optional string fields that cannot be changed on a live cluster: the
+	// backend has no endpoint for them, so changing one has to recreate the
+	// cluster rather than silently plan an in-place update that would fail or,
+	// worse, appear to succeed. See SRS 11.3.
+	//
+	// k8s_version and purpose stay out of this list on purpose: the former has
+	// its own upgrade endpoint, and the latter is rejected by ValidateUpdate
+	// with a clearer message than a surprise replacement would give.
+	immutableOptionalStrings := []string{
+		"network_type", "pod_network", "pod_prefix", "service_network", "service_prefix",
+		// Bare metal has no working upgrade endpoint (the console hides the
+		// action too), so a new version means a new cluster.
+		"k8s_version",
 	}
 	// Required int fields
 	requiredInts := []string{}
 	// Optional int fields
 	optionalInts := []string{"k8s_max_pod", "network_node_prefix"}
 	// Optional bool fields
-	optionalBools := []string{"is_enable_auto_upgrade"}
+	optionalBools := []string{}
 	// Optional list fields
-	optionalLists := []string{"auto_upgrade_expression"}
+	optionalLists := []string{}
 
 	for _, attribute := range requiredStrings {
 		topLevelAttributes[attribute] = schema.StringAttribute{
@@ -172,6 +186,17 @@ func TopFields() map[string]schema.Attribute {
 			Optional:      true,
 			Computed:      true,
 			PlanModifiers: keepStatePlanModifiersString,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range immutableOptionalStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Optional: true,
+			Computed: true,
+			// Both modifiers matter: UseStateForUnknown keeps the value out of
+			// every unrelated plan, RequiresReplace makes a real change
+			// recreate the cluster.
+			PlanModifiers: keepStateForceNewPlanModifiersString,
 			Description:   descriptions[attribute],
 		}
 	}
@@ -206,14 +231,6 @@ func TopFields() map[string]schema.Attribute {
 			PlanModifiers: keepStatePlanModifiersList,
 			Description:   descriptions[attribute],
 		}
-	}
-
-	// Special handling for is_running - not computed, with default value
-	topLevelAttributes["is_running"] = schema.BoolAttribute{
-		Optional:    true,
-		Computed:    true,
-		Description: descriptions["is_running"],
-		Default:     booldefault.StaticBool(true),
 	}
 
 	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
@@ -255,18 +272,6 @@ func TopFields() map[string]schema.Attribute {
 		},
 	}
 
-	topLevelAttributes["hibernation_schedules"] = schema.ListAttribute{
-		Description: "List of hibernation schedules for the cluster. Each schedule specifies a start and end time in cron format.",
-		Optional:    true,
-		ElementType: types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		},
-	}
-
 	return topLevelAttributes
 }
 
@@ -274,7 +279,18 @@ func PoolFields() map[string]schema.Attribute {
 	poolLevelAttributes := map[string]schema.Attribute{}
 	// Required string fields
 	requiredStrings := []string{
-		"name", "hpc_flavor_id",
+		"name",
+	}
+	// Required string fields that cannot be changed on an existing pool.
+	// configure-worker-cluster treats flavor as optional for pools that
+	// already exist and ignores a new value (SRS 4.1), so the pool has to be
+	// recreated instead.
+	//
+	// name stays out of this list: renaming a pool is how you replace one —
+	// configure-worker-cluster drops the pool missing from the list and
+	// creates the newly named one, leaving the rest of the cluster alone.
+	immutableRequiredStrings := []string{
+		"hpc_flavor_id",
 	}
 	// Optional string fields
 	optionalStrings := []string{"network_name", "network_id", "container_runtime", "hpc_flavor_name", "gpu_type"}
@@ -293,6 +309,13 @@ func PoolFields() map[string]schema.Attribute {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
 			Required:    true,
 			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range immutableRequiredStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Required:      true,
+			PlanModifiers: forceNewPlanModifiersString,
+			Description:   descriptions[attribute],
 		}
 	}
 	for _, attribute := range optionalStrings {
@@ -631,24 +654,6 @@ func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from 
 		}
 	}
 
-	if !from.IsEnableAutoUpgrade.IsNull() && !from.IsEnableAutoUpgrade.IsUnknown() {
-		to.IsEnableAutoUpgrade = from.IsEnableAutoUpgrade.ValueBool()
-	}
-
-	if !from.AutoUpgradeExpression.IsNull() && !from.AutoUpgradeExpression.IsUnknown() {
-		var exprs []string
-		for _, e := range from.AutoUpgradeExpression.Elements() {
-			if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
-				exprs = append(exprs, str.ValueString())
-			}
-		}
-		to.AutoUpgradeExpression = exprs
-	}
-
-	if !from.AutoUpgradeTimezone.IsNull() && !from.AutoUpgradeTimezone.IsUnknown() {
-		to.AutoUpgradeTimezone = from.AutoUpgradeTimezone.ValueString()
-	}
-
 	if !from.ClusterAutoscaler.IsNull() && !from.ClusterAutoscaler.IsUnknown() {
 		autoscalerAttrs := from.ClusterAutoscaler.Attributes()
 
@@ -783,13 +788,52 @@ func migProfileForRequest(profile string) string {
 }
 
 // gpuSharingObjectValue builds the gpu_sharing state value read back from the
-// GPU-software endpoint. Left null when the API reports neither MIG nor
-// sharing, so a config that never set gpu_sharing does not see a permanent
-// diff.
-func gpuSharingObjectValue(migStrategy, migProfile, clientType string, maxClient int64) types.Object {
-	if migStrategy == "" && migProfile == "" && clientType == "" && maxClient == 0 {
+// GPU-software endpoint.
+//
+// prior is whatever the pool already had in state, and it decides what an
+// all-off reading means. The API cannot tell the two cases apart — a pool that
+// never configured sharing and one that configured NONE everywhere both read
+// back as NONE/all-disabled — but Terraform can:
+//
+//   - prior null (config never set the block): stay null, otherwise a config
+//     without gpu_sharing would diff forever.
+//   - prior set (config asked for NONE explicitly): keep an object carrying
+//     those NONE values. Collapsing it to null here would break the plan's
+//     promise and fail the apply with "was object, but now null".
+//
+// priorGpuSharingByPool indexes the gpu_sharing values already in state by
+// pool name, for gpuSharingObjectValue to disambiguate an all-off reading.
+func priorGpuSharingByPool(pools []*managedGpuClusterPool) map[string]types.Object {
+	prior := make(map[string]types.Object, len(pools))
+	for _, pool := range pools {
+		if pool == nil {
+			continue
+		}
+		prior[pool.WorkerPoolID.ValueString()] = pool.GpuSharing
+	}
+	return prior
+}
+
+func gpuSharingObjectValue(prior types.Object, migStrategy, migProfile, clientType string, maxClient int64) types.Object {
+	allOff := migStrategy == "" && migProfile == "" && clientType == "" && maxClient == 0
+	priorSet := !prior.IsNull() && !prior.IsUnknown()
+
+	if allOff && !priorSet {
 		return types.ObjectNull(gpuSharingAttrTypes)
 	}
+
+	if allOff {
+		// Echo back what the config asked for rather than the empty strings
+		// normalizeGpuNone produced, so state matches config exactly.
+		priorMigStrategy, priorMigProfile, priorClientType, priorMaxClient := gpuSharingFields(prior)
+		return types.ObjectValueMust(gpuSharingAttrTypes, map[string]attr.Value{
+			"mig_strategy":        stringOrNull(priorMigStrategy),
+			"mig_profile":         stringOrNull(priorMigProfile),
+			"sharing_client_type": stringOrNull(priorClientType),
+			"max_client":          types.Int64Value(priorMaxClient),
+		})
+	}
+
 	return types.ObjectValueMust(gpuSharingAttrTypes, map[string]attr.Value{
 		"mig_strategy":        stringOrNull(migStrategy),
 		"mig_profile":         stringOrNull(migProfile),
@@ -934,39 +978,9 @@ func (r *resourceManagedGpuCluster) CheckForError(a []byte) *diag2.ErrorDiagnost
 
 // diff
 func (r *resourceManagedGpuCluster) Diff(ctx context.Context, from *managedGpuCluster, to *managedGpuCluster) *diag2.ErrorDiagnostic {
-	// Handle Version changes
-	if from.K8SVersion != to.K8SVersion {
-		err := r.upgradeVersion(ctx, from, to)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Handle is_running changes
-	if from.IsRunning.ValueBool() != to.IsRunning.ValueBool() {
-		err := r.updateIsRunning(ctx, to, from)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Handle hibernation schedules changes
-	if !to.HibernationSchedules.Equal(from.HibernationSchedules) {
-		err := r.updateHibernationSchedules(ctx, to, from)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Handle auto upgrade version changes
-	if from.IsEnableAutoUpgrade.ValueBool() != to.IsEnableAutoUpgrade.ValueBool() ||
-		!to.AutoUpgradeTimezone.Equal(from.AutoUpgradeTimezone) ||
-		!to.AutoUpgradeExpression.Equal(from.AutoUpgradeExpression) {
-
-		if err := r.updateAutoUpgradeVersion(ctx, to, from); err != nil {
-			return err
-		}
-	}
+	// Kubernetes upgrades, hibernation and auto-upgrade are not handled here:
+	// bare-metal clusters do not support them (see the note in types.go), and
+	// k8s_version forces replacement rather than an in-place upgrade.
 
 	// Handle cluster endpoint CIDR changes
 	if !to.ClusterEndpointAccess.Equal(from.ClusterEndpointAccess) {
@@ -1108,34 +1122,6 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	}
 	data := d.Data
 
-	// auto_upgrade_expression and auto_upgrade_timezone and is_enable_auto_upgrade
-	if data.Spec.AutoUpgrade != nil {
-		autoUpgradeInfo := data.Spec.AutoUpgrade
-
-		isEnabled := len(autoUpgradeInfo.TimeUpgrade) > 0
-		state.IsEnableAutoUpgrade = types.BoolValue(isEnabled)
-		state.AutoUpgradeTimezone = types.StringValue(autoUpgradeInfo.TimeZone)
-
-		if isEnabled {
-			listVal, diags := types.ListValueFrom(ctx, types.StringType, autoUpgradeInfo.TimeUpgrade)
-			if diags.HasError() {
-				return nil, fmt.Errorf("error creating auto_upgrade_expression list for state: %v", diags)
-			}
-			state.AutoUpgradeExpression = listVal
-		} else {
-			state.AutoUpgradeExpression = types.ListNull(types.StringType)
-		}
-	} else {
-		// The API reports autoUpgrade: null when it has never been
-		// configured. Fall back to the same defaults SetDefaults applies at
-		// plan time (types.StringNull()/types.ListNull() here would not match
-		// a plan that filled in "Asia/Saigon"/[] and fail the post-apply
-		// consistency check).
-		state.IsEnableAutoUpgrade = types.BoolValue(false)
-		state.AutoUpgradeTimezone = types.StringValue("Asia/Saigon")
-		state.AutoUpgradeExpression = types.ListValueMust(types.StringType, []attr.Value{})
-	}
-
 	// id
 	state.Id = types.StringValue(data.Metadata.Name)
 
@@ -1251,48 +1237,6 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 		state.EdgeGatewayId = types.StringValue("")
 	}
 
-	// is_running reflects the desired hibernation state (spec.hibernation),
-	// not transient control-plane health: a cluster still provisioning (or
-	// whose first status condition just isn't a True/False health check,
-	// as seen on v2/OSP responses) is not "hibernated", so treat a missing
-	// or disabled hibernation spec as running.
-	isRunning := true
-	if data.Spec.Hibernate != nil {
-		isRunning = !data.Spec.Hibernate.Enabled
-	}
-	state.IsRunning = types.BoolValue(isRunning)
-
-	// hibernation_schedules
-	if data.Spec.Hibernate != nil && data.Spec.Hibernate.Schedules != nil {
-		var schedulesFromAPI []HibernationSchedule
-
-		for _, apiSchedule := range data.Spec.Hibernate.Schedules {
-			schedulesFromAPI = append(schedulesFromAPI, HibernationSchedule{
-				Start:    types.StringValue(apiSchedule.Start),
-				End:      types.StringValue(apiSchedule.End),
-				Location: types.StringValue(apiSchedule.Location),
-			})
-		}
-
-		hibernationScheduleObjectType := types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		}
-
-		state.HibernationSchedules, _ = types.ListValueFrom(ctx, hibernationScheduleObjectType, schedulesFromAPI)
-	} else {
-		state.HibernationSchedules = types.ListNull(types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"start":    types.StringType,
-				"end":      types.StringType,
-				"location": types.StringType,
-			},
-		})
-	}
-
 	// pools
 	apiPools := make([]*managedGpuClusterPool, 0)
 
@@ -1305,6 +1249,11 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 	gpuSoftware := readGpuSoftwareState(ctx, r.mgpuClusterClient, r.vpcClient, r.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
 	gpuWorkers := gpuSoftware.workers
 	state.Software = gpuSoftware.software
+
+	// What each pool had before this read. An all-off gpu_sharing reading is
+	// ambiguous on its own — see gpuSharingObjectValue — so the previous value
+	// decides whether it means "not configured" or "configured as NONE".
+	priorGpuSharing := priorGpuSharingByPool(state.Pools)
 
 	for _, worker := range data.Spec.Provider.Workers {
 		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, r.mgpuClusterClient, vpcId, platform, worker, &data)
@@ -1345,6 +1294,7 @@ func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string,
 		if gw, ok := gpuWorkers[worker.Name]; ok {
 			item.GpuType = stringOrNull(gw.GpuType)
 			item.GpuSharing = gpuSharingObjectValue(
+				priorGpuSharing[worker.Name],
 				normalizeGpuNone(gw.MigMode),
 				normalizeGpuNone(gw.MigProfile),
 				normalizeGpuNone(gw.SharingClientType),
@@ -1564,163 +1514,6 @@ func (r *resourceManagedGpuCluster) MaxClientFromAddons(spec *managedGpuClusterD
 
 func (w *managedGpuClusterDataWorker) IsWorkerBase() bool {
 	return w.SystemComponents.Allow
-}
-
-// upgradeVersion
-func (r *resourceManagedGpuCluster) upgradeVersion(ctx context.Context, from *managedGpuCluster, to *managedGpuCluster) *diag2.ErrorDiagnostic {
-	vpcId := from.VpcId.ValueString()
-	clusterId := from.Id.ValueString()
-	targetVersion := to.K8SVersion.ValueString()
-	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-		return &d
-	}
-	platform = strings.ToLower(platform)
-	v1Path := commons.ApiPath.ManagedGpuClusterUpgradeVersion(vpcId, platform, clusterId, targetVersion)
-	v2Path := commons.ApiPath.ManagedGpuClusterUpgradeVersionV2(vpcId, platform, clusterId, targetVersion)
-	path, fallbackPath := v1Path, v2Path
-	if requiresV2API(from.K8SVersion.ValueString()) {
-		path, fallbackPath = v2Path, v1Path
-	}
-	body, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, struct{}{})
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(
-			fmt.Sprintf("Error upgrading version to %s", to.K8SVersion.ValueString()),
-			err.Error(),
-		)
-		return &d
-	}
-	if diagErr2 := r.CheckForError(body); diagErr2 != nil {
-		return diagErr2
-	}
-	return nil
-}
-
-func (r *resourceManagedGpuCluster) updateIsRunning(ctx context.Context, to *managedGpuCluster, from *managedGpuCluster) *diag2.ErrorDiagnostic {
-	vpcId := from.VpcId.ValueString()
-	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-		return &d
-	}
-
-	platform = strings.ToLower(platform)
-	isWakeup := to.IsRunning.ValueBool()
-	v1Path := commons.ApiPath.ManagedGpuClusterHibernate(vpcId, platform, from.Id.ValueString(), isWakeup)
-	v2Path := commons.ApiPath.ManagedGpuClusterHibernateV2(vpcId, platform, from.Id.ValueString(), isWakeup)
-	path, fallbackPath := v1Path, v2Path
-	if requiresV2API(from.K8SVersion.ValueString()) {
-		path, fallbackPath = v2Path, v1Path
-	}
-
-	resp, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, nil)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
-		return &d
-	}
-	if diagErr := r.CheckForError(resp); diagErr != nil {
-		return diagErr
-	}
-	return nil
-}
-
-func (r *resourceManagedGpuCluster) updateAutoUpgradeVersion(ctx context.Context, to *managedGpuCluster, from *managedGpuCluster) *diag2.ErrorDiagnostic {
-	vpcId := from.VpcId.ValueString()
-	clusterId := from.Id.ValueString()
-	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
-		return &d
-	}
-
-	platform = strings.ToLower(platform)
-	v1Path := commons.ApiPath.ManagedGpuClusterAutoUpgradeVersion(vpcId, platform, clusterId)
-	v2Path := commons.ApiPath.ManagedGpuClusterAutoUpgradeVersionV2(vpcId, platform, clusterId)
-	path, fallbackPath := v1Path, v2Path
-	if requiresV2API(from.K8SVersion.ValueString()) {
-		path, fallbackPath = v2Path, v1Path
-	}
-
-	exprs := []string{}
-	if !to.AutoUpgradeExpression.IsNull() && !to.AutoUpgradeExpression.IsUnknown() {
-		for _, e := range to.AutoUpgradeExpression.Elements() {
-			if str, ok := e.(types.String); ok && !str.IsNull() && !str.IsUnknown() {
-				exprs = append(exprs, str.ValueString())
-			}
-		}
-	}
-
-	body := map[string]interface{}{
-		"is_enable_auto_upgrade":  to.IsEnableAutoUpgrade.ValueBool(),
-		"auto_upgrade_expression": exprs,
-		"auto_upgrade_timezone":   to.AutoUpgradeTimezone.ValueString(),
-	}
-
-	resp, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, body)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
-		return &d
-	}
-	if diagErr := r.CheckForError(resp); diagErr != nil {
-		return diagErr
-	}
-	return nil
-}
-
-func (r *resourceManagedGpuCluster) updateHibernationSchedules(ctx context.Context, plan *managedGpuCluster, state *managedGpuCluster) *diag2.ErrorDiagnostic {
-	vpcId := state.VpcId.ValueString()
-
-	var hibernationSchedulesFromPlan []HibernationSchedule
-	diags := plan.HibernationSchedules.ElementsAs(ctx, &hibernationSchedulesFromPlan, false)
-	if diags.HasError() {
-		d := diag2.NewErrorDiagnostic("Parsing hibernation schedules failed", diags.Errors()[0].Summary())
-		return &d
-	}
-
-	var schedulesForJson []HibernationScheduleJson
-	for _, scheduleData := range hibernationSchedulesFromPlan {
-		if scheduleData.Start.IsNull() || scheduleData.End.IsNull() || scheduleData.Location.IsNull() {
-			tflog.Warn(ctx, "Skipping one hibernation schedule because it has null values.")
-			continue
-		}
-		schedulesForJson = append(schedulesForJson, HibernationScheduleJson{
-			Start:    scheduleData.Start.ValueString(),
-			End:      scheduleData.End.ValueString(),
-			Location: scheduleData.Location.ValueString(),
-		})
-	}
-
-	requestBody := HibernationSchedulesRequest{Schedules: schedulesForJson}
-	if len(requestBody.Schedules) == 0 {
-		requestBody.Schedules = []HibernationScheduleJson{}
-	}
-
-	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, err.Error())
-		return &d
-	}
-
-	platform = strings.ToLower(platform)
-	v1Path := commons.ApiPath.ManagedGpuClusterHibernationSchedules(vpcId, platform, state.Id.ValueString())
-	v2Path := commons.ApiPath.ManagedGpuClusterHibernationSchedulesV2(vpcId, platform, state.Id.ValueString())
-	path, fallbackPath := v1Path, v2Path
-	if requiresV2API(state.K8SVersion.ValueString()) {
-		path, fallbackPath = v2Path, v1Path
-	}
-	resp, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
-	if err != nil {
-		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
-		return &d
-	}
-
-	if diagErr := r.CheckForError(resp); diagErr != nil {
-		return diagErr
-	}
-
-	tflog.Info(ctx, "Successfully updated hibernation schedules.")
-	return nil
 }
 
 func (r *resourceManagedGpuCluster) updateClusterEndpointCIDR(ctx context.Context, plan *managedGpuCluster, state *managedGpuCluster,

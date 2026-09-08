@@ -29,13 +29,15 @@ type managedGpuCluster struct {
 	// New block fields
 	ClusterAutoscaler     types.Object `tfsdk:"cluster_autoscaler"`
 	ClusterEndpointAccess types.Object `tfsdk:"cluster_endpoint_access"`
-	IsEnableAutoUpgrade   types.Bool   `tfsdk:"is_enable_auto_upgrade"`
-	AutoUpgradeExpression types.List   `tfsdk:"auto_upgrade_expression"`
-	AutoUpgradeTimezone   types.String `tfsdk:"auto_upgrade_timezone"`
 	InternalSubnetLb      types.String `tfsdk:"internal_subnet_lb"`
 	EdgeGatewayName       types.String `tfsdk:"edge_gateway_name"`
-	IsRunning             types.Bool   `tfsdk:"is_running"`
-	HibernationSchedules  types.List   `tfsdk:"hibernation_schedules"`
+
+	// Hibernation, Kubernetes upgrades and auto-upgrade are deliberately
+	// absent: the console hides all three for bare-metal clusters
+	// (gated on !isBareMetal), and the endpoints serving them have no /hpc
+	// variant, so they look the cluster up in a registry it is not part of and
+	// fail. Modelling them would only offer the user operations that cannot
+	// work.
 
 	// Bare-metal-only fields.
 	NetworkNodePrefix types.Int64  `tfsdk:"network_node_prefix"`
@@ -152,9 +154,6 @@ type managedGpuClusterJson struct {
 	EdgeGatewayId         string                       `json:"edge_gateway_id,omitempty"`
 	EdgeGatewayName       string                       `json:"edge_gateway_name,omitempty"`
 	ClusterEndpointAccess *ClusterEndpointAccessJson   `json:"clusterEndpointAccess,omitempty"`
-	IsEnableAutoUpgrade   bool                         `json:"is_enable_auto_upgrade,omitempty"`
-	AutoUpgradeExpression []string                     `json:"auto_upgrade_expression,omitempty"`
-	AutoUpgradeTimezone   string                       `json:"auto_upgrade_timezone,omitempty"`
 	ClusterAutoscaler     interface{}                  `json:"cluster_autoscaler,omitempty"`
 	TypeCreate            string                       `json:"type_create,omitempty"`
 	// Hps is always sent as null. Seen in a real create-cluster request with
@@ -619,23 +618,11 @@ type managedGpuClusterEditWorker struct {
 	SshId   string `json:"ssh_id"`
 }
 
-// HibernationSchedule represents a single hibernation schedule
-type HibernationSchedule struct {
-	Start    types.String `tfsdk:"start"`
-	End      types.String `tfsdk:"end"`
-	Location types.String `tfsdk:"location"`
-}
-
 // HibernationScheduleJson represents the JSON structure for hibernation schedules
 type HibernationScheduleJson struct {
 	Start    string `json:"start"`
 	End      string `json:"end"`
 	Location string `json:"location"`
-}
-
-// HibernationSchedulesRequest represents the request body for hibernation schedules
-type HibernationSchedulesRequest struct {
-	Schedules []HibernationScheduleJson `json:"schedules"`
 }
 
 type AutoUpgradeSpec struct {

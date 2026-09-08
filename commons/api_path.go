@@ -644,15 +644,19 @@ var ApiPath = struct {
 			vpcId, platform, clusterId,
 		)
 	},
+	// The shoot-level endpoints below carry no /hpc segment, unlike the
+	// bare-metal ones (create-cluster, get-shoot-specific,
+	// configure-worker-cluster, ...). They are shared with managed FKE and
+	// live directly under /m-fke/{platform}/ — sending /hpc here 404s.
 	ManagedGpuClusterUpgradeVersion: func(vpcId string, platform string, clusterId string, targetVersion string) string {
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
 			vpcId, platform, clusterId, targetVersion,
 		)
 	},
 	ManagedGpuClusterUpgradeVersionV2: func(vpcId string, platform string, clusterId string, targetVersion string) string {
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/upgrade_version_cluster/shoots/%s/k8s-version/%s",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/upgrade_version_cluster/shoots/%s/k8s-version/%s",
 			vpcId, platform, clusterId, targetVersion,
 		)
 	},
@@ -662,7 +666,7 @@ var ApiPath = struct {
 			action = "wakeup"
 		}
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/hibernation-cluster/shoots/%s/%s",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/%s",
 			vpcId, platform, clusterId, action,
 		)
 	},
@@ -672,31 +676,31 @@ var ApiPath = struct {
 			action = "wakeup"
 		}
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/hibernation-cluster/shoots/%s/%s",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/hibernation-cluster/shoots/%s/%s",
 			vpcId, platform, clusterId, action,
 		)
 	},
 	ManagedGpuClusterHibernationSchedules: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/hibernation-cluster/shoots/%s/schedules",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/schedules",
 			vpcId, platform, clusterId,
 		)
 	},
 	ManagedGpuClusterHibernationSchedulesV2: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/hibernation-cluster/shoots/%s/schedules",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/hibernation-cluster/shoots/%s/schedules",
 			vpcId, platform, clusterId,
 		)
 	},
 	ManagedGpuClusterAutoUpgradeVersion: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/config-auto-upgrade-version/shoots/%s",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-auto-upgrade-version/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},
 	ManagedGpuClusterAutoUpgradeVersionV2: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/config-auto-upgrade-version/shoots/%s",
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/config-auto-upgrade-version/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},
