@@ -2,6 +2,7 @@ package fptcloud_instance_group
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -186,12 +187,16 @@ func resourceInstanceGroupRead(_ context.Context, d *schema.ResourceData, m inte
 		return diag.Errorf("[ERR] Failed to set 'name': %s", err)
 	}
 
-	if err := d.Set("policy", data.Policy); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'policy': %s", err)
+	if policyJSON, err := json.Marshal(data.Policy); err == nil {
+		if err := d.Set("policy", string(policyJSON)); err != nil {
+			return diag.Errorf("[ERR] Failed to set 'policy': %s", err)
+		}
 	}
 
-	if err := d.Set("vms", data.Vms); err != nil {
-		return diag.Errorf("[ERR] Failed to set 'vms': %s", err)
+	if vmsJSON, err := json.Marshal(data.Vms); err == nil {
+		if err := d.Set("vms", string(vmsJSON)); err != nil {
+			return diag.Errorf("[ERR] Failed to set 'vms': %s", err)
+		}
 	}
 
 	if err := d.Set("vpc_id", data.VpcId); err != nil {

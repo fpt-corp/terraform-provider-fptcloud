@@ -111,7 +111,15 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 
 	bucket := objectStorageService.CreateBucket(req, vpcId, s3ServiceDetail.S3ServiceId)
 	if !bucket.Status {
-		return diag.Errorf("failed to create bucket: %s", bucket.Message)
+		switch reconcileBucket(objectStorageService, vpcId, s3ServiceDetail.S3ServiceId, req.Name) {
+		case createAdopted:
+			// The bucket exists and is empty: an earlier attempt committed and only
+			// its response was lost. Record it instead of failing forever.
+		case createConflict:
+			return diag.Errorf("bucket %s already exists and is not empty, so it is not adopted; remove it or choose another name: %s", req.Name, bucket.Message)
+		default:
+			return diag.Errorf("failed to create bucket: %s", bucket.Message)
+		}
 	}
 
 	d.SetId(req.Name)
@@ -166,9 +174,12 @@ func resourceBucketRead(ctx context.Context, d *schema.ResourceData, m interface
 
 	// List buckets to find the specific bucket
 	buckets := objectStorageService.ListBuckets(vpcId, s3ServiceDetail.S3ServiceId, 1, 1000)
+	// A bucket that is no longer there is drift, not a failure: clearing the ID
+	// lets Terraform plan a recreate, whereas returning an error makes every
+	// subsequent plan fail until the state entry is removed by hand.
 	if buckets.Total == 0 {
 		d.SetId("")
-		return diag.Errorf("no buckets found")
+		return nil
 	}
 
 	// Find the specific bucket
@@ -189,7 +200,7 @@ func resourceBucketRead(ctx context.Context, d *schema.ResourceData, m interface
 
 	if foundBucket == nil {
 		d.SetId("")
-		return diag.Errorf("bucket %s not found", bucketName)
+		return nil
 	}
 
 	// Set the basic attributes

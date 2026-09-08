@@ -174,34 +174,51 @@ func TestS3BucketLifecycleConfigSerialization(t *testing.T) {
 		{
 			name: "lifecycle config with expiration",
 			config: fptcloud_object_storage.S3BucketLifecycleConfig{
-				ID: "rule1",
-				Filter: fptcloud_object_storage.Filter{
+				ID:     "rule1",
+				Status: "Enabled",
+				Filter: &fptcloud_object_storage.Filter{
 					Prefix: "logs/",
 				},
-				Expiration: fptcloud_object_storage.Expiration{
+				Expiration: &fptcloud_object_storage.Expiration{
 					Days: 30,
 				},
-				NoncurrentVersionExpiration: fptcloud_object_storage.NoncurrentVersionExpiration{
+				NoncurrentVersionExpiration: &fptcloud_object_storage.NoncurrentVersionExpiration{
 					NoncurrentDays: 90,
 				},
-				AbortIncompleteMultipartUpload: fptcloud_object_storage.AbortIncompleteMultipartUpload{
+				AbortIncompleteMultipartUpload: &fptcloud_object_storage.AbortIncompleteMultipartUpload{
 					DaysAfterInitiation: 7,
 				},
 			},
-			expected: `{"ID":"rule1","Filter":{"Prefix":"logs/"},"Expiration":{"Days":30},"NoncurrentVersionExpiration":{"NoncurrentDays":90},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}`,
+			expected: `{"ID":"rule1","Status":"Enabled","Filter":{"Prefix":"logs/"},"Expiration":{"Days":30},"NoncurrentVersionExpiration":{"NoncurrentDays":90},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}`,
 		},
 		{
-			name: "lifecycle config with delete marker expiration",
+			// Objects the rule does not declare must stay out of the JSON entirely,
+			// rather than appearing as zero values the API rejects.
+			name: "lifecycle config omits undeclared objects",
 			config: fptcloud_object_storage.S3BucketLifecycleConfig{
 				ID: "rule2",
-				Filter: fptcloud_object_storage.Filter{
+				Filter: &fptcloud_object_storage.Filter{
 					Prefix: "temp/",
 				},
-				Expiration: fptcloud_object_storage.Expiration{
+				Expiration: &fptcloud_object_storage.Expiration{
 					ExpiredObjectDeleteMarker: true,
 				},
 			},
-			expected: `{"ID":"rule2","Filter":{"Prefix":"temp/"},"Expiration":{"ExpiredObjectDeleteMarker":true},"NoncurrentVersionExpiration":{"NoncurrentDays":0},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":0}}`,
+			expected: `{"ID":"rule2","Filter":{"Prefix":"temp/"},"Expiration":{"ExpiredObjectDeleteMarker":true}}`,
+		},
+		{
+			name: "lifecycle config with disabled status",
+			config: fptcloud_object_storage.S3BucketLifecycleConfig{
+				ID:     "rule3",
+				Status: "Disabled",
+				Filter: &fptcloud_object_storage.Filter{
+					Prefix: "tmp/",
+				},
+				Expiration: &fptcloud_object_storage.Expiration{
+					Days: 30,
+				},
+			},
+			expected: `{"ID":"rule3","Status":"Disabled","Filter":{"Prefix":"tmp/"},"Expiration":{"Days":30}}`,
 		},
 	}
 
@@ -222,40 +239,48 @@ func TestS3BucketLifecycleConfigDeserialization(t *testing.T) {
 	}{
 		{
 			name:     "lifecycle config with expiration",
-			jsonData: `{"ID":"rule1","Filter":{"Prefix":"logs/"},"Expiration":{"Days":30},"NoncurrentVersionExpiration":{"NoncurrentDays":90},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}`,
+			jsonData: `{"ID":"rule1","Status":"Enabled","Filter":{"Prefix":"logs/"},"Expiration":{"Days":30},"NoncurrentVersionExpiration":{"NoncurrentDays":90},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":7}}`,
 			expected: fptcloud_object_storage.S3BucketLifecycleConfig{
-				ID: "rule1",
-				Filter: fptcloud_object_storage.Filter{
+				ID:     "rule1",
+				Status: "Enabled",
+				Filter: &fptcloud_object_storage.Filter{
 					Prefix: "logs/",
 				},
-				Expiration: fptcloud_object_storage.Expiration{
+				Expiration: &fptcloud_object_storage.Expiration{
 					Days: 30,
 				},
-				NoncurrentVersionExpiration: fptcloud_object_storage.NoncurrentVersionExpiration{
+				NoncurrentVersionExpiration: &fptcloud_object_storage.NoncurrentVersionExpiration{
 					NoncurrentDays: 90,
 				},
-				AbortIncompleteMultipartUpload: fptcloud_object_storage.AbortIncompleteMultipartUpload{
+				AbortIncompleteMultipartUpload: &fptcloud_object_storage.AbortIncompleteMultipartUpload{
 					DaysAfterInitiation: 7,
 				},
 			},
 		},
 		{
-			name:     "lifecycle config with delete marker expiration",
-			jsonData: `{"ID":"rule2","Filter":{"Prefix":"temp/"},"Expiration":{"ExpiredObjectDeleteMarker":true},"NoncurrentVersionExpiration":{"NoncurrentDays":0},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":0}}`,
+			// Keys the JSON never mentions must stay nil, so the caller can tell them
+			// apart from a value that really was written as zero.
+			name:     "undeclared objects stay nil",
+			jsonData: `{"ID":"rule2","Filter":{"Prefix":"temp/"},"Expiration":{"ExpiredObjectDeleteMarker":true}}`,
 			expected: fptcloud_object_storage.S3BucketLifecycleConfig{
 				ID: "rule2",
-				Filter: fptcloud_object_storage.Filter{
+				Filter: &fptcloud_object_storage.Filter{
 					Prefix: "temp/",
 				},
-				Expiration: fptcloud_object_storage.Expiration{
+				Expiration: &fptcloud_object_storage.Expiration{
 					ExpiredObjectDeleteMarker: true,
 				},
-				NoncurrentVersionExpiration: fptcloud_object_storage.NoncurrentVersionExpiration{
-					NoncurrentDays: 0,
-				},
-				AbortIncompleteMultipartUpload: fptcloud_object_storage.AbortIncompleteMultipartUpload{
-					DaysAfterInitiation: 0,
-				},
+				NoncurrentVersionExpiration:    nil,
+				AbortIncompleteMultipartUpload: nil,
+			},
+		},
+		{
+			// An explicit zero is distinguishable from an omission: present, not nil.
+			name:     "explicit zero is preserved",
+			jsonData: `{"ID":"rule3","NoncurrentVersionExpiration":{"NoncurrentDays":0}}`,
+			expected: fptcloud_object_storage.S3BucketLifecycleConfig{
+				ID:                          "rule3",
+				NoncurrentVersionExpiration: &fptcloud_object_storage.NoncurrentVersionExpiration{NoncurrentDays: 0},
 			},
 		},
 	}

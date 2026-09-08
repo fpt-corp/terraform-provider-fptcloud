@@ -31,8 +31,6 @@ type InstanceModel struct {
 	GpuName          *string  `json:"gpu_name,omitempty"`
 	BillingType      *string  `json:"billing_type,omitempty"`
 	IsNvme           bool     `json:"is_nvme"`
-	StorageId        *string  `json:"storage_id,omitempty"`
-	StorageName      *string  `json:"storage_name,omitempty"`
 }
 
 type CreateInstanceDTO struct {
@@ -92,4 +90,45 @@ func deriveVmType(gpuName *string) string {
 		return "gpu"
 	}
 	return "cpu"
+}
+
+// InstanceStorageModel is one disk of an instance as persisted by the portal
+type InstanceStorageModel struct {
+	ID              string `json:"id"`
+	DiskId          string `json:"disk_id"`
+	StorageType     string `json:"storage_type"`
+	SizeMb          int    `json:"size"`
+	Status          string `json:"status"`
+	StoragePolicyId string `json:"storage_policy_id"`
+	PolicyUuid      string `json:"policy_uuid"`
+}
+
+// InstanceStorageInfraModel is one disk of an instance as reported by the infrastructure
+type InstanceStorageInfraModel struct {
+	DiskName           *string `json:"disk_name"`
+	DiskId             string  `json:"disk_id"`
+	SizeMb             int     `json:"size_mb"`
+	StorageProfileName string  `json:"storage_profile_name"`
+	IsRoot             bool    `json:"is_root"`
+	StorageType        string  `json:"storage_type"`
+}
+
+// RootStorageModel is the boot disk, whichever listing it could be read from
+type RootStorageModel struct {
+	DiskId            string
+	SizeMb            int
+	StoragePolicyId   string
+	StoragePolicyName string
+}
+
+type ResizeRootDiskDTO struct {
+	DiskId           string  `json:"disk_id"`
+	IncreaseInSizeMb int     `json:"increase_in_size_mb"`
+	StoragePolicyId  *string `json:"storage_policy_id,omitempty"`
+}
+
+type StoragePolicyDTO struct {
+	ID      string `json:"id"`
+	InfraId string `json:"infra_id"`
+	Name    string `json:"name"`
 }

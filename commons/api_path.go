@@ -23,6 +23,9 @@ var ApiPath = struct {
 	RenameInstance             func(vpcId string, instanceId string) string
 	ChangeStatusInstance       func(vpcId string, instanceId string) string
 	ResizeInstance             func(vpcId string, instanceId string) string
+	InstanceStorages           func(vpcId string, instanceId string) string
+	InstanceStoragesInfra      func(vpcId string, instanceId string) string
+	ResizeInstanceRootDisk     func(vpcId string, instanceId string) string
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
 	ChangeBillingTypeInstance  func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
@@ -59,6 +62,10 @@ var ApiPath = struct {
 	DatabaseStart     func() string
 	DatabaseApplyTags func() string
 	DatabaseFlavor    func(vpcId string, isOSP string) string
+
+	VpcSyncInstances  func(vpcId string) string
+	VpcSyncStorages   func(vpcId string) string
+	VpcSyncStoragesV2 func(vpcId string) string
 
 	// Dedicated FKE
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
@@ -244,6 +251,15 @@ var ApiPath = struct {
 	ResizeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
 	},
+	InstanceStorages: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storagesv2", vpcId, instanceId)
+	},
+	InstanceStoragesInfra: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storages", vpcId, instanceId)
+	},
+	ResizeInstanceRootDisk: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storages/resize", vpcId, instanceId)
+	},
 	UpdateInstanceTags: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/instance/%s/tags", vpcId, instanceId)
 	},
@@ -346,6 +362,16 @@ var ApiPath = struct {
 	},
 	DatabaseFlavor: func(vpcId string, isOSP string) string {
 		return fmt.Sprintf("/v1/xplat/database/configure_management/get_list_flavor_v2?vpc_id=%s&is_ops=%s", vpcId, isOSP)
+	},
+
+	VpcSyncInstances: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instances/async", vpcId)
+	},
+	VpcSyncStorages: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storages/sync", vpcId)
+	},
+	VpcSyncStoragesV2: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storages/sync/v2", vpcId)
 	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {

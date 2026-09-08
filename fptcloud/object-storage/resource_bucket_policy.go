@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
@@ -42,12 +43,13 @@ func ResourceBucketPolicy() *schema.Resource {
 				Description: "Status after bucket policy is created",
 			},
 			"policy": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ForceNew:      true,
-				Description:   "The bucket policy in JSON format",
-				ConflictsWith: []string{"policy_file"},
-				ValidateFunc:  validation.StringIsJSON,
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				Description:      "The bucket policy in JSON format",
+				ConflictsWith:    []string{"policy_file"},
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: structure.SuppressJsonDiff,
 			},
 			"policy_file": {
 				Type:          schema.TypeString,
@@ -96,10 +98,18 @@ func resourceBucketPolicyCreate(ctx context.Context, d *schema.ResourceData, m i
 	resp := service.PutBucketPolicy(vpcId, s3ServiceDetail.S3ServiceId, bucketName, payload)
 
 	if !resp.Status {
-		if err := d.Set("status", false); err != nil {
-			return diag.Errorf("failed to create bucket policy: %s", resp.Message)
+		switch reconcileBucketPolicy(service, vpcId, s3ServiceDetail.S3ServiceId, bucketName, policyContent) {
+		case createAdopted:
+			// The policy is in place after all: an earlier attempt committed and only
+			// its response was lost. Record it instead of failing forever.
+		case createConflict:
+			return diag.Errorf("bucket %s already carries a different policy: %s", bucketName, resp.Message)
+		default:
+			if err := d.Set("status", false); err != nil {
+				return diag.Errorf("failed to create bucket policy: %s", resp.Message)
+			}
+			return diag.FromErr(fmt.Errorf("error create bucket policy: %s", resp.Message))
 		}
-		return diag.FromErr(fmt.Errorf("error create bucket policy: %s", resp.Message))
 	}
 	d.SetId(bucketName)
 	if err := d.Set("status", true); err != nil {

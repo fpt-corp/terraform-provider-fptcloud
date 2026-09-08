@@ -1,3 +1,69 @@
+## [0.3.65] - 2026-08-27
+
+### Resource
+
+- Feat: resize the root disk of `fptcloud_instance` in place, `storage_size_gb` and `storage_policy_id` no longer replace the instance
+
+## [0.3.64] - 2026-08-27
+
+### Resource
+
+- Fix: update type Labels and Taints for worker pool in MFKE
+
+## [0.3.63] - 2026-08-25
+
+### Resource
+
+- Fix: keep `nodes` known when `fptcloud_database` is updated in place, so a `tag_ids` change no longer fails with "Provider returned invalid result object after apply" and the new state is saved
+
+## [0.3.62] - 2026-08-21
+
+### Resource
+
+- Fix: serialize `policy` and `vms` on `fptcloud_instance_group` read so state matches the string schema instead of failing on the object/list returned by the API
+
+## [0.3.61] - 2026-08-19
+
+### Resource
+
+- Feat: support `Status` in bucket lifecycle rule so a rule can be created Disabled
+- Fix: send only the fields a lifecycle rule declares, instead of omitted objects as zero values the API rejects
+- Fix: do not record a bucket lifecycle rule in state when its create fails
+- Fix: detect lifecycle and CORS rules deleted outside Terraform instead of reporting them as present
+- Fix: treat a missing bucket as drift instead of failing the plan
+- Fix: report a failed bucket static website create as an error instead of success
+- Fix: adopt object storage objects left behind by a create whose response was lost
+
+## [0.3.60] - 2026-08-13
+
+### Datasource
+
+- Feat: Add datasource database
+
+## [0.3.59] - 2026-08-12
+
+### Resource
+
+- Fix: suppress JSON diff for bucket policy, CORS and lifecycle rule to prevent unnecessary resource recreation
+
+## [0.3.58] - 2026-08-11
+
+### Resource
+
+- Fix: mark private_ip and public_ip as Computed in resource schema to prevent refresh state drift
+
+## [0.3.57] - 2026-08-11
+
+### Resource
+
+- Fix: populate private_ip in state to prevent downstream plan drift
+
+## [0.3.56] - 2026-08-11
+
+### Resource
+
+- Fix: `resource/fptcloud_instance`: populate `private_ip` attribute in state after create/read.
+
 ## [0.3.55] - 2026-07-31
 
 ### Resource

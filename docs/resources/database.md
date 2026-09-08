@@ -10,50 +10,223 @@ description: |-
 
 Provides a Fpt database cluster which can be used to store data.
 
+Resource này map 1-1 với form **Create database** trên console, nên nếu bạn đã tạo được
+database trên console thì chỉ cần điền lại đúng các giá trị đó vào đây.
+
+## Loại database (`type_db`)
+
+| `type_db` | Database engine | `edition` | Ghi chú |
+|---|---|---|---|
+| `psql_patroni` | PostgreSQL | `Community` | Bản HA chạy Patroni |
+| `mysql_innodb` | MySQL | `Community` | Bản HA chạy InnoDB Cluster |
+| `mariadb` | MariaDB | `Community` | |
+| `sqlserver` | SQL Server | `Enterprise`, `Standard` hoặc `Web` | Là loại duy nhất trong bảng không dùng `Community` |
+| `redis_replication` | Redis | `Community` | |
+| `kafka` | Kafka (KRaft) | `Community` | |
+| `opensearch` | OpenSearch | `Community` | Cách tính `worker_count` khác các loại còn lại, xem bảng bên dưới |
+
+`version` phải là một version mà engine đó đang hỗ trợ — lấy danh sách ở bước chọn
+**Version** trên console (ví dụ `psql_patroni` dùng `"17"`, `opensearch` dùng `"3.5.0"`,
+`kafka` dùng `"4.1.2"`).
+
+## Số lượng node
+
+`master_count` **luôn bằng 1**. Số VM thực tế được tạo ra là `master_count + worker_count`.
+Ba trường `worker_count`, `number_of_node` và `number_of_shard` luôn nhận cùng một giá trị.
+
+| `type_db` | Standalone (không HA) | High availability |
+|---|---|---|
+| `psql_patroni`, `mysql_innodb`, `mariadb`, `sqlserver`, `redis_replication`, `kafka` | `is_cluster = "no"`<br>`worker_count = 0`<br>`number_of_node = 0`<br>`number_of_shard = 0`<br>→ 1 node | `is_cluster = "yes"`<br>`worker_count = 2`<br>`number_of_node = 2`<br>`number_of_shard = 2`<br>→ 3 node |
+| `opensearch` | `is_cluster = "no"`<br>`worker_count = 1`<br>`number_of_node = 1`<br>`number_of_shard = 1`<br>→ 2 node | `is_cluster = "yes"`<br>`worker_count = N`<br>`number_of_node = N`<br>`number_of_shard = N`<br>→ N+1 node |
+
+~> **Lưu ý** Resource này chỉ gửi lên một nhóm node (`data_node`), nên các kiến trúc
+nhiều loại node không tạo được bằng Terraform: MongoDB **Sharded Cluster**
+(`mongos_node` / `config_node`) và OpenSearch **3.5.0 HA** (`coordinate_node` /
+`master_node`). Những trường hợp này cần tạo trên console.
+
+## Các trường luôn có giá trị cố định
+
+| Trường | Giá trị | Vì sao |
+|---|---|---|
+| `type_config` | `"short-config"` | Console chỉ dùng short config |
+| `master_count` | `1` | |
+| `node_core` | `0` | |
+| `is_public` | `"no"` | |
+| `domain_name` | `""` | |
+
+## Cấu hình node phải khớp với flavor
+
+`node_cpu`, `node_ram` và `flavor` phải khớp đúng với flavor mà `flavor_id` trỏ tới,
+nếu không cluster sẽ được tạo với cấu hình không như mong đợi. Dùng data source
+`fptcloud_database_flavors` để lấy:
+
+| Trường của resource | Lấy từ data source |
+|---|---|
+| `flavor_id` | `id` |
+| `flavor` | `name` (ví dụ `Medium-4`, `Large-8`) |
+| `node_cpu` | `cpu` |
+| `node_ram` | `memory_mb / 1024` (đơn vị **GB**) |
+
+```terraform
+data "fptcloud_database_flavors" "medium" {
+  vpc_id = var.vpc_id
+  is_ops = "no"
+
+  filter {
+    key    = "name"
+    values = ["Medium-4"]
+  }
+}
+
+locals {
+  flavor = data.fptcloud_database_flavors.medium.database_flavors[0]
+}
+
+resource "fptcloud_database" "postgres" {
+  flavor_id = local.flavor.id
+  flavor    = local.flavor.name
+  node_cpu  = local.flavor.cpu
+  node_ram  = local.flavor.memory_mb / 1024
+  # ...
+}
+```
+
+## Lấy các giá trị đầu vào khác
+
+| Trường | Nguồn |
+|---|---|
+| `vpc_id` | Data source [`fptcloud_vpc`](../data-sources/vpc.md) |
+| `vdc_name` | **Tên** của VPC (không phải id) |
+| `network_id`, `vm_network` | Data source [`fptcloud_subnet`](../data-sources/subnet.md) — `vm_network` là **tên** subnet |
+| `edge_id` | Data source [`fptcloud_edge_gateway`](../data-sources/edge_gateway.md) |
+| `storage_profile` | Data source [`fptcloud_storage_policy`](../data-sources/storage_policy.md) — điền tên storage policy, ví dụ `Premium-SSD` |
+| `is_ops` | `"yes"` nếu VPC chạy trên nền OpenStack, `"no"` nếu VMware. Đối chiếu nhanh bằng `flavor_site` trong danh sách flavor (`OSP` / `VMW`) |
+| `tag_ids` | Data source [`fptcloud_tagging`](../data-sources/tagging.md) — nhiều tag thì nối bằng dấu phẩy |
+
+## Vài trường dễ nhầm
+
+- `vhost_name` — chỉ có ý nghĩa với RabbitMQ nhưng vẫn **bắt buộc** khai báo. Với các
+  engine trong bảng trên, điền `"vhost_default"`.
+- `database_name` — tên database mặc định được tạo sẵn, thường để `"db_default"`.
+- `maintenance_email`, `day_of_week_maintenance`, `time_maintenance` — **bắt buộc khi
+  tạo mới**, thiếu một trong ba thì provider báo lỗi ngay mà không gọi API.
+- `day_of_week_maintenance` — các ví dụ trong repo dùng quy ước `1` = thứ hai … `7` =
+  chủ nhật, nhưng mô tả trong schema lại ghi `0-6`. Hai chỗ này đang mâu thuẫn, nên
+  đối chiếu với console trước khi dùng.
+- `admin_password` — API luôn trả về `********` khi đọc lại, provider giữ nguyên giá
+  trị trong state nên không sinh diff. Đổi lại giá trị này trong config **không** đổi
+  mật khẩu trên server, chỉ đổi state.
+
+### Trường nào sửa được, trường nào phải tạo lại
+
+| Sửa tại chỗ | Chỉ đổi trong state | Tạo lại cluster (ForceNew) |
+|---|---|---|
+| `tag_ids` | `admin_password`, `maintenance_email`, `day_of_week_maintenance`, `time_maintenance` | Tất cả các trường còn lại |
+
 ## Example Usage
 
 ```terraform
-resource "fptcloud_database" "example" {
-  vpc_id = "your-vpc-id"
+# PostgreSQL standalone (1 node)
+resource "fptcloud_database" "postgres" {
+  # Vi tri trien khai
+  vpc_id     = "your-vpc-id"
+  vdc_name   = "your-vpc-name" # ten VPC, khong phai id
   network_id = "your-network-id"
-  vm_network = "chinhnt-demo-iq938dud"
-  type_config = "short-config"
-  type_db = "your-database-type"
-  version = "your-database-version"
-  vdc_name = "your-vdc-name"
-  is_cluster = "yes"
-  master_count = 1
-  worker_count = 2
-  node_cpu = 2
-  node_core = 0
-  node_ram = 4
-  data_disk_size = 10
-  cluster_name = "your-cluster-name"
-  database_name = "your-database-name"
+  vm_network = "your-subnet-name" # ten subnet cua network_id o tren
+  edge_id    = "your-edge-gateway-id"
+  is_ops     = "no" # "yes" neu VPC chay tren OpenStack, "no" neu VMware
+
+  # Loai database
+  type_config = "short-config" # luon la "short-config"
+  type_db     = "psql_patroni"
+  version     = "17"
+  edition     = "Community"
+
+  # So luong node: standalone => is_cluster = "no", worker_count = 0
+  is_cluster      = "no"
+  master_count    = 1
+  worker_count    = 0
+  number_of_node  = 0
+  number_of_shard = 0
+
+  # Cau hinh moi node, phai khop voi flavor da chon
+  flavor_id       = "your-flavor-id"
+  flavor          = "Medium-4" # ten flavor
+  node_cpu        = 2          # = cpu cua flavor
+  node_ram        = 4          # = memory_mb cua flavor / 1024, don vi GB
+  node_core       = 0          # luon la 0
+  data_disk_size  = 20         # GB
+  storage_profile = "Premium-SSD"
+
+  # Thong tin dang nhap
+  cluster_name   = "your-cluster-name"
+  database_name  = "db_default"
   admin_password = "your-admin-password"
-  storage_profile = "the-storage-profile-for-your-database"
-  edge_id = "your-edge-id"
-  edition = "the-edition-of-database"
-  is_ops = "no | yes" # is your vpc openstack infrastucture or not
-  flavor = "the-database-flavor-name"
-  flavor_id = "the-database-flavor-id"
-  number_of_node = 0
-  number_of_shard = 2
+  vhost_name     = "vhost_default" # chi co y nghia voi RabbitMQ, van bat buoc phai dien
+
+  # Bat buoc khi tao moi
+  maintenance_email       = "example@gmail.com"
+  day_of_week_maintenance = 7       # 1 = thu hai, ..., 7 = chu nhat
+  time_maintenance        = "23:00" # "00:00" -> "23:59"
+
+  # Tuy chon
   domain_name = ""
-  is_public = "no | yes" # is your database public or not
-  vhost_name = "VHostDefault"
-  maintenance_email = "example@gmail.com" # Email to receive maintenance notifications
-  day_of_week_maintenance= 6 # day of week, monday = 1, tuesday = 2,..., sunday = 7
-  time_maintenance= "23:00" # Maintenance time, "00:00" -> "23:59"
+  is_public   = "no"
+  tag_ids     = "" # danh sach tag id, ngan cach bang dau phay
+}
+
+# MySQL InnoDB Cluster (3 node: 1 master + 2 worker)
+resource "fptcloud_database" "mysql_ha" {
+  vpc_id     = "your-vpc-id"
+  vdc_name   = "your-vpc-name"
+  network_id = "your-network-id"
+  vm_network = "your-subnet-name"
+  edge_id    = "your-edge-gateway-id"
+  is_ops     = "no"
+
+  type_config = "short-config"
+  type_db     = "mysql_innodb"
+  version     = "8.0.36"
+  edition     = "Community"
+
+  # HA => is_cluster = "yes", worker_count = 2
+  is_cluster      = "yes"
+  master_count    = 1
+  worker_count    = 2
+  number_of_node  = 2
+  number_of_shard = 2
+
+  flavor_id       = "your-flavor-id"
+  flavor          = "Large-8"
+  node_cpu        = 4
+  node_ram        = 8
+  node_core       = 0
+  data_disk_size  = 50
+  storage_profile = "Premium-SSD"
+
+  cluster_name   = "your-cluster-name"
+  database_name  = "db_default"
+  admin_password = "your-admin-password"
+  vhost_name     = "vhost_default"
+
+  maintenance_email       = "example@gmail.com"
+  day_of_week_maintenance = 7
+  time_maintenance        = "23:00"
+
+  domain_name = ""
+  is_public   = "no"
 }
 ```
+
+Đọc lại thông tin của một cluster đã tạo (endpoint, IP, danh sách node) bằng data source
+[`fptcloud_database`](../data-sources/database.md).
 
 <!-- schema generated by tfplugindocs -->
 ## Schema
 
 ### Required
 
-- `admin_password` (String) The admin password of the database cluster.
+- `admin_password` (String, Sensitive) The admin password of the database cluster.
 - `cluster_name` (String) The name of the database cluster.
 - `data_disk_size` (Number) The size of the data disk in each node of the database cluster.
 - `database_name` (String) The name of the database in the database cluster.
@@ -82,6 +255,50 @@ resource "fptcloud_database" "example" {
 - `vpc_id` (String) The VPC Id of the database cluster.
 - `worker_count` (Number) The number of worker nodes in the database cluster.
 
+### Optional
+
+- `day_of_week_maintenance` (Number) Maintenance day of week (0-6)
+- `maintenance_email` (String) Email used for maintenance notification
+- `tag_ids` (String) List of tag IDs applied to the database
+- `time_maintenance` (String) Maintenance time (HH:mm)
+
 ### Read-Only
 
 - `id` (String) The Id of the database cluster.
+- `nodes` (List of Object) List of nodes (VMs) in the database cluster (see [below for nested schema](#nestedatt--nodes))
+
+<a id="nestedatt--nodes"></a>
+### Nested Schema for `nodes`
+
+Read-Only:
+
+- `cluster_id` (String)
+- `cluster_name` (String)
+- `created_at` (String)
+- `data_disk_size` (Number)
+- `database_role` (String)
+- `guest_os` (String)
+- `id` (String)
+- `ip_address` (String)
+- `ip_private` (String)
+- `is_deployed` (Boolean)
+- `memory_mb` (Number)
+- `name` (String)
+- `network_name` (String)
+- `number_of_cpus` (Number)
+- `org_name` (String)
+- `platform` (String)
+- `status` (String)
+- `updated_at` (String)
+- `vdc_name` (String)
+- `vmw_id` (String)
+- `vpc_id` (String)
+
+## Import
+
+Import được bằng cluster id:
+
+```shell
+# Import mot database cluster da co bang cluster id
+terraform import fptcloud_database.postgres owiiqtii
+```

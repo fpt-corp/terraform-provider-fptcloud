@@ -3,15 +3,18 @@ package fptcloud_database
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
-	"terraform-provider-fptcloud/commons"
+	"strconv"
+
+	common "terraform-provider-fptcloud/commons"
 )
 
 type databaseApiClient struct {
-	*commons.Client
+	*common.Client
 }
 
-func newDatabaseApiClient(c *commons.Client) *databaseApiClient {
+func newDatabaseApiClient(c *common.Client) *databaseApiClient {
 	return &databaseApiClient{c}
 }
 
@@ -44,7 +47,38 @@ func (m *databaseApiClient) sendPost(requestURL string, params interface{}) ([]b
 	return m.sendRequestWithHeader(req)
 }
 
+type databaseApiAnswer struct {
+	StatusCode int
+	Body       []byte
+}
+
+func (a databaseApiAnswer) StatusText() string {
+	if a.StatusCode == 0 {
+		return "2xx"
+	}
+	return strconv.Itoa(a.StatusCode)
+}
+
+func (m *databaseApiClient) sendPostForAnswer(requestURL string, params interface{}) (databaseApiAnswer, error) {
+	body, err := m.sendPost(requestURL, params)
+	if err == nil {
+		return databaseApiAnswer{Body: body}, nil
+	}
+
+	var httpErr common.HTTPError
+	if errors.As(err, &httpErr) {
+		return databaseApiAnswer{StatusCode: httpErr.Code, Body: []byte(httpErr.Reason)}, err
+	}
+
+	return databaseApiAnswer{}, err
+}
+
 func (m *databaseApiClient) sendRequestWithHeader(request *http.Request) ([]byte, error) {
+	m.setRegionHeader(request)
+	return m.Client.SendRequest(request)
+}
+
+func (m *databaseApiClient) setRegionHeader(request *http.Request) {
 	switch m.Client.Region {
 	case "VN/HAN":
 		request.Header.Set("fpt-region", "hanoi-vn")
@@ -59,5 +93,4 @@ func (m *databaseApiClient) sendRequestWithHeader(request *http.Request) ([]byte
 	default:
 		request.Header.Set("fpt-region", m.Client.Region)
 	}
-	return m.Client.SendRequest(request)
 }

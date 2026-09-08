@@ -2,21 +2,15 @@ package fptcloud_instance
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
+	"strings"
 	common "terraform-provider-fptcloud/commons"
-	fptcloud_storage "terraform-provider-fptcloud/fptcloud/storage"
 	"time"
 )
-
-// suppressDiffForNvme suppresses diffs on fields the server ignores (and overrides
-// with the flavor's own values) for NVMe-backed instances.
-func suppressDiffForNvme(_, _, _ string, d *schema.ResourceData) bool {
-	isNvme, ok := d.GetOk("is_nvme")
-	return ok && isNvme.(bool)
-}
 
 // ResourceInstance function returns a schema.Resource that represents an instance.
 // This can be used to create, read, update and delete operations for an instance in the infrastructure.
@@ -28,6 +22,7 @@ func ResourceInstance() *schema.Resource {
 		UpdateContext: resourceInstanceUpdate,
 		ReadContext:   resourceInstanceRead,
 		DeleteContext: resourceInstanceDelete,
+		CustomizeDiff: resourceInstanceCustomizeDiff,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -202,6 +197,9 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("status", foundInstance.Status); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("private_ip", foundInstance.PrivateIp); err != nil {
+		return diag.FromErr(err)
+	}
 	if err := d.Set("public_ip", foundInstance.PublicIp); err != nil {
 		return diag.FromErr(err)
 	}
@@ -232,11 +230,18 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("is_nvme", foundInstance.IsNvme); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("storage_id", foundInstance.StorageId); err != nil {
-		return diag.FromErr(err)
+
+	// find_instance only sees a root disk persisted as ROOT, which never happens on OSP, so read the disk listings instead
+	rootStorage, err := instanceService.FindRootStorage(foundInstance.VpcId, foundInstance.ID)
+	if err != nil {
+		log.Printf("[WARN] Could not retrieve the root disk of instance %s: %s", foundInstance.ID, err)
+		return nil
 	}
-	if err := d.Set("storage_name", foundInstance.StorageName); err != nil {
-		return diag.FromErr(err)
+
+	if rootStorage.SizeMb > 0 {
+		if err := d.Set("storage_size_gb", rootStorage.SizeMb/1024); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	return nil
@@ -301,7 +306,6 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	hasChangeTags := d.HasChange("tag_ids")
 	hasChangeGpuPlan := d.HasChange("gpu_plan")
 	hasChangeGpuName := d.HasChange("gpu_name")
-	hasChangeStorage := (d.HasChange("storage_size_gb") || d.HasChange("storage_policy_id")) && !d.Get("is_nvme").(bool)
 
 	if hasChangedName {
 		newName := d.Get("name").(string)
@@ -368,6 +372,14 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
+	hasChangeStoragePolicy := d.HasChange("storage_policy_id")
+
+	if d.HasChange("storage_size_gb") || hasChangeStoragePolicy {
+		if diags := resizeInstanceRootDisk(ctx, d, apiClient, instanceService, vpcId, hasChangeStoragePolicy); diags != nil {
+			return diags
+		}
+	}
+
 	if hasChangeTags {
 		tagsSet := d.Get("tag_ids").(*schema.Set)
 		tagIds := make([]string, 0, tagsSet.Len())
@@ -389,19 +401,93 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
-	if hasChangeStorage {
-		storageId := d.Get("storage_id").(string)
-		storageName := d.Get("storage_name").(string)
-		storageService := fptcloud_storage.NewStorageService(apiClient)
-		_, err := storageService.UpdateStorage(vpcId, storageId, fptcloud_storage.UpdateStorageDTO{
-			Name:            storageName,
-			SizeGb:          d.Get("storage_size_gb").(int),
-			StoragePolicyId: d.Get("storage_policy_id").(string),
-		})
-		if err != nil {
-			return diag.Errorf("[ERR] An error occurred while updating instance storage %s", err)
-		}
+	return resourceInstanceRead(ctx, d, m)
+}
+
+// resourceInstanceCustomizeDiff rejects a shrink at plan time, the resize API only grows the root disk
+func resourceInstanceCustomizeDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	if d.Id() == "" || !d.HasChange("storage_size_gb") {
+		return nil
 	}
 
-	return resourceInstanceRead(ctx, d, m)
+	oldSize, newSize := d.GetChange("storage_size_gb")
+	if newSize.(int) < oldSize.(int) {
+		return fmt.Errorf(
+			"[ERR] The root storage size of an instance can only be increased, got %d GB while the instance already has %d GB",
+			newSize.(int), oldSize.(int),
+		)
+	}
+
+	return nil
+}
+
+// resizeInstanceRootDisk resize and/or change the storage policy of the root disk in place
+func resizeInstanceRootDisk(
+	ctx context.Context,
+	d *schema.ResourceData,
+	apiClient *common.Client,
+	instanceService InstanceService,
+	vpcId string,
+	hasChangeStoragePolicy bool,
+) diag.Diagnostics {
+	rootStorage, err := instanceService.FindRootStorage(vpcId, d.Id())
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while retrieving the root disk of instance %s: %s", d.Id(), err)
+	}
+
+	storagePolicyId := d.Get("storage_policy_id").(string)
+	storagePolicy, err := instanceService.FindStoragePolicy(vpcId, storagePolicyId)
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while retrieving the storage policy %s: %s", storagePolicyId, err)
+	}
+
+	sizeGb := d.Get("storage_size_gb").(int)
+	// the resize API expects the infrastructure id of the policy, not the id the provider exposes
+	resizeModel := ResizeRootDiskDTO{
+		DiskId:           rootStorage.DiskId,
+		IncreaseInSizeMb: sizeGb * 1024,
+		StoragePolicyId:  &storagePolicy.InfraId,
+	}
+
+	if _, err := instanceService.ResizeRootDisk(vpcId, d.Id(), resizeModel); err != nil {
+		return diag.Errorf("[ERR] An error occurred while resizing the root disk of instance %s: %s", d.Id(), err)
+	}
+
+	// the API only queues the resize, poll the infrastructure until the root disk reports the new size
+	resizeStateConf := &retry.StateChangeConf{
+		Pending: []string{"RESIZING"},
+		Target:  []string{"RESIZED"},
+		Refresh: func() (interface{}, string, error) {
+			resp, err := instanceService.FindRootStorage(vpcId, d.Id())
+			if err != nil {
+				return 0, "", err
+			}
+
+			if resp.SizeMb >= sizeGb*1024 && (!hasChangeStoragePolicy || isStoragePolicy(resp, storagePolicy)) {
+				return resp, "RESIZED", nil
+			}
+
+			return resp, "RESIZING", nil
+		},
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
+		Delay:          3 * time.Second,
+		MinTimeout:     3 * time.Second,
+		NotFoundChecks: 120,
+	}
+	if _, err := resizeStateConf.WaitForStateContext(ctx); err != nil {
+		return diag.Errorf("[Error] Waiting for the root disk of instance (%s) to be resized: %s", d.Id(), err)
+	}
+
+	return nil
+}
+
+// isStoragePolicy tells whether a root disk already sits on a storage policy, by id when the portal listed it or by name otherwise
+func isStoragePolicy(rootStorage *RootStorageModel, storagePolicy *StoragePolicyDTO) bool {
+	if rootStorage.StoragePolicyId != "" {
+		return rootStorage.StoragePolicyId == storagePolicy.ID
+	}
+
+	// the infrastructure suffixes the policy name with the zone it belongs to
+	return rootStorage.StoragePolicyName == storagePolicy.Name ||
+		strings.HasPrefix(rootStorage.StoragePolicyName, storagePolicy.Name+"_")
 }

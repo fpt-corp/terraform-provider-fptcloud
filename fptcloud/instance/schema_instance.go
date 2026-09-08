@@ -44,6 +44,7 @@ var dataSourceInstanceSchema = map[string]*schema.Schema{
 	"private_ip": {
 		Type:        schema.TypeString,
 		Computed:    true,
+		Optional:    true,
 		Description: "The private ip of the instance",
 	},
 	"public_ip": {
@@ -141,11 +142,13 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"private_ip": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The private ip of the instance.",
 	},
 	"public_ip": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The public ip (floating ip) of the instance.",
 	},
 	"flavor_name": {
@@ -166,26 +169,16 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		ForceNew:    true,
 	},
 	"storage_size_gb": {
-		Type:             schema.TypeInt,
-		Required:         true,
-		Description:      "The root storage size of the instance. Changing this updates the storage in place (not ForceNew); the server only allows growing the size, not shrinking it. Ignored for NVMe GPU flavors (see `is_nvme` on the `fptcloud_flavor` data source) — the server always uses that flavor's own NVMe storage size instead.",
-		DiffSuppressFunc: suppressDiffForNvme,
+		Type:         schema.TypeInt,
+		Required:     true,
+		ValidateFunc: validation.IntAtLeast(1),
+		Description:  "The root storage size of the instance (in GB), can only be increased",
 	},
 	"storage_policy_id": {
-		Type:             schema.TypeString,
-		Required:         true,
-		Description:      "The root storage policy of the instance. Changing this updates the storage in place (not ForceNew). Ignored for NVMe GPU flavors (see `is_nvme` on the `fptcloud_flavor` data source) — the server always uses that flavor's own NVMe storage policy instead.",
-		DiffSuppressFunc: suppressDiffForNvme,
-	},
-	"storage_id": {
-		Type:        schema.TypeString,
-		Computed:    true,
-		Description: "Internal id of the instance's root storage, used to support in-place storage updates.",
-	},
-	"storage_name": {
-		Type:        schema.TypeString,
-		Computed:    true,
-		Description: "Internal name of the instance's root storage, used to support in-place storage updates.",
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The root storage policy of the instance",
 	},
 	"security_group_ids": {
 		Type:        schema.TypeSet,
