@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	common "terraform-provider-fptcloud/commons"
+	fptcloud_alert "terraform-provider-fptcloud/fptcloud/alert"
+	fptcloud_backup_veeam "terraform-provider-fptcloud/fptcloud/backup_veeam"
 	fptcloud_database_flavors "terraform-provider-fptcloud/fptcloud/database_flavors"
 	fptcloud_flavor "terraform-provider-fptcloud/fptcloud/flavor"
 	fptcloud_floating_ip "terraform-provider-fptcloud/fptcloud/floating-ip"
@@ -116,6 +118,9 @@ func Provider() *schema.Provider {
 			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.DataSourceL7Rule(),
 			"fptcloud_load_balancer_v2_sizes":               fptcloud_load_balancer_v2.DataSourceSizes(),
 			"fptcloud_tagging":                              fptcloud_tagging.DataSourceTagging(),
+			"fptcloud_backup_veeam_jobs":                    fptcloud_backup_veeam.DataSourceBackupVeeamJobs(),
+			"fptcloud_backup_veeam_instances":               fptcloud_backup_veeam.DataSourceBackupVeeamInstances(),
+			"fptcloud_alert_notification_methods":           fptcloud_alert.DataSourceAlertNotificationMethods(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
@@ -144,6 +149,7 @@ func Provider() *schema.Provider {
 			"fptcloud_load_balancer_v2_l7_policy":           fptcloud_load_balancer_v2.ResourceL7Policy(),
 			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.ResourceL7Rule(),
 			"fptcloud_tagging":                              fptcloud_tagging.ResourceTagging(),
+			"fptcloud_backup_veeam_job":                     fptcloud_backup_veeam.ResourceBackupVeeamJob(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
