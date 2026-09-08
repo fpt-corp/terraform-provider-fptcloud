@@ -229,12 +229,13 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"gpu_name": {
 		Type:        schema.TypeString,
 		Optional:    true,
-		Description: "Optional verification input: the GPU this instance is expected to get, as reported by the `gpu_name` field of the `fptcloud_flavor` data source. Leave it unset and the flavor alone decides the GPU (see `vm_type` for what the instance actually got). When set, the server checks it against `flavor_name` on create and on resize, and rejects the request if it names a different GPU or if `flavor_name` is not a GPU flavor. Point it at the same data source as `flavor_name` so the two can never drift apart.",
+		Computed:    true,
+		Description: "Optional verification input: the GPU this instance is expected to get, as reported by the `gpu_name` field of the `fptcloud_flavor` data source. Leave it unset and the flavor alone decides the GPU; either way this reflects the actual GPU the instance has (empty for CPU instances, see `vm_type`). When set, the server checks it against `flavor_name` on create and on resize, and rejects the request if it names a different GPU or if `flavor_name` is not a GPU flavor. Point it at the same data source as `flavor_name` so the two can never drift apart.",
 	},
 	"vm_type": {
 		Type:        schema.TypeString,
 		Computed:    true,
-		Description: "Type of the instance (`cpu` or `gpu`), derived from the server based on flavor_name.",
+		Description: "Type of the instance (`cpu` or `gpu`), derived by the server from whether a GPU is attached (reported via the `gpu_name` field).",
 	},
 	"is_nvme": {
 		Type:        schema.TypeBool,

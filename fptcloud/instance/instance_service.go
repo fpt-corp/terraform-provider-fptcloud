@@ -21,7 +21,7 @@ type InstanceService interface {
 	Delete(vpcId string, instanceId string) (*common.SimpleResponse, error)
 	Rename(vpcId string, instanceId string, newName string) (*common.SimpleResponse, error)
 	ChangeStatus(vpcId string, instanceId string, status string) (*common.SimpleResponse, error)
-	Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error)
+	Resize(vpcId string, instanceId string, flavorId string, billingType string) (*common.SimpleResponse, error)
 	GetFlavorByName(vpcId string, flavorName string, gpuName string) (*FlavorDTO, error)
 	UpdateTags(vpcId string, instanceId string, tagIds []string) (*common.SimpleResponse, error)
 	ChangeBillingType(vpcId string, instanceId string, billingType string) (*common.SimpleResponse, error)
@@ -129,9 +129,13 @@ func (s *InstanceServiceImpl) ChangeStatus(vpcId string, instanceId string, stat
 }
 
 // Resize update flavor an instance
-func (s *InstanceServiceImpl) Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error) {
+func (s *InstanceServiceImpl) Resize(vpcId string, instanceId string, flavorId string, billingType string) (*common.SimpleResponse, error) {
 	var apiPath = common.ApiPath.ResizeInstance(vpcId, instanceId)
-	_, err := s.client.SendPostRequest(apiPath, map[string]string{"hw_flavor": flavorId})
+	body := map[string]string{"hw_flavor": flavorId}
+	if billingType != "" {
+		body["billing_type"] = billingType
+	}
+	_, err := s.client.SendPostRequest(apiPath, body)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}

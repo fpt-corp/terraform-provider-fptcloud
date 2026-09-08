@@ -12,6 +12,23 @@ import (
 	"time"
 )
 
+// configuredGpuName returns gpu_name only when it's actually present in the
+// .tf config, not when Terraform is just carrying forward the Computed value
+// from a previous apply (gpu_name is Optional+Computed so d.GetOk alone can't
+// tell the two apart) — sending a stale GPU name would make the server reject
+// a resize to a CPU flavor with "gpu_name is only applicable to GPU flavors".
+func configuredGpuName(d *schema.ResourceData) string {
+	raw := d.GetRawConfig()
+	if raw.IsNull() {
+		return ""
+	}
+	gpuNameVal := raw.GetAttr("gpu_name")
+	if gpuNameVal.IsNull() {
+		return ""
+	}
+	return gpuNameVal.AsString()
+}
+
 // ResourceInstance function returns a schema.Resource that represents an instance.
 // This can be used to create, read, update and delete operations for an instance in the infrastructure.
 func ResourceInstance() *schema.Resource {
@@ -221,6 +238,9 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("tag_ids", foundInstance.TagIds); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("gpu_name", foundInstance.GpuName); err != nil {
+		return diag.FromErr(err)
+	}
 	if err := d.Set("vm_type", deriveVmType(foundInstance.GpuName)); err != nil {
 		return diag.FromErr(err)
 	}
@@ -295,7 +315,20 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 }
 
 // function to update an instance
+// resourceInstanceUpdate refreshes state from the server even when the update
+// itself errors out partway through, so whatever changes did land before the
+// failing step (e.g. a flavor resize that succeeded before a later billing
+// plan change failed) are still reflected instead of leaving stale state.
 func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	updateDiags := doResourceInstanceUpdate(ctx, d, m)
+	readDiags := resourceInstanceRead(ctx, d, m)
+	if updateDiags.HasError() {
+		return append(updateDiags, readDiags...)
+	}
+	return readDiags
+}
+
+func doResourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	instanceService := NewInstanceService(apiClient)
 
@@ -334,15 +367,17 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 
 	if hasChangeFlavor {
 		newFlavorName := d.Get("flavor_name").(string)
-		gpuName := ""
-		if v, ok := d.GetOk("gpu_name"); ok {
-			gpuName = v.(string)
-		}
+		gpuName := configuredGpuName(d)
 		flavor, flavorErr := instanceService.GetFlavorByName(vpcId, newFlavorName, gpuName)
 		if flavorErr != nil {
 			return diag.Errorf("[ERR] Flavor not found %s", flavorErr)
 		}
-		_, err := instanceService.Resize(vpcId, d.Id(), flavor.ID)
+
+		billingType := ""
+		if gpuPlan, ok := d.GetOk("gpu_plan"); ok {
+			billingType = mapGpuPlanToBillingType(gpuPlan.(string))
+		}
+		_, err := instanceService.Resize(vpcId, d.Id(), flavor.ID, billingType)
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while resize instance %s", err)
 		}
@@ -393,15 +428,18 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
-	if hasChangeGpuPlan {
+	// When flavor_name also changed, gpu_plan was already sent along with the
+	// resize request above; the server applies it as part of that same
+	// operation, so a separate call here would just race it.
+	if hasChangeGpuPlan && !hasChangeFlavor {
 		gpuPlan := d.Get("gpu_plan").(string)
 		_, err := instanceService.ChangeBillingType(vpcId, d.Id(), mapGpuPlanToBillingType(gpuPlan))
 		if err != nil {
-			return diag.Errorf("[ERR] An error occurred while changing billing plan of instance %s", err)
+			return diag.Errorf("[ERR] An error occurred while changing billing plan of instance %s: %s", d.Id(), err)
 		}
 	}
 
-	return resourceInstanceRead(ctx, d, m)
+	return nil
 }
 
 // resourceInstanceCustomizeDiff rejects a shrink at plan time, the resize API only grows the root disk

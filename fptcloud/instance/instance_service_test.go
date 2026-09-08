@@ -114,7 +114,19 @@ func TestResizeInstance_ReturnsSuccess(t *testing.T) {
 	})
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
-	response, err := service.Resize("vpc_id", "instance_id", "flavor_id")
+	response, err := service.Resize("vpc_id", "instance_id", "flavor_id", "")
+	assert.NoError(t, err)
+	assert.NotNil(t, response)
+	assert.Equal(t, "Successfully", response.Data)
+}
+
+func TestChangeBillingTypeInstance_ReturnsSuccess(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/compute/instance/instance_id/billing-type": "",
+	})
+	defer server.Close()
+	service := fptcloud_instance.NewInstanceService(mockClient)
+	response, err := service.ChangeBillingType("vpc_id", "instance_id", "RESERVED")
 	assert.NoError(t, err)
 	assert.NotNil(t, response)
 	assert.Equal(t, "Successfully", response.Data)
