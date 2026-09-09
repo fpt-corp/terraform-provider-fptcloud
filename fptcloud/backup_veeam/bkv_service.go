@@ -10,9 +10,10 @@ import (
 	common "terraform-provider-fptcloud/commons"
 )
 
-// listPageSize là page_size dùng cho mọi lần gọi list. Đủ lớn để không phải
-// phân trang trong thực tế; nếu tenant vượt quá thì FindJobInList sẽ không
-// thấy job và Terraform báo drift - chấp nhận được ở phiên bản này.
+// listPageSize is the page_size used for every list call. It is large enough
+// that pagination never kicks in for a real tenant. If a tenant ever exceeds
+// it, FindJobInList stops seeing the job and Terraform reports drift, which is
+// an acceptable failure mode for this version.
 const listPageSize = 1000
 
 type BackupVeeamService interface {
@@ -33,17 +34,18 @@ func NewBackupVeeamService(client *common.Client) BackupVeeamService {
 	return &backupVeeamServiceImpl{client: client}
 }
 
-// describeErrorType dịch error_type của API thành câu nói rõ khách phải làm gì.
-// Bảy mã lấy từ class BackupErrorType phía backend.
+// describeErrorType turns the API's error_type into a message that tells the
+// user what to do about it. The seven codes come from the backend's
+// BackupErrorType class.
 func describeErrorType(errorType string, message string) string {
 	hints := map[string]string{
-		"duplicateVm":          "một máy ảo chỉ được thuộc một backup job đang hoạt động; dùng data source fptcloud_backup_veeam_instances với not_backup = true để lấy danh sách máy ảo còn gán được",
-		"vmNotFound":           "máy ảo không tồn tại; kiểm tra lại vm_ids",
-		"vmNotInVpc":           "máy ảo không thuộc VPC này; kiểm tra lại vpc_id và vm_ids",
-		"reachLimitQuota":      "đã hết quota backup của tenant; cần liên hệ FPT Cloud để tăng quota, Terraform không xử lý được",
-		"jobNotEligible":       "job đang ở trạng thái không cho phép thao tác; chờ job về trạng thái ổn định rồi apply lại",
-		"requestInProgress":    "một yêu cầu giống hệt đang được xử lý; chạy lại terraform apply sau ít phút",
-		"idempotencyKeyReused": "idempotency key đã dùng cho nội dung khác (lỗi phía provider, không phải cấu hình của bạn)",
+		"duplicateVm":          "an instance can belong to only one active backup job; use the fptcloud_backup_veeam_instances data source with not_backup = true to list the instances still available",
+		"vmNotFound":           "the instance does not exist; check vm_ids",
+		"vmNotInVpc":           "the instance does not belong to this VPC; check vpc_id and vm_ids",
+		"reachLimitQuota":      "the tenant's backup quota is exhausted; contact FPT Cloud to raise it, Terraform cannot resolve this",
+		"jobNotEligible":       "the job is in a state that does not allow this operation; wait for it to settle and apply again",
+		"requestInProgress":    "an identical request is already being processed; run terraform apply again in a few minutes",
+		"idempotencyKeyReused": "the idempotency key was already used with a different request body (a provider bug, not a problem with your configuration)",
 	}
 
 	if hint, ok := hints[errorType]; ok {
@@ -52,9 +54,10 @@ func describeErrorType(errorType string, message string) string {
 	return fmt.Sprintf("%s (%s)", message, errorType)
 }
 
-// checkMutationResponse là chốt chặn duy nhất cho việc API trả HTTP 200 khi
-// thất bại. Kiểm error_type TRƯỚC status, vì nhánh lỗi nghiệp vụ không set
-// status - zero value false vẫn bắt được, nhưng error_type cho thông báo tốt hơn.
+// checkMutationResponse is the single guard against the API returning HTTP 200
+// on failure. It checks error_type BEFORE status, because the business-error
+// branch does not set status at all - the zero value false would still catch
+// it, but error_type gives a far better message.
 func checkMutationResponse(resp JobMutationResponse) error {
 	if resp.ErrorType != "" {
 		return fmt.Errorf("%s", describeErrorType(resp.ErrorType, resp.Message))
@@ -62,18 +65,19 @@ func checkMutationResponse(resp JobMutationResponse) error {
 	if !resp.Status {
 		message := resp.Message
 		if message == "" {
-			message = "API từ chối yêu cầu nhưng không nêu lý do"
+			message = "the API rejected the request without giving a reason"
 		}
 		return fmt.Errorf("%s", message)
 	}
 	return nil
 }
 
-// BuildIdempotencyKey sinh key TẤT ĐỊNH theo nội dung. Không dùng UUID ngẫu
-// nhiên: retry phải mang lại đúng key thì backend mới nhận ra là cùng một yêu
-// cầu và trả kết quả đã cache thay vì tạo job thứ hai.
+// BuildIdempotencyKey derives a key DETERMINISTICALLY from the request body.
+// It must not be a random UUID: a retry has to carry the same key for the
+// backend to recognise it as the same request and return the cached result
+// instead of creating a second job.
 func BuildIdempotencyKey(vpcId string, payload CreateJobPayload) string {
-	// Key không được phụ thuộc chính nó, nên bỏ trường này ra khi băm.
+	// The key must not depend on itself, so clear the field before hashing.
 	payload.IdempotencyKey = ""
 
 	body, err := json.Marshal(payload)
@@ -84,14 +88,15 @@ func BuildIdempotencyKey(vpcId string, payload CreateJobPayload) string {
 	return "tf-" + hex.EncodeToString(sum[:16])
 }
 
-// decorateServerError thêm gợi ý cho HTTP 500 lúc tạo/sửa job. Backend không
-// null-check tenant, nên VPC chưa bật dịch vụ Backup Veeam sẽ trả 500 với
-// thông báo vô nghĩa - đây là lỗi khách gặp ngay lần đầu dùng.
+// decorateServerError adds a hint for HTTP 500 on create and update. The
+// backend does not null-check the tenant, so a VPC without the Backup Veeam
+// service returns 500 with a meaningless body - and this is the first error a
+// new user runs into.
 func decorateServerError(action string, err error) error {
 	if strings.Contains(err.Error(), "500") {
-		return fmt.Errorf("%s thất bại (HTTP 500): %v — kiểm tra dịch vụ Backup Veeam đã được bật cho VPC này chưa", action, err)
+		return fmt.Errorf("%s failed (HTTP 500): %v - check whether the Backup Veeam service is enabled for this VPC", action, err)
 	}
-	return fmt.Errorf("%s thất bại: %v", action, err)
+	return fmt.Errorf("%s failed: %v", action, err)
 }
 
 func (s *backupVeeamServiceImpl) CreateJob(vpcId string, payload CreateJobPayload) (JobMutationResponse, error) {
@@ -99,12 +104,12 @@ func (s *backupVeeamServiceImpl) CreateJob(vpcId string, payload CreateJobPayloa
 
 	raw, err := s.client.SendPostRequest(common.ApiPath.BackupVeeamCreateJob(vpcId), payload)
 	if err != nil {
-		return JobMutationResponse{}, decorateServerError("tạo backup job", err)
+		return JobMutationResponse{}, decorateServerError("creating the backup job", err)
 	}
 
 	var result JobMutationResponse
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return JobMutationResponse{}, fmt.Errorf("không đọc được phản hồi tạo backup job: %v", err)
+		return JobMutationResponse{}, fmt.Errorf("could not parse the create backup job response: %v", err)
 	}
 	if err := checkMutationResponse(result); err != nil {
 		return result, err
@@ -115,12 +120,12 @@ func (s *backupVeeamServiceImpl) CreateJob(vpcId string, payload CreateJobPayloa
 func (s *backupVeeamServiceImpl) UpdateJob(vpcId string, jobId string, payload CreateJobPayload) (JobMutationResponse, error) {
 	raw, err := s.client.SendPostRequest(common.ApiPath.BackupVeeamUpdateJob(vpcId, jobId), payload)
 	if err != nil {
-		return JobMutationResponse{}, decorateServerError("cập nhật backup job", err)
+		return JobMutationResponse{}, decorateServerError("updating the backup job", err)
 	}
 
 	var result JobMutationResponse
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return JobMutationResponse{}, fmt.Errorf("không đọc được phản hồi cập nhật backup job: %v", err)
+		return JobMutationResponse{}, fmt.Errorf("could not parse the update backup job response: %v", err)
 	}
 	if err := checkMutationResponse(result); err != nil {
 		return result, err
@@ -131,19 +136,19 @@ func (s *backupVeeamServiceImpl) UpdateJob(vpcId string, jobId string, payload C
 func (s *backupVeeamServiceImpl) GetJobDetail(vpcId string, jobId string) (*JobDetail, error) {
 	raw, err := s.client.SendGetRequest(common.ApiPath.BackupVeeamJobDetail(vpcId, jobId))
 	if err != nil {
-		// 404 nghĩa là job không còn - đây là drift, không phải lỗi.
+		// A 404 means the job is gone. That is drift, not an error.
 		if strings.Contains(err.Error(), "404") {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("đọc chi tiết backup job thất bại: %v", err)
+		return nil, fmt.Errorf("reading the backup job failed: %v", err)
 	}
 
 	var result JobDetailResponse
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, fmt.Errorf("không đọc được chi tiết backup job: %v", err)
+		return nil, fmt.Errorf("could not parse the backup job detail: %v", err)
 	}
-	// Blueprint trả {"error": "can't get job detail."} - có thể kèm 404, nhưng
-	// phòng cả trường hợp trả 200 với data rỗng.
+	// The blueprint answers {"error": "can't get job detail."} - usually with a
+	// 404, but guard against it arriving as a 200 with an empty body too.
 	if result.Data.Id == "" {
 		return nil, nil
 	}
@@ -153,22 +158,23 @@ func (s *backupVeeamServiceImpl) GetJobDetail(vpcId string, jobId string) (*JobD
 func (s *backupVeeamServiceImpl) ListJobs(vpcId string, name string, status string) (JobListResponse, error) {
 	raw, err := s.client.SendGetRequest(common.ApiPath.BackupVeeamListJobs(vpcId, 1, listPageSize, name, status))
 	if err != nil {
-		return JobListResponse{}, fmt.Errorf("liệt kê backup job thất bại: %v", err)
+		return JobListResponse{}, fmt.Errorf("listing backup jobs failed: %v", err)
 	}
 
 	var result JobListResponse
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return JobListResponse{}, fmt.Errorf("không đọc được danh sách backup job: %v", err)
+		return JobListResponse{}, fmt.Errorf("could not parse the backup job list: %v", err)
 	}
 	return result, nil
 }
 
-// FindJobInList tìm job theo ID trong endpoint list - nguồn DUY NHẤT có status
-// và enabled (detail không có hai field này).
+// FindJobInList looks a job up by ID through the list endpoint, which is the
+// ONLY source of status and enabled - the detail endpoint returns neither.
 //
-// Lọc theo name trước cho nhẹ, nhưng nếu không thấy thì PHẢI quét lại không
-// filter: job có thể đã bị đổi tên trên portal. Thiếu bước này thì Terraform
-// tưởng job đã mất, tạo lại, và đâm thẳng vào lỗi duplicateVm.
+// It filters by name first because that is cheaper, but when the job is not
+// found it MUST rescan without the filter: the job may have been renamed in
+// the portal. Without that second pass Terraform concludes the job is gone,
+// recreates it, and walks straight into a duplicateVm error.
 func (s *backupVeeamServiceImpl) FindJobInList(vpcId string, jobId string, name string) (*JobListItem, error) {
 	if name != "" {
 		list, err := s.ListJobs(vpcId, name, "")
@@ -196,21 +202,22 @@ func pickJobById(items []JobListItem, jobId string) *JobListItem {
 	return nil
 }
 
-// DeleteJob bỏ qua lỗi 500: backend truy cập backup_job.name mà không
-// null-check, nên xoá một job đã bị xoá trả 500 chứ không phải 404. Với
-// Terraform thì "job không còn" là kết quả mong muốn của Delete.
+// DeleteJob ignores HTTP 500: the backend reads backup_job.name without a
+// null check, so deleting an already-deleted job answers 500 rather than 404.
+// As far as Terraform is concerned, "the job is gone" is exactly the outcome
+// Delete is asking for.
 func (s *backupVeeamServiceImpl) DeleteJob(vpcId string, jobId string) error {
 	raw, err := s.client.SendDeleteRequest(common.ApiPath.BackupVeeamDeleteJob(vpcId, jobId))
 	if err != nil {
 		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "500") {
 			return nil
 		}
-		return fmt.Errorf("xoá backup job thất bại: %v", err)
+		return fmt.Errorf("deleting the backup job failed: %v", err)
 	}
 
 	var result JobMutationResponse
 	if err := json.Unmarshal(raw, &result); err != nil {
-		// Delete thành công nhưng body lạ - không coi là lỗi.
+		// The delete succeeded but the body is unexpected. Not an error.
 		return nil
 	}
 	return checkMutationResponse(result)
@@ -219,12 +226,12 @@ func (s *backupVeeamServiceImpl) DeleteJob(vpcId string, jobId string) error {
 func (s *backupVeeamServiceImpl) ListInstances(vpcId string, notBackup bool, jobId string, status string) (InstanceListResponse, error) {
 	raw, err := s.client.SendGetRequest(common.ApiPath.BackupVeeamInstances(vpcId, notBackup, jobId, status))
 	if err != nil {
-		return InstanceListResponse{}, fmt.Errorf("liệt kê máy ảo gán được vào backup job thất bại: %v", err)
+		return InstanceListResponse{}, fmt.Errorf("listing the instances available for a backup job failed: %v", err)
 	}
 
 	var result InstanceListResponse
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return InstanceListResponse{}, fmt.Errorf("không đọc được danh sách máy ảo: %v", err)
+		return InstanceListResponse{}, fmt.Errorf("could not parse the instance list: %v", err)
 	}
 	return result, nil
 }

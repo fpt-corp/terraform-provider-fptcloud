@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Test gọi thẳng hàm validate thuần. Dựng *schema.ResourceDiff qua internals
-// của SDK là cách test dễ vỡ theo version; toàn bộ logic cần kiểm nằm trong
-// validateScheduleConfig nên test thẳng vào đó.
+// These tests call the pure validation function directly. Building a
+// *schema.ResourceDiff through SDK internals breaks between versions, and all
+// the logic worth testing lives in validateScheduleConfig anyway.
 
-// start_hour > end_hour tạo bitmap toàn 0 -> job KHÔNG BAO GIỜ CHẠY, và API
-// không báo lỗi. Phải chặn ở plan-time.
+// start_hour > end_hour produces an all-zero bitmap, so the job NEVER RUNS and
+// the API says nothing. It has to be rejected at plan time.
 func TestValidateRejectsStartHourAfterEndHour(t *testing.T) {
 	err := validateScheduleConfig(map[string]interface{}{
 		"type":   "period",
@@ -76,7 +76,7 @@ func TestValidateRejectsWeekPositionWithoutDayOfWeek(t *testing.T) {
 	assert.Contains(t, err.Error(), "day_of_week")
 }
 
-// day_of_month = 32 nghĩa là ngày cuối tháng, không phải giá trị vô nghĩa.
+// day_of_month = 32 means the last day of the month, not a nonsense value.
 func TestValidateAcceptsOnDayWithLastDayOfMonth(t *testing.T) {
 	err := validateScheduleConfig(map[string]interface{}{
 		"type":    "monthly",
@@ -85,7 +85,7 @@ func TestValidateAcceptsOnDayWithLastDayOfMonth(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-// Server .strip() tên job -> nếu không chuẩn hoá thì mỗi plan đều đề nghị sửa.
+// The server strips the job name, so without normalising every plan proposes a change.
 func TestNameStateFuncTrimsWhitespace(t *testing.T) {
 	stateFunc := resourceBackupVeeamJobSchema["name"].StateFunc
 	assert.NotNil(t, stateFunc)

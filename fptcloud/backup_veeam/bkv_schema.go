@@ -12,17 +12,19 @@ import (
 
 var jobNamePattern = regexp.MustCompile(`^[\w\-\s.]+$`)
 
-// Portal chỉ dùng hai giá trị này. Backend còn nhận SelectedDays nhưng chưa
-// bao giờ được gửi, nên không lộ ra để khỏi phải bảo hành hành vi không rõ.
+// The portal only ever sends these two. The backend also accepts
+// SelectedDays, but nothing has ever sent it, so it is not exposed rather than
+// committing to behaviour nobody has exercised.
 var scheduleDailyTypes = []string{"Everyday", "weekDays"}
 
 var monthlyDayNumbers = []string{"first", "second", "third", "fourth", "last", "onDay"}
 
-// Viết THƯỜNG - khác với tên ngày ở chỗ khác (viết hoa chữ đầu). Đây là hành
-// vi thật của API, sai casing sẽ bị reject.
+// LOWERCASE - unlike the day names elsewhere, which are capitalised. This is
+// how the API actually behaves; the wrong casing is rejected.
 var monthlyDaysOfWeek = []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
 
-// Backend nhận cả 0 nhưng portal không bao giờ gửi; giữ đúng tập của portal.
+// The backend accepts 0 as well, but the portal never sends it; stay with the
+// set the portal uses.
 var periodFullPeriods = []int{1, 2, 3, 4, 6, 8, 12, 24}
 
 var runAtPattern = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$`)
@@ -38,21 +40,21 @@ var resourceBackupVeeamJobSchema = map[string]*schema.Schema{
 	"name": {
 		Type:     schema.TypeString,
 		Required: true,
-		// Server tự .strip() tên job. Không chuẩn hoá phía provider thì state
-		// và API lệch nhau vĩnh viễn và mọi plan đều đề nghị sửa.
+		// The server calls .strip() on the job name. Without normalising it here,
+		// state and API disagree forever and every plan proposes a change.
 		StateFunc: func(v interface{}) string {
 			return strings.TrimSpace(v.(string))
 		},
 		ValidateFunc: func(v interface{}, k string) ([]string, []error) {
 			name := strings.TrimSpace(v.(string))
 			if name == "" {
-				return nil, []error{fmt.Errorf("%s không được rỗng", k)}
+				return nil, []error{fmt.Errorf("%s must not be empty", k)}
 			}
 			if len(name) > 50 {
-				return nil, []error{fmt.Errorf("%s không được dài quá 50 ký tự", k)}
+				return nil, []error{fmt.Errorf("%s must not be longer than 50 characters", k)}
 			}
 			if !jobNamePattern.MatchString(name) {
-				return nil, []error{fmt.Errorf("%s chỉ được chứa chữ, số, gạch dưới, gạch ngang, khoảng trắng và dấu chấm", k)}
+				return nil, []error{fmt.Errorf("%s may only contain letters, digits, underscores, hyphens, spaces and dots", k)}
 			}
 			return nil, nil
 		},
@@ -310,9 +312,10 @@ var dataSourceBackupVeeamInstancesSchema = map[string]*schema.Schema{
 	},
 }
 
-// validateJobDiff chỉ bóc block schedule ra khỏi diff rồi giao cho hàm thuần
-// bên dưới. Tách như vậy để logic validate test được mà không phải dựng
-// *schema.ResourceDiff qua internals của SDK.
+// validateJobDiff only pulls the schedule block out of the diff and hands it
+// to the pure function below. Splitting it this way keeps the validation
+// logic testable without building a *schema.ResourceDiff through SDK
+// internals.
 func validateJobDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
 	scheduleRaw, ok := diff.GetOk("schedule")
 	if !ok {
@@ -329,8 +332,8 @@ func validateJobDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}
 	return validateScheduleConfig(scheduleMap)
 }
 
-// validateScheduleConfig chặn ba cấu hình mà API chấp nhận nhưng cho kết quả
-// sai. Nhận map thuần nên test được trực tiếp.
+// validateScheduleConfig blocks three configurations the API accepts but acts
+// on incorrectly. It takes a plain map so it can be tested directly.
 func validateScheduleConfig(scheduleMap map[string]interface{}) error {
 	scheduleType, _ := scheduleMap["type"].(string)
 
@@ -347,31 +350,32 @@ func validateScheduleConfig(scheduleMap map[string]interface{}) error {
 		return m
 	}
 
-	// 1. Chỉ block khớp với type mới được khai.
+	// 1. Only the block matching type may be declared.
 	for _, key := range []string{"daily", "monthly", "period"} {
 		if key != scheduleType && hasBlock(key) {
 			return fmt.Errorf(
-				"schedule.type = %q nhưng có khai block %q; chỉ được khai block khớp với type",
+				"schedule.type is %q but a %q block is declared; only the block matching type may be used",
 				scheduleType, key)
 		}
 	}
 
-	// 2. Khung giờ của period không được vắt qua nửa đêm - bitmap sẽ toàn 0 và
-	//    job không bao giờ chạy, mà API không hề báo lỗi.
+	// 2. A period window must not wrap past midnight - the bitmap would be all
+	//    zeroes and the job would never run, and the API says nothing.
 	if scheduleType == "period" {
 		if period := blockOf("period"); period != nil {
 			start, _ := period["start_hour"].(int)
 			end, _ := period["end_hour"].(int)
 			if start > end {
 				return fmt.Errorf(
-					"schedule.period.start_hour (%d) phải nhỏ hơn hoặc bằng end_hour (%d); "+
-						"khung giờ không vắt qua nửa đêm được. Muốn chạy cả đêm thì đặt start_hour = 0, "+
-						"end_hour = 23 và dùng full_period để điều tiết tần suất", start, end)
+					"schedule.period.start_hour (%d) must be less than or equal to end_hour (%d); "+
+						"the window cannot wrap past midnight. To run through the night set start_hour = 0 "+
+						"and end_hour = 23, and use full_period to control how often it runs", start, end)
 			}
 		}
 	}
 
-	// 3. day_of_week và day_of_month loại trừ nhau, theo day_number_in_month.
+	// 3. day_of_week and day_of_month are mutually exclusive, decided by
+	//    day_number_in_month.
 	if scheduleType == "monthly" {
 		if monthly := blockOf("monthly"); monthly != nil {
 			dayNumber, _ := monthly["day_number_in_month"].(string)
@@ -383,17 +387,17 @@ func validateScheduleConfig(scheduleMap map[string]interface{}) error {
 
 			if dayNumber == "onDay" {
 				if dayOfMonth == 0 {
-					return fmt.Errorf("schedule.monthly.day_number_in_month = \"onDay\" thì phải khai day_of_month (1-31, hoặc 32 nghĩa là ngày cuối tháng)")
+					return fmt.Errorf("schedule.monthly.day_number_in_month = \"onDay\" requires day_of_month (1-31, or 32 meaning the last day of the month)")
 				}
 				if dayOfWeek != "" {
-					return fmt.Errorf("schedule.monthly.day_number_in_month = \"onDay\" thì không được khai day_of_week")
+					return fmt.Errorf("schedule.monthly.day_number_in_month = \"onDay\" must not be combined with day_of_week")
 				}
 			} else {
 				if dayOfMonth != 0 {
-					return fmt.Errorf("schedule.monthly.day_of_month chỉ dùng khi day_number_in_month = \"onDay\"; hiện đang là %q", dayNumber)
+					return fmt.Errorf("schedule.monthly.day_of_month only applies when day_number_in_month = \"onDay\"; it is currently %q", dayNumber)
 				}
 				if dayOfWeek == "" {
-					return fmt.Errorf("schedule.monthly.day_number_in_month = %q thì phải khai day_of_week", dayNumber)
+					return fmt.Errorf("schedule.monthly.day_number_in_month = %q requires day_of_week", dayNumber)
 				}
 			}
 		}

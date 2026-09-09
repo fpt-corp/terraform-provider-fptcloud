@@ -28,7 +28,7 @@ func TestListNotificationMethods(t *testing.T) {
 }
 
 func TestListNotificationMethodsEmptyIsNotAnError(t *testing.T) {
-	// Tenant chưa cấu hình kênh nào - trả rỗng, không phải lỗi provider.
+	// The tenant has no channels configured - an empty list, not a provider error.
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
 		"/v1/vmware/vpc/vpc-1/alert/alarm-notification/list": `{"data": []}`,
 	})

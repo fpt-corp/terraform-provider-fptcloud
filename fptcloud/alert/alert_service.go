@@ -22,12 +22,12 @@ func NewAlertService(client *common.Client) AlertService {
 func (s *alertServiceImpl) ListNotificationMethods(vpcId string, level string) (NotificationMethodListResponse, error) {
 	raw, err := s.client.SendGetRequest(common.ApiPath.AlertNotificationMethods(vpcId, level))
 	if err != nil {
-		return NotificationMethodListResponse{}, fmt.Errorf("liệt kê kênh thông báo thất bại: %v", err)
+		return NotificationMethodListResponse{}, fmt.Errorf("listing notification methods failed: %v", err)
 	}
 
 	var result NotificationMethodListResponse
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return NotificationMethodListResponse{}, fmt.Errorf("không đọc được danh sách kênh thông báo: %v", err)
+		return NotificationMethodListResponse{}, fmt.Errorf("could not parse the notification method list: %v", err)
 	}
 	return result, nil
 }

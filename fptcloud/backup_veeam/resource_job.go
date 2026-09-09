@@ -21,9 +21,9 @@ func ResourceBackupVeeamJob() *schema.Resource {
 		DeleteContext: deleteBackupVeeamJob,
 		CustomizeDiff: validateJobDiff,
 		Schema:        resourceBackupVeeamJobSchema,
-		// Backup job la resource async, tao/xoa co the mat vai phut. Block
-		// timeouts cho khach dat rieng tung job thay vi dung timeout chung
-		// cua provider.
+		// A backup job is asynchronous: creating or deleting one can take several
+		// minutes. The timeouts block lets a user set a limit per job instead of
+		// relying on the provider-wide timeout.
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(30 * time.Minute),
 			Update: schema.DefaultTimeout(30 * time.Minute),
@@ -33,7 +33,7 @@ func ResourceBackupVeeamJob() *schema.Resource {
 			StateContext: func(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
 				parts := strings.Split(d.Id(), "/")
 				if len(parts) != 4 || parts[0] != "vpc" || parts[2] != "backup_veeam_job" {
-					return nil, fmt.Errorf("import id sai định dạng, cần vpc/<vpc_id>/backup_veeam_job/<job_id>")
+					return nil, fmt.Errorf("malformed import id, expected vpc/<vpc_id>/backup_veeam_job/<job_id>")
 				}
 				if err := d.Set("vpc_id", parts[1]); err != nil {
 					return nil, err
@@ -61,8 +61,9 @@ func expandJobPayload(d *schema.ResourceData) CreateJobPayload {
 	payload := CreateJobPayload{
 		Name:        strings.TrimSpace(d.Get("name").(string)),
 		Description: d.Get("description").(string),
-		// Luôn true: portal cũng hardcode như vậy khi tạo, và endpoint update
-		// ghi đè giá trị này bằng giá trị trong DB nên gửi gì cũng vô hại.
+		// Always true: the portal hardcodes it on create too, and the update
+		// endpoint overwrites this with the value from the database, so whatever
+		// is sent here is harmless.
 		Enabled:               true,
 		ScheduleEnabled:       d.Get("schedule_enabled").(bool),
 		VmIds:                 vmIds,
@@ -117,7 +118,7 @@ func expandSchedule(d *schema.ResourceData) *SchedulePayload {
 			Enabled: true,
 			Type:    "Everyday",
 			RunAt:   "22:00:00",
-			Days:    allDays, // luôn gửi đủ 7 ngày, giống portal
+			Days:    allDays, // always send all seven days, like the portal
 		}
 		if block := nested("daily"); block != nil {
 			if v, ok := block["type"].(string); ok && v != "" {
@@ -134,7 +135,7 @@ func expandSchedule(d *schema.ResourceData) *SchedulePayload {
 			Enabled:          true,
 			RunAt:            "22:00:00",
 			DayNumberInMonth: "fourth",
-			Months:           allMonths, // luôn gửi đủ 12 tháng
+			Months:           allMonths, // always send all twelve months
 		}
 		if block := nested("monthly"); block != nil {
 			if v, ok := block["run_at"].(string); ok && v != "" {
@@ -143,7 +144,7 @@ func expandSchedule(d *schema.ResourceData) *SchedulePayload {
 			if v, ok := block["day_number_in_month"].(string); ok && v != "" {
 				monthly.DayNumberInMonth = v
 			}
-			// XOR: chỉ gửi field ứng với day_number_in_month.
+			// XOR: only send the field that matches day_number_in_month.
 			if monthly.DayNumberInMonth == "onDay" {
 				if v, ok := block["day_of_month"].(int); ok {
 					monthly.DayOfMonth = v
@@ -203,13 +204,13 @@ func flattenJobDetail(d *schema.ResourceData, detail *JobDetail) error {
 	}
 	for key, value := range setters {
 		if err := d.Set(key, value); err != nil {
-			return fmt.Errorf("không ghi được %s vào state: %v", key, err)
+			return fmt.Errorf("could not write %s to state: %v", key, err)
 		}
 	}
 
 	if schedule := flattenSchedule(detail.BackupSchedule); schedule != nil {
 		if err := d.Set("schedule", schedule); err != nil {
-			return fmt.Errorf("không ghi được schedule vào state: %v", err)
+			return fmt.Errorf("could not write schedule to state: %v", err)
 		}
 	}
 	return nil
@@ -236,8 +237,9 @@ func flattenSchedule(payload *SchedulePayload) []interface{} {
 				"run_at":              m.RunAt,
 				"day_number_in_month": m.DayNumberInMonth,
 			}
-			// Chỉ map field đang có nghĩa. Backend đọc ra day_of_month = 1 khi
-			// job không dùng onDay; map nó vào state sẽ tạo diff giả.
+			// Only map the field that currently carries meaning. The backend reads
+			// day_of_month back as 1 when the job does not use onDay; writing that
+			// into state would produce a phantom diff.
 			if m.DayNumberInMonth == "onDay" {
 				monthly["day_of_month"] = m.DayOfMonth
 			} else {
@@ -249,8 +251,8 @@ func flattenSchedule(payload *SchedulePayload) []interface{} {
 		if p := payload.PeriodSchedule; p != nil {
 			startHour, endHour, ok := ParsePeriodBitmap(p.Schedules)
 			if !ok {
-				// Bitmap hỏng (toàn 0): không đoán giá trị, để nguyên 0/0 cho
-				// plan hiện diff so với config.
+				// Broken bitmap (all zeroes): do not guess, leave it at 0/0 so the
+				// plan shows a diff against the configuration.
 				startHour, endHour = 0, 0
 			}
 			scheduleMap["period"] = []interface{}{map[string]interface{}{
@@ -279,10 +281,10 @@ func createBackupVeeamJob(ctx context.Context, d *schema.ResourceData, m interfa
 		jobId = response.ResourceId
 	}
 	if jobId == "" {
-		return diag.Errorf("API báo tạo backup job thành công nhưng không trả về id")
+		return diag.Errorf("the API reported the backup job was created but returned no id")
 	}
-	// SetId TRƯỚC khi poll: nếu poll timeout thì state vẫn giữ id để
-	// terraform destroy dọn được, không để job mồ côi.
+	// SetId BEFORE polling: if the poll times out, state still holds the id so
+	// terraform destroy can clean it up rather than leaving an orphaned job.
 	d.SetId(jobId)
 
 	name := strings.TrimSpace(d.Get("name").(string))
@@ -303,7 +305,7 @@ func readBackupVeeamJob(_ context.Context, d *schema.ResourceData, m interface{}
 		return diag.FromErr(err)
 	}
 	if detail == nil {
-		// Job bị xoá ngoài Terraform - đây là drift, không phải lỗi.
+		// The job was deleted outside Terraform - that is drift, not an error.
 		d.SetId("")
 		return nil
 	}
@@ -312,7 +314,7 @@ func readBackupVeeamJob(_ context.Context, d *schema.ResourceData, m interface{}
 		return diag.FromErr(err)
 	}
 
-	// status và enabled CHỈ có ở endpoint list, detail không trả về.
+	// status and enabled ONLY exist on the list endpoint; detail returns neither.
 	item, err := service.FindJobInList(vpcId, d.Id(), detail.Name)
 	if err != nil {
 		return diag.FromErr(err)
@@ -353,8 +355,9 @@ func deleteBackupVeeamJob(ctx context.Context, d *schema.ResourceData, m interfa
 	service := NewBackupVeeamService(client)
 	vpcId := d.Get("vpc_id").(string)
 
-	// Đọc trước: job đã bị xoá thì coi như xong. Gọi thẳng DELETE lên một job
-	// không tồn tại sẽ trả HTTP 500 vì backend không null-check.
+	// Read first: if the job is already gone the work is done. Calling DELETE
+	// straight on a job that does not exist answers HTTP 500, because the
+	// backend does not null-check.
 	detail, err := service.GetJobDetail(vpcId, d.Id())
 	if err != nil {
 		return diag.FromErr(err)

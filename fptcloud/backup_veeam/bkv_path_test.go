@@ -16,10 +16,10 @@ func TestBackupVeeamApiPaths(t *testing.T) {
 		common.ApiPath.BackupVeeamCreateJob(vpcId))
 	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/jobs/job-1/update",
 		common.ApiPath.BackupVeeamUpdateJob(vpcId, jobId))
-	// detail dùng "job" SỐ ÍT - đây là bất thường của API, không phải lỗi gõ
+	// detail uses "job" SINGULAR - an API quirk, not a typo
 	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/job/job-1/detail",
 		common.ApiPath.BackupVeeamJobDetail(vpcId, jobId))
-	// delete đặt id Ở CUỐI
+	// delete puts the id AT THE END
 	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/jobs/delete/job-1",
 		common.ApiPath.BackupVeeamDeleteJob(vpcId, jobId))
 	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/jobs?page=1&page_size=100&name=abc",

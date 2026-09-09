@@ -8,21 +8,23 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
-// Trạng thái đang xử lý. DISABLING_SCHEDULE và ENABLING_SCHEDULE nằm trong đây
-// dù provider không gọi toggle: job có thể đang ở hai trạng thái đó do người
-// khác bấm trên portal đúng lúc Terraform chạy.
+// Statuses that mean work is still in progress. DISABLING_SCHEDULE and
+// ENABLING_SCHEDULE are here even though the provider never calls toggle: the
+// job can be in either state because somebody clicked it in the portal while
+// Terraform was running.
 var pendingStatuses = []string{
 	"CREATING", "UPDATING", "DELETING", "STARTING",
 	"DISABLING_SCHEDULE", "ENABLING_SCHEDULE",
 }
 
-// CREATE_FAILED nghĩa là job chưa từng lên Veeam (create hỏng, hoặc thua
-// tie-break khi hai job tranh cùng một máy ảo). ERROR nghĩa là job có tồn tại
-// nhưng đang lỗi. Cả hai đều là thất bại với Terraform.
+// CREATE_FAILED means the job never reached Veeam - either the create failed
+// outright, or it lost the tie-break against another job competing for the
+// same instance. ERROR means the job exists but is unhealthy. Both are
+// failures as far as Terraform is concerned.
 var failedStatuses = []string{"ERROR", "CREATE_FAILED", "FAILED"}
 
-// settledStatuses là các trạng thái nghỉ coi như thành công. NOT_AVAILABLE là
-// trạng thái BÌNH THƯỜNG của job vừa tạo và chưa chạy lần nào.
+// Resting states that count as success. NOT_AVAILABLE is the NORMAL state of a
+// job that has just been created and has not run yet.
 var settledStatuses = []string{"NOT_AVAILABLE", "WORKING", "SUCCESS", "WARNING"}
 
 func containsStatus(list []string, status string) bool {
@@ -38,11 +40,11 @@ func IsPendingStatus(status string) bool { return containsStatus(pendingStatuses
 
 func IsFailedStatus(status string) bool { return containsStatus(failedStatuses, status) }
 
-// WaitForJobSettled chờ job rời khỏi trạng thái pending.
+// WaitForJobSettled waits until the job leaves its pending state.
 //
-// Poll qua endpoint LIST, không phải detail: detail trả 200 ngay từ lúc row DB
-// được ghi - trước cả khi Celery task chạy - nên poll bằng detail sẽ "thành
-// công" tức thì và bỏ lọt cả CREATE_FAILED.
+// It polls the LIST endpoint, not detail: detail answers 200 as soon as the
+// database row is written - before the Celery task even runs - so polling
+// detail would "succeed" instantly and miss CREATE_FAILED entirely.
 func WaitForJobSettled(ctx context.Context, svc BackupVeeamService, vpcId string, jobId string, name string, timeout time.Duration) (*JobListItem, error) {
 	stateConf := &retry.StateChangeConf{
 		Pending: pendingStatuses,
@@ -53,7 +55,7 @@ func WaitForJobSettled(ctx context.Context, svc BackupVeeamService, vpcId string
 				return nil, "", err
 			}
 			if item == nil {
-				return nil, "", fmt.Errorf("không tìm thấy backup job %s trong danh sách job của VPC", jobId)
+				return nil, "", fmt.Errorf("backup job %s was not found in the VPC's job list", jobId)
 			}
 			if IsFailedStatus(item.Status) {
 				return nil, "", failureMessage(item.Status, jobId)
@@ -76,16 +78,16 @@ func WaitForJobSettled(ctx context.Context, svc BackupVeeamService, vpcId string
 
 func failureMessage(status string, jobId string) error {
 	if status == "CREATE_FAILED" {
-		return fmt.Errorf("backup job %s ở trạng thái CREATE_FAILED — job chưa được tạo trên Veeam. "+
-			"Nếu apply tạo nhiều job cùng lúc, nguyên nhân thường là hai job tranh cùng một máy ảo; "+
-			"chạy lại terraform apply, hoặc dùng -parallelism=1", jobId)
+		return fmt.Errorf("backup job %s is in state CREATE_FAILED - the job was never created on Veeam. "+
+			"When an apply creates several jobs at once this usually means two of them competed for the same instance; "+
+			"run terraform apply again, or use -parallelism=1", jobId)
 	}
-	return fmt.Errorf("backup job %s ở trạng thái %s — job tồn tại nhưng đang lỗi, kiểm tra trên portal", jobId, status)
+	return fmt.Errorf("backup job %s is in state %s - the job exists but is unhealthy, check it in the portal", jobId, status)
 }
 
-// WaitForJobGone chờ tới khi detail không còn trả về job. Đây là trường hợp
-// DUY NHẤT poll bằng detail được, vì tín hiệu cần là "job biến mất" chứ không
-// phải status.
+// WaitForJobGone waits until detail stops returning the job. This is the ONLY
+// place detail can be polled, because the signal here is "the job disappeared"
+// rather than a status value.
 func WaitForJobGone(ctx context.Context, svc BackupVeeamService, vpcId string, jobId string, timeout time.Duration) error {
 	stateConf := &retry.StateChangeConf{
 		Pending: []string{"EXISTS"},

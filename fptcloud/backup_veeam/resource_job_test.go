@@ -27,15 +27,15 @@ func TestExpandJobPayloadDaily(t *testing.T) {
 	assert.Len(t, payload.VmIds, 2)
 	assert.Equal(t, 7, payload.Retention.Cycles)
 	assert.Equal(t, "Days", payload.Retention.LimitType)
-	// enabled luôn true khi gửi - portal cũng hardcode như vậy, và endpoint
-	// update ghi đè giá trị này bằng giá trị trong DB nên vô hại.
+	// enabled is always sent as true - the portal hardcodes it too, and the
+	// update endpoint overwrites it from the database, so it is harmless.
 	assert.True(t, payload.Enabled)
 	assert.Equal(t, "daily", payload.Schedule.ScheduleType)
 	assert.NotNil(t, payload.Schedule.DailySchedule)
 	assert.Nil(t, payload.Schedule.MonthlySchedule)
 	assert.Nil(t, payload.Schedule.PeriodSchedule)
 	assert.Equal(t, "weekDays", payload.Schedule.DailySchedule.Type)
-	// days luôn gửi đủ 7 ngày, khách không chọn.
+	// days always carries all seven entries; the user never picks them.
 	assert.Len(t, payload.Schedule.DailySchedule.Days, 7)
 }
 
@@ -75,7 +75,7 @@ func TestExpandJobPayloadPeriodBuildsBitmap(t *testing.T) {
 	assert.Equal(t, 23, end)
 }
 
-// day_of_month chỉ được gửi khi day_number_in_month = onDay.
+// day_of_month is only sent when day_number_in_month is onDay.
 func TestExpandJobPayloadMonthlyOnDayOnlySendsDayOfMonth(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, resourceBackupVeeamJobSchema, map[string]interface{}{
 		"vpc_id":    "vpc-1",
@@ -145,7 +145,7 @@ func TestFlattenJobDetailRoundTrip(t *testing.T) {
 	assert.Equal(t, "weekDays", daily["type"])
 }
 
-// Bitmap toàn 0 -> không map start_hour/end_hour, để plan hiện diff.
+// An all-zero bitmap must not be mapped to start_hour/end_hour; let the plan show a diff.
 func TestFlattenJobDetailSkipsBrokenPeriodBitmap(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, resourceBackupVeeamJobSchema, map[string]interface{}{})
 	detail := &JobDetail{
@@ -169,8 +169,8 @@ func TestFlattenJobDetailSkipsBrokenPeriodBitmap(t *testing.T) {
 	assert.Equal(t, 0, period["end_hour"])
 }
 
-// Backend đọc ra day_of_month = 1 khi job không dùng onDay; map nó vào state
-// sẽ tạo diff giả nên phải bỏ qua.
+// The backend reads day_of_month back as 1 when the job does not use onDay;
+// writing that into state would create a phantom diff, so it must be skipped.
 func TestFlattenJobDetailOmitsDayOfMonthWhenNotOnDay(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, resourceBackupVeeamJobSchema, map[string]interface{}{})
 	detail := &JobDetail{
@@ -182,7 +182,7 @@ func TestFlattenJobDetailOmitsDayOfMonthWhenNotOnDay(t *testing.T) {
 				RunAt:            "22:00:00",
 				DayNumberInMonth: "fourth",
 				DayOfWeek:        "saturday",
-				DayOfMonth:       1, // backend trả về giá trị rác ở đây
+				DayOfMonth:       1, // the backend returns junk in this field
 			},
 		},
 		BackupRetention: RetentionPayload{Cycles: 7, LimitType: "Days"},

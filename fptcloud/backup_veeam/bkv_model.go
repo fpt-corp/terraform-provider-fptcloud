@@ -1,18 +1,20 @@
 package fptcloud_backup_veeam
 
-// JobMutationResponse là dạng trả về chung của create / update / delete.
+// JobMutationResponse is the shape create, update and delete all return.
 //
-// CẢNH BÁO: API trả HTTP 200 KỂ CẢ KHI THẤT BẠI. Thất bại được báo bằng
-// Status=false hoặc ErrorType khác rỗng. Nhánh lỗi nghiệp vụ (vd duplicateVm)
-// KHÔNG set "status", nên zero value false của Go xử lý đúng luôn.
+// WARNING: the API answers HTTP 200 EVEN ON FAILURE. A failure shows up as
+// Status=false or a non-empty ErrorType. The business-error branch (such as
+// duplicateVm) does NOT set "status" at all, so Go's false zero value happens
+// to handle it correctly.
 type JobMutationResponse struct {
 	Status       bool   `json:"status"`
 	Message      string `json:"message"`
 	ErrorType    string `json:"error_type"`
 	ResourceId   string `json:"resource_id"`
 	ResourceName string `json:"resource_name"`
-	// BackupJobId ở response create mang UUID PHÍA PORTAL, không phải id Veeam.
-	// Trùng tên với column backup_job_id (id Veeam) nhưng khác nghĩa.
+	// BackupJobId in the create response carries the PORTAL-side UUID, not the
+	// Veeam id. It shares its name with the backup_job_id column (the Veeam id)
+	// but means something different.
 	BackupJobId string `json:"backup_job_id"`
 }
 
@@ -56,14 +58,14 @@ type SchedulePayload struct {
 	PeriodSchedule  *PeriodSchedulePayload  `json:"period_schedule,omitempty"`
 }
 
-// CreateJobPayload dùng cho CẢ create lẫn update (API dùng chung
-// InputCreateJobModel, không phải PATCH - luôn gửi full payload).
+// CreateJobPayload is used for BOTH create and update: the API reuses
+// InputCreateJobModel and is not a PATCH, so always send the full payload.
 type CreateJobPayload struct {
 	Name                  string           `json:"name"`
 	Description           string           `json:"description"`
 	Enabled               bool             `json:"enabled"`
 	ScheduleEnabled       bool             `json:"schedule_enabled"`
-	Retention             RetentionPayload `json:"retaintion"` // sai chính tả PHÍA API, giữ nguyên
+	Retention             RetentionPayload `json:"retaintion"` // misspelled ON THE API SIDE, kept as is
 	VmIds                 []string         `json:"vm_ids"`
 	Schedule              *SchedulePayload `json:"schedule,omitempty"`
 	NotificationMethodIds []string         `json:"notification_method_ids"`
@@ -76,7 +78,7 @@ type BackupObject struct {
 	VmDisplayName string `json:"vm_display_name"`
 }
 
-// JobDetail KHÔNG có status và enabled - hai field đó chỉ có ở endpoint list.
+// JobDetail has NO status and NO enabled - both only exist on the list endpoint.
 type JobDetail struct {
 	Id                    string           `json:"id"`
 	Name                  string           `json:"name"`

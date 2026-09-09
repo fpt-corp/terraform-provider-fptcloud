@@ -21,9 +21,10 @@ func samplePayload() bkv.CreateJobPayload {
 	}
 }
 
-// clientReturningStatus dựng test server trả về một HTTP status cụ thể.
-// Dùng NewClientForTestingWithServer có sẵn thay vì thêm helper vào
-// commons/client.go - không cần đụng code dùng chung cho một nhu cầu của test.
+// clientReturningStatus spins up a test server that answers with a specific
+// HTTP status. It reuses the existing NewClientForTestingWithServer rather
+// than adding a helper to commons/client.go: no need to touch shared code for
+// something only the tests want.
 func clientReturningStatus(t *testing.T, statusCode int, body string) (*common.Client, *httptest.Server) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
@@ -52,7 +53,7 @@ func TestCreateJobSuccess(t *testing.T) {
 	assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.BackupJobId)
 }
 
-// API trả HTTP 200 kèm status:false khi trùng tên job.
+// The API answers HTTP 200 with status:false when the job name is taken.
 func TestCreateJobDuplicateNameReturnsError(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
 		"/v1/vmware/vpc/vpc-1/backup/jobs/create": `{
@@ -67,19 +68,19 @@ func TestCreateJobDuplicateNameReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "Job with the same name already exists")
 }
 
-// Nhánh lỗi nghiệp vụ KHÔNG set "status" - chỉ có error_type. Cả bảy mã phải
-// ra thông báo riêng, không nuốt thành một lỗi chung.
+// The business-error branch does NOT set "status" - only error_type. All seven
+// codes must produce their own message rather than collapsing into one.
 func TestCreateJobErrorTypesAllReturnDistinctMessages(t *testing.T) {
 	cases := []struct {
 		errorType string
 		wantHint  string
 	}{
-		{"duplicateVm", "chỉ được thuộc một backup job"},
-		{"vmNotFound", "không tồn tại"},
-		{"vmNotInVpc", "không thuộc VPC"},
+		{"duplicateVm", "only one active backup job"},
+		{"vmNotFound", "does not exist"},
+		{"vmNotInVpc", "does not belong to this VPC"},
 		{"reachLimitQuota", "quota"},
-		{"jobNotEligible", "trạng thái"},
-		{"requestInProgress", "đang được xử lý"},
+		{"jobNotEligible", "does not allow this operation"},
+		{"requestInProgress", "already being processed"},
 		{"idempotencyKeyReused", "idempotency"},
 	}
 
@@ -101,7 +102,7 @@ func TestCreateJobErrorTypesAllReturnDistinctMessages(t *testing.T) {
 	}
 }
 
-// Update check quota (create thì không) nên đây là nhánh lỗi thật khách gặp.
+// Update checks quota while create does not, so this is a real error users hit.
 func TestUpdateJobQuotaErrorReturnsError(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
 		"/v1/vmware/vpc/vpc-1/backup/jobs/job-1/update": `{
@@ -116,8 +117,9 @@ func TestUpdateJobQuotaErrorReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "Limited backup quota")
 }
 
-// VPC chưa bật dịch vụ Backup Veeam -> backend không null-check tenant -> 500.
-// Thông báo phải gợi ý đúng nguyên nhân, không để khách tự mò.
+// A VPC without the Backup Veeam service means the backend does not null-check
+// the tenant and answers 500. The message must point at the real cause instead
+// of leaving the user to guess.
 func TestCreateJobServerErrorHintsAtServiceNotEnabled(t *testing.T) {
 	mockClient, server := clientReturningStatus(t, http.StatusInternalServerError, `{"message": "Internal Server Error"}`)
 	defer server.Close()
@@ -154,7 +156,7 @@ func TestGetJobDetailMapsFields(t *testing.T) {
 	assert.Equal(t, "daily", detail.BackupSchedule.ScheduleType)
 }
 
-// Job đã bị xoá -> detail không trả data -> trả nil, KHÔNG phải lỗi.
+// A deleted job returns no data from detail, so this is nil and NOT an error.
 func TestGetJobDetailNotFoundReturnsNil(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
 		"/v1/vmware/vpc/vpc-1/backup/job/job-1/detail": `{"error": "can't get job detail."}`,
@@ -175,8 +177,9 @@ func TestGetJobDetail404ReturnsNil(t *testing.T) {
 	assert.Nil(t, detail)
 }
 
-// FindJobInList phải fallback sang quét KHÔNG filter name khi job bị đổi tên
-// ngoài Terraform - nếu không sẽ tưởng job mất và tạo lại, đâm vào duplicateVm.
+// FindJobInList must fall back to an unfiltered scan when the job was renamed
+// outside Terraform - otherwise it concludes the job is gone, recreates it, and
+// hits duplicateVm.
 func TestFindJobInListFallsBackWhenRenamed(t *testing.T) {
 	mockClient, server, _ := common.NewClientForTesting(map[string]string{
 		"/v1/vmware/vpc/vpc-1/backup/jobs?page=1&page_size=1000&name=old-name": `{"items": [], "total_count": 0}`,
@@ -202,8 +205,9 @@ func TestFindJobInListReturnsNilWhenGone(t *testing.T) {
 	assert.Nil(t, item)
 }
 
-// Xoá job đã bị xoá trả HTTP 500 (backend không null-check) - KHÔNG được coi
-// là lỗi, vì "job không còn" chính là kết quả Delete mong muốn.
+// Deleting an already-deleted job answers HTTP 500 because the backend does
+// not null-check. That must NOT count as an error: "the job is gone" is exactly
+// what Delete is asking for.
 func TestDeleteJobTolerates500(t *testing.T) {
 	mockClient, server := clientReturningStatus(t, http.StatusInternalServerError, `{"message": "Internal Server Error"}`)
 	defer server.Close()
@@ -237,8 +241,9 @@ func TestListInstances(t *testing.T) {
 	assert.Equal(t, "vm-1", resp.Data[0].Id)
 }
 
-// Key phải TẤT ĐỊNH: retry mang lại đúng key thì backend mới nhận ra là cùng
-// một yêu cầu và trả kết quả đã cache thay vì tạo job thứ hai.
+// The key must be DETERMINISTIC: only if a retry carries the same key can the
+// backend recognise the same request and return the cached result instead of
+// creating a second job.
 func TestIdempotencyKeyIsDeterministic(t *testing.T) {
 	first := bkv.BuildIdempotencyKey("vpc-1", samplePayload())
 	second := bkv.BuildIdempotencyKey("vpc-1", samplePayload())

@@ -5,22 +5,25 @@ import (
 	"strings"
 )
 
-// Thứ tự Sunday-first, giống hệt convertTimeToPeriodSchedule của portal.
+// Sunday-first order, exactly like the portal's convertTimeToPeriodSchedule.
 var periodDayOrder = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
 
-// allDays và allMonths luôn được gửi đầy đủ, y như portal. Người dùng không
-// chọn hai field này - thứ điều khiển lịch daily là daily_schedule.type.
+// allDays and allMonths are always sent in full, just as the portal does. The
+// user never picks these - what drives a daily schedule is
+// daily_schedule.type.
 var allDays = []string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
 
 var allMonths = []string{"January", "February", "March", "April", "May", "June",
 	"July", "August", "September", "October", "November", "December"}
 
-// BuildPeriodBitmap dựng chuỗi 24 số 0/1 (một số cho mỗi giờ), bật cho các giờ
-// trong khoảng [startHour, endHour], rồi lặp cùng chuỗi đó cho cả 7 ngày.
+// BuildPeriodBitmap builds a string of 24 zeroes and ones, one per hour, set
+// for the hours inside [startHour, endHour], then repeats that same string for
+// all seven days.
 //
-// Nếu startHour > endHour thì mọi giờ đều là 0 và job KHÔNG BAO GIỜ CHẠY.
-// Trường hợp đó bị chặn ở plan-time bởi validateScheduleConfig; hàm này không
-// tự sửa vì im lặng sửa cấu hình của khách còn tệ hơn là báo lỗi.
+// If startHour > endHour every hour is 0 and the job NEVER RUNS. That case is
+// rejected at plan time by validateScheduleConfig; this function does not
+// silently repair it, because quietly rewriting the user's configuration is
+// worse than refusing it.
 func BuildPeriodBitmap(startHour int, endHour int) []PeriodScheduleEntry {
 	hours := make([]string, 24)
 	for i := 0; i < 24; i++ {
@@ -39,12 +42,12 @@ func BuildPeriodBitmap(startHour int, endHour int) []PeriodScheduleEntry {
 	return entries
 }
 
-// ParsePeriodBitmap map ngược bitmap về startHour/endHour bằng cách lấy index
-// đầu tiên và cuối cùng có giá trị 1.
+// ParsePeriodBitmap maps a bitmap back to startHour/endHour by taking the
+// first and last index set to 1.
 //
-// ok=false khi không có giờ nào được bật (bitmap rỗng hoặc toàn 0). Gọi bên
-// ngoài KHÔNG được đoán giá trị trong trường hợp này - để nguyên cho Terraform
-// hiện diff, vì đó là cấu hình hỏng cần khách sửa.
+// ok=false when no hour is enabled (an empty or all-zero bitmap). Callers must
+// NOT guess a value in that case - leave it alone so Terraform shows the diff,
+// because that is a broken configuration the user needs to fix.
 func ParsePeriodBitmap(entries []PeriodScheduleEntry) (int, int, bool) {
 	if len(entries) == 0 {
 		return 0, 0, false

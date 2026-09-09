@@ -250,7 +250,7 @@ var ApiPath = struct {
 	BackupVeeamDeleteJob func(vpcId string, jobId string) string
 	BackupVeeamInstances func(vpcId string, notBackup bool, jobId string, status string) string
 
-	// Alert (dùng cho notification method của backup job)
+	// Alert (used for the notification methods of a backup job)
 	AlertNotificationMethods func(vpcId string, level string) string
 }{
 	SSH: "/v1/user/sshs",
@@ -1067,10 +1067,10 @@ var ApiPath = struct {
 	},
 
 	// Backup Veeam
-	// Ba bất thường của API, copy y nguyên:
-	//   - detail dùng "backup/job/" SỐ ÍT, các path khác dùng "backup/jobs/"
-	//   - delete đặt job id Ở CUỐI, không phải giữa
-	//   - update dùng POST, không phải PUT
+	// Three API quirks, reproduced verbatim:
+	//   - detail uses "backup/job/" SINGULAR, every other path uses "backup/jobs/"
+	//   - delete puts the job id AT THE END, not in the middle
+	//   - update uses POST, not PUT
 	BackupVeeamCreateJob: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs/create", vpcId)
 	},

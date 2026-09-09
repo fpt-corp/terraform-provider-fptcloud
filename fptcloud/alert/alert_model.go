@@ -1,10 +1,10 @@
 package fptcloud_alert
 
-// NotificationMethod là một kênh nhận thông báo đã cấu hình cho VPC.
+// NotificationMethod is a notification channel configured for the VPC.
 //
-// Endpoint gộp kết quả theo address (GROUP BY address, lấy max(id)), nên
-// ĐỊA CHỈ là khoá duy nhất trong kết quả, còn Name chỉ là max(name) của nhóm.
-// Lọc theo Address, đừng lọc theo Name.
+// The endpoint groups its results by address (GROUP BY address, taking
+// max(id)), so ADDRESS is the unique key in the response while Name is only
+// the max(name) of the group. Match on Address, not on Name.
 type NotificationMethod struct {
 	Id      string `json:"id"`
 	Name    string `json:"name"`
