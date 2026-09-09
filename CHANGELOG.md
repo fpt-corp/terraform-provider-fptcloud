@@ -1,3 +1,17 @@
+## [0.3.66] - 2026-09-07
+
+### Resource
+
+- Feat: manage tags on `fptcloud_load_balancer_v2_lb` through the new `tag_ids` attribute ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Fix: mark `network_id`, `egw_id`, `vip_address`, `cidr` and `floating_ip` as computed on `fptcloud_load_balancer_v2_lb`, so a value assigned by the platform no longer shows a diff on every plan ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Fix: save the values assigned during create of `fptcloud_load_balancer_v2_lb` to state immediately, instead of leaving them unset until the next refresh ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Update: document the per-platform behaviour of `network_id`, `cidr` and `egw_id` on `fptcloud_load_balancer_v2_lb`, and that `egw_id` takes the edge gateway's platform ID from the infrastructure, not the record ID from Portal ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+
+### Datasource
+
+- Feat: expose the tags from FPT Cloud's tagging service through the new `resource_tags` attribute on `fptcloud_load_balancer_v2_lb` and `fptcloud_load_balancer_v2_lbs` ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Update: clarify that `tags` on `fptcloud_load_balancer_v2_lb` and `fptcloud_load_balancer_v2_lbs` is an internal marker identifying the object as LBv2 for Portal sync, not FPT Cloud's tagging service ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+
 ## [0.3.65] - 2026-08-27
 
 ### Resource
