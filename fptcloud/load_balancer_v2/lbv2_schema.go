@@ -118,13 +118,40 @@ var dataSourceLoadBalancers = map[string]*schema.Schema{
 					Computed:    true,
 					Description: "The creation time of the load balancer",
 				},
+				// "tags" marks the object as LBv2 so Portal syncs it;
+				// "resource_tags" is FPT Cloud's real tagging service.
 				"tags": {
 					Type: schema.TypeList,
 					Elem: &schema.Schema{
 						Type: schema.TypeString,
 					},
 					Computed:    true,
-					Description: "The tags associated with the load balancer",
+					Description: "Internal marker identifying the object as LBv2 for Portal",
+				},
+				"resource_tags": {
+					Type:     schema.TypeList,
+					Computed: true,
+					Elem: &schema.Resource{
+						Schema: map[string]*schema.Schema{
+							"id": {
+								Type:     schema.TypeString,
+								Computed: true,
+							},
+							"key": {
+								Type:     schema.TypeString,
+								Computed: true,
+							},
+							"value": {
+								Type:     schema.TypeString,
+								Computed: true,
+							},
+							"color": {
+								Type:     schema.TypeString,
+								Computed: true,
+							},
+						},
+					},
+					Description: "The tags from FPT Cloud's tagging system associated with the load balancer",
 				},
 				"egw_name": {
 					Type:        schema.TypeString,
@@ -250,7 +277,32 @@ var dataSourceLoadBalancer = map[string]*schema.Schema{
 			Type: schema.TypeString,
 		},
 		Computed:    true,
-		Description: "The tags associated with the load balancer",
+		Description: "Internal marker identifying the object as LBv2 for Portal",
+	},
+	"resource_tags": {
+		Type:     schema.TypeList,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"id": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+				"key": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+				"value": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+				"color": {
+					Type:     schema.TypeString,
+					Computed: true,
+				},
+			},
+		},
+		Description: "The tags from FPT Cloud's tagging system associated with the load balancer",
 	},
 	"egw_name": {
 		Type:        schema.TypeString,
@@ -282,22 +334,26 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 	"floating_ip": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The floating IP ID of the load balancer",
 	},
 	"network_id": {
 		Type:        schema.TypeString,
 		Optional:    true,
-		Description: "The network ID of the load balancer",
+		Computed:    true,
+		Description: "The network ID of the load balancer. The subnet's ID on OSP; null on VMW",
 	},
 	"vip_address": {
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "The VIP address of the load balancer",
 	},
 	"cidr": {
 		Type:        schema.TypeString,
 		Optional:    true,
-		Description: "The CIDR of the load balancer",
+		Computed:    true,
+		Description: "The CIDR of the load balancer. Optional on VMW; not used on OSP",
 	},
 	"listener": {
 		Type:        schema.TypeSet,
@@ -434,10 +490,18 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 				},
 			},
 		}},
-	"egw_id": {
+	"egw_id": { // egw_id is the platform ID from the infrastructure, not the record ID from Portal.
 		Type:        schema.TypeString,
 		Optional:    true,
-		Description: "The edge gateway ID of the load balancer",
+		Computed:    true,
+		Description: "The edge gateway ID of the load balancer. Platform ID on VMW; null on OSP",
+	},
+	"tag_ids": {
+		Type:        schema.TypeSet,
+		Optional:    true,
+		Computed:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "List of tag IDs to associate with the load balancer",
 	},
 }
 

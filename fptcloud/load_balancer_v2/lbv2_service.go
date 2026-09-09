@@ -15,6 +15,7 @@ type LoadBalancerV2Service interface {
 	UpdateLoadBalancer(vpcId string, loadBalancerId string, req LoadBalancerUpdateModel) (LoadBalancerResponse, error)
 	ResizeLoadBalancer(vpcId string, loadBalancerId string, req LoadBalancerResizeModel) (LoadBalancerResponse, error)
 	DeleteLoadBalancer(vpcId string, loadBalancerId string) (LoadBalancerResponse, error)
+	ManageLoadBalancerTags(vpcId string, loadBalancerId string, tagIds []string) (ManageTagsResponse, error)
 	//Listener
 	ListListeners(vpcId string, loadBalancerId string, page int, pageSize int) (ListenerListResponse, error)
 	GetListener(vpcId string, listenerId string) (ListenerDetailResponse, error)
@@ -150,6 +151,23 @@ func (s *LoadBalancerV2ServiceImpl) DeleteLoadBalancer(vpcId string, loadBalance
 	err = json.Unmarshal(resp, &result)
 	if err != nil {
 		return LoadBalancerResponse{}, fmt.Errorf("failed to unmarshal load balancer response: %v", err)
+	}
+	return result, nil
+}
+
+func (s *LoadBalancerV2ServiceImpl) ManageLoadBalancerTags(vpcId string, loadBalancerId string, tagIds []string) (ManageTagsResponse, error) {
+	apiPath := common.ApiPath.ManageLoadBalancerTags(vpcId, loadBalancerId)
+	payload := map[string][]string{
+		"tag_ids": tagIds,
+	}
+	resp, err := s.client.SendPutRequest(apiPath, payload)
+	if err != nil {
+		return ManageTagsResponse{}, fmt.Errorf("manage load balancer tags request failed: %v", err)
+	}
+	var result ManageTagsResponse
+	err = json.Unmarshal(resp, &result)
+	if err != nil {
+		return ManageTagsResponse{}, fmt.Errorf("failed to unmarshal manage load balancer tags response: %v", err)
 	}
 	return result, nil
 }
