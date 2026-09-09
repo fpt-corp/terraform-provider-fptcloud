@@ -152,13 +152,13 @@ var ApiPath = struct {
 
 	//LBv2
 	//Load balancer
-	ListLoadBalancers  func(vpcId string, page int, pageSize int) string
-	GetLoadBalancer    func(vpcId string, loadBalancerId string) string
-	ReadLoadBalancer   func(vpcId string, loadBalancerId string) string
-	CreateLoadBalancer func(vpcId string) string
-	UpdateLoadBalancer func(vpcId string, loadBalancerId string) string
-	ResizeLoadBalancer func(vpcId string, loadBalancerId string) string
-	DeleteLoadBalancer func(vpcId string, loadBalancerId string) string
+	ListLoadBalancers      func(vpcId string, page int, pageSize int) string
+	GetLoadBalancer        func(vpcId string, loadBalancerId string) string
+	ReadLoadBalancer       func(vpcId string, loadBalancerId string) string
+	CreateLoadBalancer     func(vpcId string) string
+	UpdateLoadBalancer     func(vpcId string, loadBalancerId string) string
+	ResizeLoadBalancer     func(vpcId string, loadBalancerId string) string
+	DeleteLoadBalancer     func(vpcId string, loadBalancerId string) string
 	ManageLoadBalancerTags func(vpcId string, loadBalancerId string) string
 	//Listener
 	ListListeners  func(vpcId string, loadBalancerId string, page int, pageSize int) string
