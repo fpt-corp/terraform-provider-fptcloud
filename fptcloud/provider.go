@@ -19,6 +19,7 @@ import (
 	fptcloud_object_storage "terraform-provider-fptcloud/fptcloud/object-storage"
 	fptcloud_security_group "terraform-provider-fptcloud/fptcloud/security-group"
 	fptcloud_security_group_rule "terraform-provider-fptcloud/fptcloud/security-group-rule"
+	fptcloud_snapshot "terraform-provider-fptcloud/fptcloud/snapshot"
 	fptcloud_ssh "terraform-provider-fptcloud/fptcloud/ssh"
 	fptcloud_storage "terraform-provider-fptcloud/fptcloud/storage"
 	fptcloud_storage_policy "terraform-provider-fptcloud/fptcloud/storage-policy"
@@ -124,6 +125,7 @@ func Provider() *schema.Provider {
 			"fptcloud_security_group_rule":                  fptcloud_security_group_rule.ResourceSecurityGroupRule(),
 			"fptcloud_instance":                             fptcloud_instance.ResourceInstance(),
 			"fptcloud_instance_group":                       fptcloud_instance_group.ResourceInstanceGroup(),
+			"fptcloud_snapshot":                             fptcloud_snapshot.ResourceSnapshot(),
 			"fptcloud_floating_ip":                          fptcloud_floating_ip.ResourceFloatingIp(),
 			"fptcloud_floating_ip_association":              fptcloud_floating_ip_association.ResourceFloatingIpAssociation(),
 			"fptcloud_subnet":                               fptcloud_subnet.ResourceSubnet(),
