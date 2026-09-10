@@ -1,3 +1,16 @@
+## [0.3.67] - 2026-09-10
+
+### Resource
+
+- Feat: support GPU instances on `fptcloud_instance` — new `gpu_plan` (`hold`/`detach` billing plan), `gpu_name` (optional verification input, also reflects the actual GPU attached), `vm_type` (`cpu`/`gpu`) and `is_nvme` attributes ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Feat: changing `flavor_name` to/from a GPU flavor attaches/detaches the GPU as part of the in-place resize, the instance is not replaced; `gpu_plan` is sent along with that same resize request instead of racing a separate follow-up call ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Fix: `gpu_name` no longer carries its previous Computed value into a resize away from a GPU flavor, which made the server reject the request with "gpu_name is only applicable to GPU flavors" ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Fix: refresh state after update even when a later step in the same apply fails, so changes that did succeed (e.g. a flavor resize before a billing plan failure) aren't left stale ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+
+### Datasource
+
+- Feat: expose `gpu_id`, `gpu_name` and `is_nvme` on `fptcloud_flavor`; GPU flavors not supported in the VPC's default zone are no longer returned ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+
 ## [0.3.66] - 2026-09-07
 
 ### Resource
