@@ -21,9 +21,10 @@ type InstanceService interface {
 	Delete(vpcId string, instanceId string) (*common.SimpleResponse, error)
 	Rename(vpcId string, instanceId string, newName string) (*common.SimpleResponse, error)
 	ChangeStatus(vpcId string, instanceId string, status string) (*common.SimpleResponse, error)
-	Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error)
-	GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error)
+	Resize(vpcId string, instanceId string, flavorId string, billingType string) (*common.SimpleResponse, error)
+	GetFlavorByName(vpcId string, flavorName string, gpuName string) (*FlavorDTO, error)
 	UpdateTags(vpcId string, instanceId string, tagIds []string) (*common.SimpleResponse, error)
+	ChangeBillingType(vpcId string, instanceId string, billingType string) (*common.SimpleResponse, error)
 	ListStorages(vpcId string, instanceId string) ([]InstanceStorageModel, error)
 	ListStoragesFromInfra(vpcId string, instanceId string) ([]InstanceStorageInfraModel, error)
 	FindRootStorage(vpcId string, instanceId string) (*RootStorageModel, error)
@@ -128,9 +129,13 @@ func (s *InstanceServiceImpl) ChangeStatus(vpcId string, instanceId string, stat
 }
 
 // Resize update flavor an instance
-func (s *InstanceServiceImpl) Resize(vpcId string, instanceId string, flavorId string) (*common.SimpleResponse, error) {
+func (s *InstanceServiceImpl) Resize(vpcId string, instanceId string, flavorId string, billingType string) (*common.SimpleResponse, error) {
 	var apiPath = common.ApiPath.ResizeInstance(vpcId, instanceId)
-	_, err := s.client.SendPostRequest(apiPath, map[string]string{"hw_flavor": flavorId})
+	body := map[string]string{"hw_flavor": flavorId}
+	if billingType != "" {
+		body["billing_type"] = billingType
+	}
+	_, err := s.client.SendPostRequest(apiPath, body)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
@@ -143,9 +148,13 @@ func (s *InstanceServiceImpl) Resize(vpcId string, instanceId string, flavorId s
 }
 
 // GetFlavorByName get flavor by name
-func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string) (*FlavorDTO, error) {
+func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string, gpuName string) (*FlavorDTO, error) {
 	var apiPath = common.ApiPath.GetFlavorByName(vpcId)
-	resp, err := s.client.SendPostRequest(apiPath, map[string]string{"flavor_name": flavorName})
+	body := map[string]string{"flavor_name": flavorName}
+	if gpuName != "" {
+		body["gpu_name"] = gpuName
+	}
+	resp, err := s.client.SendPostRequest(apiPath, body)
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
@@ -158,6 +167,21 @@ func (s *InstanceServiceImpl) GetFlavorByName(vpcId string, flavorName string) (
 	}
 
 	return &flavor, nil
+}
+
+// ChangeBillingType updates the billing plan of a GPU instance
+func (s *InstanceServiceImpl) ChangeBillingType(vpcId string, instanceId string, billingType string) (*common.SimpleResponse, error) {
+	var apiPath = common.ApiPath.ChangeBillingTypeInstance(vpcId, instanceId)
+	_, err := s.client.SendPutRequest(apiPath, map[string]string{"billing_type": billingType})
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var result = &common.SimpleResponse{
+		Data: "Successfully",
+	}
+
+	return result, nil
 }
 
 // UpdateTags updates tags associated with an instance

@@ -27,6 +27,7 @@ var ApiPath = struct {
 	InstanceStoragesInfra      func(vpcId string, instanceId string) string
 	ResizeInstanceRootDisk     func(vpcId string, instanceId string) string
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
+	ChangeBillingTypeInstance  func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
 	VMGroupPolicies            func(vpcId string) string
@@ -150,13 +151,13 @@ var ApiPath = struct {
 
 	//LBv2
 	//Load balancer
-	ListLoadBalancers  func(vpcId string, page int, pageSize int) string
-	GetLoadBalancer    func(vpcId string, loadBalancerId string) string
-	ReadLoadBalancer   func(vpcId string, loadBalancerId string) string
-	CreateLoadBalancer func(vpcId string) string
-	UpdateLoadBalancer func(vpcId string, loadBalancerId string) string
-	ResizeLoadBalancer func(vpcId string, loadBalancerId string) string
-	DeleteLoadBalancer func(vpcId string, loadBalancerId string) string
+	ListLoadBalancers      func(vpcId string, page int, pageSize int) string
+	GetLoadBalancer        func(vpcId string, loadBalancerId string) string
+	ReadLoadBalancer       func(vpcId string, loadBalancerId string) string
+	CreateLoadBalancer     func(vpcId string) string
+	UpdateLoadBalancer     func(vpcId string, loadBalancerId string) string
+	ResizeLoadBalancer     func(vpcId string, loadBalancerId string) string
+	DeleteLoadBalancer     func(vpcId string, loadBalancerId string) string
 	ManageLoadBalancerTags func(vpcId string, loadBalancerId string) string
 	//Listener
 	ListListeners  func(vpcId string, loadBalancerId string, page int, pageSize int) string
@@ -262,6 +263,9 @@ var ApiPath = struct {
 	},
 	UpdateInstanceTags: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/instance/%s/tags", vpcId, instanceId)
+	},
+	ChangeBillingTypeInstance: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/billing-type", vpcId, instanceId)
 	},
 	GetFlavorByName: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavor/find-by-name", vpcId)

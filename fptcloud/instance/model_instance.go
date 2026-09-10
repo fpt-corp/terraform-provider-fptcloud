@@ -1,5 +1,7 @@
 package fptcloud_instance
 
+import "strings"
+
 type FindInstanceDTO struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
@@ -26,6 +28,9 @@ type InstanceModel struct {
 	InstanceGroupId  *string  `json:"instance_group_id,omitempty"`
 	CreatedAt        string   `json:"created_at"`
 	TagIds           []string `json:"tag_ids,omitempty"`
+	GpuName          *string  `json:"gpu_name,omitempty"`
+	BillingType      *string  `json:"billing_type,omitempty"`
+	IsNvme           bool     `json:"is_nvme"`
 }
 
 type CreateInstanceDTO struct {
@@ -43,11 +48,48 @@ type CreateInstanceDTO struct {
 	SshKey           *string  `json:"ssh_key,omitempty"`
 	Password         *string  `json:"password,omitempty"`
 	TagIds           []string `json:"tag_ids,omitempty"`
+	BillingType      *string  `json:"billing_type,omitempty"`
+	GpuName          *string  `json:"gpu_name,omitempty"`
 }
 
 type FlavorDTO struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// mapGpuPlanToBillingType maps the Terraform-facing gpu_plan value to the API's billing_type value.
+func mapGpuPlanToBillingType(plan string) string {
+	switch plan {
+	case "hold":
+		return "reserved"
+	case "detach":
+		return "payg"
+	default:
+		return ""
+	}
+}
+
+// mapBillingTypeToGpuPlan maps the API's billing_type value back to the Terraform-facing gpu_plan value.
+func mapBillingTypeToGpuPlan(billingType *string) string {
+	if billingType == nil {
+		return ""
+	}
+	switch strings.ToLower(*billingType) {
+	case "reserved":
+		return "hold"
+	case "payg":
+		return "detach"
+	default:
+		return ""
+	}
+}
+
+// deriveVmType derives the Terraform-facing vm_type ("cpu"/"gpu") from the server's gpu_name field.
+func deriveVmType(gpuName *string) string {
+	if gpuName != nil && *gpuName != "" {
+		return "gpu"
+	}
+	return "cpu"
 }
 
 // InstanceStorageModel is one disk of an instance as persisted by the portal
