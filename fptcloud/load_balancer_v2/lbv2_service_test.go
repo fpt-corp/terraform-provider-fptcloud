@@ -254,6 +254,73 @@ func TestGetLoadBalancerWithoutResourceTagsSuccessfully(t *testing.T) {
 	assert.Empty(t, response.LoadBalancer.ResourceTags)
 }
 
+// The "/read" endpoint is what readLoadBalancer() uses on every terraform plan.
+// It had no coverage at all, yet it is the source of the fields most prone to
+// state drift: scheme, edge_gateway.id (must be the platform id, not the
+// internal DB primary key), network.id, private_ip and cidr.
+func TestReadLoadBalancerSuccessfully(t *testing.T) {
+	mockResponse := `{
+		"message": "Get load balancer successfully",
+		"data": {
+			"id": "55e5ab72-eaac-4552-8610-e9879da672e9",
+			"name": "kiennt-test",
+			"description": "",
+			"operating_status": "Healthy",
+			"provisioning_status": "Active",
+			"private_ip": "192.168.20.108",
+			"cidr": null,
+			"scheme": "internal",
+			"edge_gateway": {
+				"id": "b88f129b-3f9b-4d1b-b8b8-63593c9539a4",
+				"name": "OSP-HL-HLSHARE"
+			},
+			"network": {
+				"id": "df34979c-3d7b-4ae9-a84f-272da5339fe0",
+				"name": "hehe-net"
+			},
+			"size": {
+				"id": "3acbe070-5364-4fa6-81c2-1c04167ca9da",
+				"name": "Basic-2"
+			},
+			"tags": ["LBv2"]
+		}
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vmware/vpc/vpc_id/load_balancer_v2/load_balancer_id/read": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	response, err := service.ReadLoadBalancer("vpc_id", "load_balancer_id")
+	assert.Nil(t, err)
+	assert.Equal(t, "internal", response.LoadBalancer.Scheme)
+	assert.Equal(t, "b88f129b-3f9b-4d1b-b8b8-63593c9539a4", response.LoadBalancer.EdgeGateway.Id)
+	assert.Equal(t, "df34979c-3d7b-4ae9-a84f-272da5339fe0", response.LoadBalancer.Network.Id)
+	assert.Equal(t, "192.168.20.108", response.LoadBalancer.PrivateIp)
+	assert.Equal(t, "Basic-2", response.LoadBalancer.Size.Name)
+}
+
+// A load balancer created before the scheme feature shipped (or a VMW one) can
+// come back without the key at all — must parse to "" and not error, so that
+// Optional+Computed leaves the previous state value untouched instead of
+// proposing a spurious change.
+func TestReadLoadBalancerWithoutSchemeSuccessfully(t *testing.T) {
+	mockResponse := `{
+		"message": "Get load balancer successfully",
+		"data": {
+			"id": "55e5ab72-eaac-4552-8610-e9879da672e9",
+			"name": "kiennt-test"
+		}
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vmware/vpc/vpc_id/load_balancer_v2/load_balancer_id/read": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_load_balancer_v2.NewLoadBalancerV2Service(mockClient)
+	response, err := service.ReadLoadBalancer("vpc_id", "load_balancer_id")
+	assert.Nil(t, err)
+	assert.Equal(t, "", response.LoadBalancer.Scheme)
+}
+
 func TestCreateLoadBalancerSuccessfully(t *testing.T) {
 	mockResponse := `{
 		"message": "Create load balancer successfully",
