@@ -41,7 +41,6 @@ go.work
 
 # main.tf file to test
 main.tf
-mfke.tf
 .env
 test.sh
 tf.sh

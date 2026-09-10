@@ -115,14 +115,6 @@ var ApiPath = struct {
 	ManagedGpuClusterDeleteV2                  func(vpcId string, platform string, clusterName string) string
 	ManagedGpuClusterCreate                    func(vpcId string, platform string) string
 	ManagedGpuClusterCreateV2                  func(vpcId string, platform string) string
-	ManagedGpuClusterUpgradeVersion            func(vpcId string, platform string, clusterId string, targetVersion string) string
-	ManagedGpuClusterUpgradeVersionV2          func(vpcId string, platform string, clusterId string, targetVersion string) string
-	ManagedGpuClusterHibernate                 func(vpcId string, platform string, clusterId string, isWakeup bool) string
-	ManagedGpuClusterHibernateV2               func(vpcId string, platform string, clusterId string, isWakeup bool) string
-	ManagedGpuClusterHibernationSchedules      func(vpcId string, platform string, clusterId string) string
-	ManagedGpuClusterHibernationSchedulesV2    func(vpcId string, platform string, clusterId string) string
-	ManagedGpuClusterAutoUpgradeVersion        func(vpcId string, platform string, clusterId string) string
-	ManagedGpuClusterAutoUpgradeVersionV2      func(vpcId string, platform string, clusterId string) string
 	ManagedGpuClusterConfigWorker              func(vpcId string, platform string, clusterId string) string
 	ManagedGpuClusterConfigWorkerV2            func(vpcId string, platform string, clusterId string) string
 	ManagedGpuClusterUpdateEndpointCIDR        func(vpcId string, platform string, clusterId string) string
@@ -658,66 +650,6 @@ var ApiPath = struct {
 	ManagedGpuClusterGetV2: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get-shoot-specific/shoots/%s",
-			vpcId, platform, clusterId,
-		)
-	},
-	// The shoot-level endpoints below carry no /hpc segment, unlike the
-	// bare-metal ones (create-cluster, get-shoot-specific,
-	// configure-worker-cluster, ...). They are shared with managed FKE and
-	// live directly under /m-fke/{platform}/ — sending /hpc here 404s.
-	ManagedGpuClusterUpgradeVersion: func(vpcId string, platform string, clusterId string, targetVersion string) string {
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/upgrade_version_cluster/shoots/%s/k8s-version/%s",
-			vpcId, platform, clusterId, targetVersion,
-		)
-	},
-	ManagedGpuClusterUpgradeVersionV2: func(vpcId string, platform string, clusterId string, targetVersion string) string {
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/upgrade_version_cluster/shoots/%s/k8s-version/%s",
-			vpcId, platform, clusterId, targetVersion,
-		)
-	},
-	ManagedGpuClusterHibernate: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
-		action := "hibernate"
-		if isWakeup {
-			action = "wakeup"
-		}
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/%s",
-			vpcId, platform, clusterId, action,
-		)
-	},
-	ManagedGpuClusterHibernateV2: func(vpcId string, platform string, clusterId string, isWakeup bool) string {
-		action := "hibernate"
-		if isWakeup {
-			action = "wakeup"
-		}
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/hibernation-cluster/shoots/%s/%s",
-			vpcId, platform, clusterId, action,
-		)
-	},
-	ManagedGpuClusterHibernationSchedules: func(vpcId string, platform string, clusterId string) string {
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/hibernation-cluster/shoots/%s/schedules",
-			vpcId, platform, clusterId,
-		)
-	},
-	ManagedGpuClusterHibernationSchedulesV2: func(vpcId string, platform string, clusterId string) string {
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/hibernation-cluster/shoots/%s/schedules",
-			vpcId, platform, clusterId,
-		)
-	},
-	ManagedGpuClusterAutoUpgradeVersion: func(vpcId string, platform string, clusterId string) string {
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/config-auto-upgrade-version/shoots/%s",
-			vpcId, platform, clusterId,
-		)
-	},
-	ManagedGpuClusterAutoUpgradeVersionV2: func(vpcId string, platform string, clusterId string) string {
-		return fmt.Sprintf(
-			"/v1/xplat/fke/vpc/%s/m-fke/%s/v2/config-auto-upgrade-version/shoots/%s",
 			vpcId, platform, clusterId,
 		)
 	},

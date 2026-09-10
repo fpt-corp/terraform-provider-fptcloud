@@ -482,10 +482,8 @@ type managedGpuClusterDataSpec struct {
 		Workers []*managedGpuClusterDataWorker `json:"workers"`
 	} `json:"provider"`
 
-	Extensions  []ExtensionSpec  `json:"extensions,omitempty"`
-	Hibernate   *HibernateSpec   `json:"hibernation"`
-	AutoUpgrade *AutoUpgradeSpec `json:"autoUpgrade,omitempty"`
-	Addons      *AddonsSpec      `json:"addons,omitempty"`
+	Extensions []ExtensionSpec `json:"extensions,omitempty"`
+	Addons     *AddonsSpec     `json:"addons,omitempty"`
 }
 
 // AddonsSpec represents the addons configuration in the API response
@@ -526,11 +524,6 @@ type managedGpuClusterDataNetworking struct {
 		} `json:"overlay"`
 		Ipip string `json:"ipip"`
 	} `json:"providerConfig"`
-}
-
-type HibernateSpec struct {
-	Enabled   bool                      `json:"enabled"`
-	Schedules []HibernationScheduleJson `json:"schedules,omitempty"`
 }
 
 type managedGpuClusterDataWorker struct {
@@ -616,18 +609,6 @@ type managedGpuClusterEditWorker struct {
 	// testing on both API families.
 	SshName string `json:"ssh_name"`
 	SshId   string `json:"ssh_id"`
-}
-
-// HibernationScheduleJson represents the JSON structure for hibernation schedules
-type HibernationScheduleJson struct {
-	Start    string `json:"start"`
-	End      string `json:"end"`
-	Location string `json:"location"`
-}
-
-type AutoUpgradeSpec struct {
-	TimeUpgrade []string `json:"timeUpgrade"`
-	TimeZone    string   `json:"timeZone"`
 }
 
 // ExtensionSpec represents the extensions configuration in the API response
