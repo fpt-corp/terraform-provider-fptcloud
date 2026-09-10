@@ -73,6 +73,18 @@ func readLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}
 	if err := d.Set("egw_id", loadBalancer.EdgeGateway.Id); err != nil {
 		return diag.FromErr(fmt.Errorf("error setting egw id: %s", err))
 	}
+
+	detail, err := service.GetLoadBalancer(vpcId, loadBalancerId)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	tagIds := make([]string, 0, len(detail.LoadBalancer.ResourceTags))
+	for _, t := range detail.LoadBalancer.ResourceTags {
+		tagIds = append(tagIds, t.Id)
+	}
+	if err := d.Set("tag_ids", tagIds); err != nil {
+		return diag.FromErr(fmt.Errorf("error setting tag ids: %s", err))
+	}
 	return nil
 }
 
@@ -91,6 +103,15 @@ func createLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 	payload.VipAddress = d.Get("vip_address").(string)
 	payload.Cidr = d.Get("cidr").(string)
 	payload.EgwId = d.Get("egw_id").(string)
+
+	var tagIds []string
+	if tagIdsRaw, ok := d.GetOk("tag_ids"); ok {
+		tagIdsSet := tagIdsRaw.(*schema.Set)
+		tagIds = make([]string, 0, tagIdsSet.Len())
+		for _, t := range tagIdsSet.List() {
+			tagIds = append(tagIds, t.(string))
+		}
+	}
 
 	listenerRaw := d.Get("listener").(*schema.Set)
 	if listenerRaw.Len() == 0 {
@@ -158,7 +179,14 @@ func createLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 		return diag.FromErr(err)
 	}
 	d.SetId(response.Data.Id)
-	return nil
+
+	if len(tagIds) > 0 {
+		if _, err := service.ManageLoadBalancerTags(vpcId, response.Data.Id, tagIds); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	return readLoadBalancer(ctx, d, m)
 }
 
 func updateLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -176,7 +204,6 @@ func updateLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		return readLoadBalancer(ctx, d, m)
 	} else if d.HasChange("name") || d.HasChange("description") || d.HasChange("floating_ip") {
 		var payload LoadBalancerUpdateModel
 		payload.Name = d.Get("name").(string)
@@ -187,9 +214,21 @@ func updateLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		return readLoadBalancer(ctx, d, m)
 	}
-	return nil
+
+	if d.HasChange("tag_ids") {
+		tagIdsSet := d.Get("tag_ids").(*schema.Set)
+		tagIds := make([]string, 0, tagIdsSet.Len())
+		for _, t := range tagIdsSet.List() {
+			tagIds = append(tagIds, t.(string))
+		}
+		_, err := service.ManageLoadBalancerTags(vpcId, loadBalancerId, tagIds)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	return readLoadBalancer(ctx, d, m)
 }
 
 func deleteLoadBalancer(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {

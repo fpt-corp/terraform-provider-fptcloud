@@ -2,13 +2,32 @@ package fptcloud_instance
 
 import (
 	"context"
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
+	"strings"
 	common "terraform-provider-fptcloud/commons"
 	"time"
 )
+
+// configuredGpuName returns gpu_name only when it's actually present in the
+// .tf config, not when Terraform is just carrying forward the Computed value
+// from a previous apply (gpu_name is Optional+Computed so d.GetOk alone can't
+// tell the two apart) — sending a stale GPU name would make the server reject
+// a resize to a CPU flavor with "gpu_name is only applicable to GPU flavors".
+func configuredGpuName(d *schema.ResourceData) string {
+	raw := d.GetRawConfig()
+	if raw.IsNull() {
+		return ""
+	}
+	gpuNameVal := raw.GetAttr("gpu_name")
+	if gpuNameVal.IsNull() {
+		return ""
+	}
+	return gpuNameVal.AsString()
+}
 
 // ResourceInstance function returns a schema.Resource that represents an instance.
 // This can be used to create, read, update and delete operations for an instance in the infrastructure.
@@ -20,6 +39,7 @@ func ResourceInstance() *schema.Resource {
 		UpdateContext: resourceInstanceUpdate,
 		ReadContext:   resourceInstanceRead,
 		DeleteContext: resourceInstanceDelete,
+		CustomizeDiff: resourceInstanceCustomizeDiff,
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -75,6 +95,16 @@ func resourceInstanceCreate(ctx context.Context, d *schema.ResourceData, m inter
 			securityGroupIdsList = append(securityGroupIdsList, v.(string))
 		}
 		createdModel.SecurityGroupIds = securityGroupIdsList
+	}
+
+	if gpuPlan, ok := d.GetOk("gpu_plan"); ok {
+		billingType := mapGpuPlanToBillingType(gpuPlan.(string))
+		createdModel.BillingType = &billingType
+	}
+
+	if gpuName, ok := d.GetOk("gpu_name"); ok {
+		gpuNameValue := gpuName.(string)
+		createdModel.GpuName = &gpuNameValue
 	}
 
 	if tags, ok := d.GetOk("tag_ids"); ok {
@@ -208,6 +238,31 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("tag_ids", foundInstance.TagIds); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("gpu_name", foundInstance.GpuName); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("vm_type", deriveVmType(foundInstance.GpuName)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("gpu_plan", mapBillingTypeToGpuPlan(foundInstance.BillingType)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("is_nvme", foundInstance.IsNvme); err != nil {
+		return diag.FromErr(err)
+	}
+
+	// find_instance only sees a root disk persisted as ROOT, which never happens on OSP, so read the disk listings instead
+	rootStorage, err := instanceService.FindRootStorage(foundInstance.VpcId, foundInstance.ID)
+	if err != nil {
+		log.Printf("[WARN] Could not retrieve the root disk of instance %s: %s", foundInstance.ID, err)
+		return nil
+	}
+
+	if rootStorage.SizeMb > 0 {
+		if err := d.Set("storage_size_gb", rootStorage.SizeMb/1024); err != nil {
+			return diag.FromErr(err)
+		}
+	}
 
 	return nil
 }
@@ -260,7 +315,20 @@ func resourceInstanceDelete(_ context.Context, d *schema.ResourceData, m interfa
 }
 
 // function to update an instance
+// resourceInstanceUpdate refreshes state from the server even when the update
+// itself errors out partway through, so whatever changes did land before the
+// failing step (e.g. a flavor resize that succeeded before a later billing
+// plan change failed) are still reflected instead of leaving stale state.
 func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	updateDiags := doResourceInstanceUpdate(ctx, d, m)
+	readDiags := resourceInstanceRead(ctx, d, m)
+	if updateDiags.HasError() {
+		return append(updateDiags, readDiags...)
+	}
+	return readDiags
+}
+
+func doResourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	instanceService := NewInstanceService(apiClient)
 
@@ -269,6 +337,8 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 	hasChangeFlavor := d.HasChange("flavor_name")
 	hasChangeStatus := d.HasChange("status")
 	hasChangeTags := d.HasChange("tag_ids")
+	hasChangeGpuPlan := d.HasChange("gpu_plan")
+	hasChangeGpuName := d.HasChange("gpu_name")
 
 	if hasChangedName {
 		newName := d.Get("name").(string)
@@ -286,13 +356,28 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
+	if hasChangeGpuName && !hasChangeFlavor {
+		if gpuName, ok := d.GetOk("gpu_name"); ok {
+			_, err := instanceService.GetFlavorByName(vpcId, d.Get("flavor_name").(string), gpuName.(string))
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while verifying gpu name %s", err)
+			}
+		}
+	}
+
 	if hasChangeFlavor {
 		newFlavorName := d.Get("flavor_name").(string)
-		flavor, flavorErr := instanceService.GetFlavorByName(vpcId, newFlavorName)
+		gpuName := configuredGpuName(d)
+		flavor, flavorErr := instanceService.GetFlavorByName(vpcId, newFlavorName, gpuName)
 		if flavorErr != nil {
 			return diag.Errorf("[ERR] Flavor not found %s", flavorErr)
 		}
-		_, err := instanceService.Resize(vpcId, d.Id(), flavor.ID)
+
+		billingType := ""
+		if gpuPlan, ok := d.GetOk("gpu_plan"); ok {
+			billingType = mapGpuPlanToBillingType(gpuPlan.(string))
+		}
+		_, err := instanceService.Resize(vpcId, d.Id(), flavor.ID, billingType)
 		if err != nil {
 			return diag.Errorf("[ERR] An error occurred while resize instance %s", err)
 		}
@@ -322,6 +407,14 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
+	hasChangeStoragePolicy := d.HasChange("storage_policy_id")
+
+	if d.HasChange("storage_size_gb") || hasChangeStoragePolicy {
+		if diags := resizeInstanceRootDisk(ctx, d, apiClient, instanceService, vpcId, hasChangeStoragePolicy); diags != nil {
+			return diags
+		}
+	}
+
 	if hasChangeTags {
 		tagsSet := d.Get("tag_ids").(*schema.Set)
 		tagIds := make([]string, 0, tagsSet.Len())
@@ -335,5 +428,104 @@ func resourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m inter
 		}
 	}
 
-	return resourceInstanceRead(ctx, d, m)
+	// When flavor_name also changed, gpu_plan was already sent along with the
+	// resize request above; the server applies it as part of that same
+	// operation, so a separate call here would just race it.
+	if hasChangeGpuPlan && !hasChangeFlavor {
+		gpuPlan := d.Get("gpu_plan").(string)
+		_, err := instanceService.ChangeBillingType(vpcId, d.Id(), mapGpuPlanToBillingType(gpuPlan))
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while changing billing plan of instance %s: %s", d.Id(), err)
+		}
+	}
+
+	return nil
+}
+
+// resourceInstanceCustomizeDiff rejects a shrink at plan time, the resize API only grows the root disk
+func resourceInstanceCustomizeDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	if d.Id() == "" || !d.HasChange("storage_size_gb") {
+		return nil
+	}
+
+	oldSize, newSize := d.GetChange("storage_size_gb")
+	if newSize.(int) < oldSize.(int) {
+		return fmt.Errorf(
+			"[ERR] The root storage size of an instance can only be increased, got %d GB while the instance already has %d GB",
+			newSize.(int), oldSize.(int),
+		)
+	}
+
+	return nil
+}
+
+// resizeInstanceRootDisk resize and/or change the storage policy of the root disk in place
+func resizeInstanceRootDisk(
+	ctx context.Context,
+	d *schema.ResourceData,
+	apiClient *common.Client,
+	instanceService InstanceService,
+	vpcId string,
+	hasChangeStoragePolicy bool,
+) diag.Diagnostics {
+	rootStorage, err := instanceService.FindRootStorage(vpcId, d.Id())
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while retrieving the root disk of instance %s: %s", d.Id(), err)
+	}
+
+	storagePolicyId := d.Get("storage_policy_id").(string)
+	storagePolicy, err := instanceService.FindStoragePolicy(vpcId, storagePolicyId)
+	if err != nil {
+		return diag.Errorf("[ERR] An error occurred while retrieving the storage policy %s: %s", storagePolicyId, err)
+	}
+
+	sizeGb := d.Get("storage_size_gb").(int)
+	// the resize API expects the infrastructure id of the policy, not the id the provider exposes
+	resizeModel := ResizeRootDiskDTO{
+		DiskId:           rootStorage.DiskId,
+		IncreaseInSizeMb: sizeGb * 1024,
+		StoragePolicyId:  &storagePolicy.InfraId,
+	}
+
+	if _, err := instanceService.ResizeRootDisk(vpcId, d.Id(), resizeModel); err != nil {
+		return diag.Errorf("[ERR] An error occurred while resizing the root disk of instance %s: %s", d.Id(), err)
+	}
+
+	// the API only queues the resize, poll the infrastructure until the root disk reports the new size
+	resizeStateConf := &retry.StateChangeConf{
+		Pending: []string{"RESIZING"},
+		Target:  []string{"RESIZED"},
+		Refresh: func() (interface{}, string, error) {
+			resp, err := instanceService.FindRootStorage(vpcId, d.Id())
+			if err != nil {
+				return 0, "", err
+			}
+
+			if resp.SizeMb >= sizeGb*1024 && (!hasChangeStoragePolicy || isStoragePolicy(resp, storagePolicy)) {
+				return resp, "RESIZED", nil
+			}
+
+			return resp, "RESIZING", nil
+		},
+		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
+		Delay:          3 * time.Second,
+		MinTimeout:     3 * time.Second,
+		NotFoundChecks: 120,
+	}
+	if _, err := resizeStateConf.WaitForStateContext(ctx); err != nil {
+		return diag.Errorf("[Error] Waiting for the root disk of instance (%s) to be resized: %s", d.Id(), err)
+	}
+
+	return nil
+}
+
+// isStoragePolicy tells whether a root disk already sits on a storage policy, by id when the portal listed it or by name otherwise
+func isStoragePolicy(rootStorage *RootStorageModel, storagePolicy *StoragePolicyDTO) bool {
+	if rootStorage.StoragePolicyId != "" {
+		return rootStorage.StoragePolicyId == storagePolicy.ID
+	}
+
+	// the infrastructure suffixes the policy name with the zone it belongs to
+	return rootStorage.StoragePolicyName == storagePolicy.Name ||
+		strings.HasPrefix(rootStorage.StoragePolicyName, storagePolicy.Name+"_")
 }

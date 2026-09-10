@@ -154,7 +154,7 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"flavor_name": {
 		Type:        schema.TypeString,
 		Optional:    true,
-		Description: "The flavor name of the instance (get from API or data source)",
+		Description: "The flavor name of the instance (get from API or data source). Changing this resizes the instance in place (not ForceNew). For OSP-backed VMs, this is also how GPUs are attached/detached: switching to/from a GPU flavor (see `gpu_id`/`gpu_name` on the `fptcloud_flavor` data source) attaches/detaches the GPU as part of the resize. Resize is blocked by the server when `is_nvme` is `true`.",
 	},
 	"image_name": {
 		Type:        schema.TypeString,
@@ -169,16 +169,16 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		ForceNew:    true,
 	},
 	"storage_size_gb": {
-		Type:        schema.TypeInt,
-		Required:    true,
-		Description: "The root storage size of the instance",
-		ForceNew:    true,
+		Type:         schema.TypeInt,
+		Required:     true,
+		ValidateFunc: validation.IntAtLeast(1),
+		Description:  "The root storage size of the instance (in GB), can only be increased",
 	},
 	"storage_policy_id": {
-		Type:        schema.TypeString,
-		Required:    true,
-		Description: "The root storage policy of the instance",
-		ForceNew:    true,
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The root storage policy of the instance",
 	},
 	"security_group_ids": {
 		Type:        schema.TypeSet,
@@ -218,5 +218,28 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 		Optional:    true,
 		Elem:        &schema.Schema{Type: schema.TypeString},
 		Description: "List of tag IDs to associate with the instance",
+	},
+	"gpu_plan": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		Computed:     true,
+		Description:  "Billing plan for GPU instances: `hold` (reserved) or `detach` (payg). Only applicable when flavor_name is a GPU flavor.",
+		ValidateFunc: validation.StringInSlice([]string{"hold", "detach"}, false),
+	},
+	"gpu_name": {
+		Type:        schema.TypeString,
+		Optional:    true,
+		Computed:    true,
+		Description: "Optional verification input: the GPU this instance is expected to get, as reported by the `gpu_name` field of the `fptcloud_flavor` data source. Leave it unset and the flavor alone decides the GPU; either way this reflects the actual GPU the instance has (empty for CPU instances, see `vm_type`). When set, the server checks it against `flavor_name` on create and on resize, and rejects the request if it names a different GPU or if `flavor_name` is not a GPU flavor. Point it at the same data source as `flavor_name` so the two can never drift apart.",
+	},
+	"vm_type": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "Type of the instance (`cpu` or `gpu`), derived by the server from whether a GPU is attached (reported via the `gpu_name` field).",
+	},
+	"is_nvme": {
+		Type:        schema.TypeBool,
+		Computed:    true,
+		Description: "Whether the instance uses a physical NVMe disk instead of the requested storage_policy_id (see the `is_nvme` field on the `fptcloud_flavor` data source).",
 	},
 }

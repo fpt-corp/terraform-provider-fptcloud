@@ -1,3 +1,36 @@
+## [0.3.67] - 2026-09-10
+
+### Resource
+
+- Feat: support GPU instances on `fptcloud_instance` — new `gpu_plan` (`hold`/`detach` billing plan), `gpu_name` (optional verification input, also reflects the actual GPU attached), `vm_type` (`cpu`/`gpu`) and `is_nvme` attributes ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Feat: changing `flavor_name` to/from a GPU flavor attaches/detaches the GPU as part of the in-place resize, the instance is not replaced; `gpu_plan` is sent along with that same resize request instead of racing a separate follow-up call ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Fix: `gpu_name` no longer carries its previous Computed value into a resize away from a GPU flavor, which made the server reject the request with "gpu_name is only applicable to GPU flavors" ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Fix: refresh state after update even when a later step in the same apply fails, so changes that did succeed (e.g. a flavor resize before a billing plan failure) aren't left stale ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+
+### Datasource
+
+- Feat: expose `gpu_id`, `gpu_name` and `is_nvme` on `fptcloud_flavor`; GPU flavors not supported in the VPC's default zone are no longer returned ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+
+## [0.3.66] - 2026-09-07
+
+### Resource
+
+- Feat: manage tags on `fptcloud_load_balancer_v2_lb` through the new `tag_ids` attribute ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Fix: mark `network_id`, `egw_id`, `vip_address`, `cidr` and `floating_ip` as computed on `fptcloud_load_balancer_v2_lb`, so a value assigned by the platform no longer shows a diff on every plan ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Fix: save the values assigned during create of `fptcloud_load_balancer_v2_lb` to state immediately, instead of leaving them unset until the next refresh ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Update: document the per-platform behaviour of `network_id`, `cidr` and `egw_id` on `fptcloud_load_balancer_v2_lb`, and that `egw_id` takes the edge gateway's platform ID from the infrastructure, not the record ID from Portal ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+
+### Datasource
+
+- Feat: expose the tags from FPT Cloud's tagging service through the new `resource_tags` attribute on `fptcloud_load_balancer_v2_lb` and `fptcloud_load_balancer_v2_lbs` ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+- Update: clarify that `tags` on `fptcloud_load_balancer_v2_lb` and `fptcloud_load_balancer_v2_lbs` is an internal marker identifying the object as LBv2 for Portal sync, not FPT Cloud's tagging service ([#109](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/109))
+
+## [0.3.65] - 2026-08-27
+
+### Resource
+
+- Feat: resize the root disk of `fptcloud_instance` in place, `storage_size_gb` and `storage_policy_id` no longer replace the instance
+
 ## [0.3.64] - 2026-08-27
 
 ### Resource

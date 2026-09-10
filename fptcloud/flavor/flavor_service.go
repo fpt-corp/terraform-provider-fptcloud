@@ -13,19 +13,25 @@ type FlavorInfo struct {
 
 // Flavor represents a flavor model
 type Flavor struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Cpu         int    `json:"cpu"`
-	MemoryMb    int    `json:"memory_mb"`
-	GpuMemoryGb *int   `json:"gpu_memory_gb"`
-	Type        string `json:"type"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Cpu         int     `json:"cpu"`
+	MemoryMb    int     `json:"memory_mb"`
+	GpuMemoryGb *int    `json:"gpu_memory_gb"`
+	Type        string  `json:"type"`
+	GpuId       *string `json:"gpu_id"`
+	GpuName     *string `json:"gpu_name"`
+	IsNvme      bool    `json:"is_nvme"`
 }
 
 type FlavorResponse struct {
-	ID   string     `json:"id"`
-	Name string     `json:"name"`
-	Info FlavorInfo `json:"info"`
-	Type string     `json:"type"`
+	ID      string     `json:"id"`
+	Name    string     `json:"name"`
+	Info    FlavorInfo `json:"info"`
+	Type    string     `json:"type"`
+	GpuId   *string    `json:"gpu_id"`
+	GpuName *string    `json:"gpu_name"`
+	IsNvme  bool       `json:"is_nvme"`
 }
 
 // FlavorService defines the interface for flavor service
@@ -71,6 +77,9 @@ func (s *FlavorServiceImpl) ListFlavor(vpcId string) (*[]Flavor, error) {
 			MemoryMb:    flavorCopy.Info.MemoryMb,
 			GpuMemoryGb: &flavorCopy.Info.GpuMemoryGb,
 			Type:        flavorCopy.Type,
+			GpuId:       flavorCopy.GpuId,
+			GpuName:     flavorCopy.GpuName,
+			IsNvme:      flavorCopy.IsNvme,
 		}
 	}
 	return &flavors, nil

@@ -96,10 +96,6 @@ func (c *Client) SendRequest(req *http.Request) ([]byte, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.APIKey))
 
-	c.httpClient.Transport = &http.Transport{
-		DisableCompression: false,
-	}
-
 	if req.Method == "GET" || req.Method == "DELETE" {
 		// add the region param
 		param := req.URL.Query()

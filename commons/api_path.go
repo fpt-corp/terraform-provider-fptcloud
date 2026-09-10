@@ -26,7 +26,11 @@ var ApiPath = struct {
 	RenameInstance             func(vpcId string, instanceId string) string
 	ChangeStatusInstance       func(vpcId string, instanceId string) string
 	ResizeInstance             func(vpcId string, instanceId string) string
+	InstanceStorages           func(vpcId string, instanceId string) string
+	InstanceStoragesInfra      func(vpcId string, instanceId string) string
+	ResizeInstanceRootDisk     func(vpcId string, instanceId string) string
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
+	ChangeBillingTypeInstance  func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
 	VMGroupPolicies            func(vpcId string) string
@@ -194,13 +198,14 @@ var ApiPath = struct {
 
 	//LBv2
 	//Load balancer
-	ListLoadBalancers  func(vpcId string, page int, pageSize int) string
-	GetLoadBalancer    func(vpcId string, loadBalancerId string) string
-	ReadLoadBalancer   func(vpcId string, loadBalancerId string) string
-	CreateLoadBalancer func(vpcId string) string
-	UpdateLoadBalancer func(vpcId string, loadBalancerId string) string
-	ResizeLoadBalancer func(vpcId string, loadBalancerId string) string
-	DeleteLoadBalancer func(vpcId string, loadBalancerId string) string
+	ListLoadBalancers      func(vpcId string, page int, pageSize int) string
+	GetLoadBalancer        func(vpcId string, loadBalancerId string) string
+	ReadLoadBalancer       func(vpcId string, loadBalancerId string) string
+	CreateLoadBalancer     func(vpcId string) string
+	UpdateLoadBalancer     func(vpcId string, loadBalancerId string) string
+	ResizeLoadBalancer     func(vpcId string, loadBalancerId string) string
+	DeleteLoadBalancer     func(vpcId string, loadBalancerId string) string
+	ManageLoadBalancerTags func(vpcId string, loadBalancerId string) string
 	//Listener
 	ListListeners  func(vpcId string, loadBalancerId string, page int, pageSize int) string
 	GetListener    func(vpcId string, listenerId string) string
@@ -294,8 +299,20 @@ var ApiPath = struct {
 	ResizeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/reconfigure-vm", vpcId, instanceId)
 	},
+	InstanceStorages: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storagesv2", vpcId, instanceId)
+	},
+	InstanceStoragesInfra: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storages", vpcId, instanceId)
+	},
+	ResizeInstanceRootDisk: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/storages/resize", vpcId, instanceId)
+	},
 	UpdateInstanceTags: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/instance/%s/tags", vpcId, instanceId)
+	},
+	ChangeBillingTypeInstance: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/billing-type", vpcId, instanceId)
 	},
 	GetFlavorByName: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavor/find-by-name", vpcId)
@@ -996,6 +1013,9 @@ var ApiPath = struct {
 	},
 	DeleteLoadBalancer: func(vpcId string, loadBalancerId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/load_balancer_v2/%s/delete", vpcId, loadBalancerId)
+	},
+	ManageLoadBalancerTags: func(vpcId string, loadBalancerId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/load_balancer_v2/%s/manage-tags", vpcId, loadBalancerId)
 	},
 
 	//Listener

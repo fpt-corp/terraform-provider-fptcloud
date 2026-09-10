@@ -63,6 +63,23 @@ func flavorSchema() map[string]*schema.Schema {
 			Computed:    true,
 			Description: "Flavor type (VM_SIZE | GPU_SIZE | OS)",
 		},
+		"gpu_id": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Optional:    true,
+			Description: "The vGPU resource id backing this flavor, null if the flavor is not a GPU flavor",
+		},
+		"gpu_name": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Optional:    true,
+			Description: "The vGPU display name backing this flavor, null if the flavor is not a GPU flavor",
+		},
+		"is_nvme": {
+			Type:        schema.TypeBool,
+			Computed:    true,
+			Description: "Whether this GPU flavor uses a physical NVMe disk (its own storage policy is forced server-side, ignoring storage_policy_id)",
+		},
 	}
 }
 
@@ -77,6 +94,9 @@ func flattenFlavor(flavor, _ interface{}, _ map[string]interface{}) (map[string]
 	flattened["memory_mb"] = s.MemoryMb
 	flattened["gpu_memory_gb"] = s.GpuMemoryGb
 	flattened["type"] = s.Type
+	flattened["gpu_id"] = s.GpuId
+	flattened["gpu_name"] = s.GpuName
+	flattened["is_nvme"] = s.IsNvme
 
 	return flattened, nil
 }
