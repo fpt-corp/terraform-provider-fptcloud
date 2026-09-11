@@ -1,3 +1,14 @@
+## [0.3.68] - 2026-09-11
+
+### Resource
+
+- Feat: new `fptcloud_managed_gpu_cluster` resource for Managed GPU (bare metal) Kubernetes clusters on OSP
+
+### Datasource
+
+- Feat: new `fptcloud_hpc_subnet` datasource listing the HPC bare-metal subnet catalog for a VPC, with the same filter shape as `fptcloud_subnet`. This is a separate catalog: the two do not share ids
+- Feat: new `fptcloud_managed_gpu_cluster` datasource returning a cluster's pools, networking and GPU configuration, including the operators and per-pool GPU settings that only the GPU-software backend reports
+
 ## [0.3.67] - 2026-09-10
 
 ### Resource

@@ -1,0 +1,2157 @@
+package fptcloud_mgpu_cluster
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"terraform-provider-fptcloud/commons"
+	fptcloud_edge_gateway "terraform-provider-fptcloud/fptcloud/edge_gateway"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+// GenerateRandomSuffix generates 8 random characters using lowercase letters and digits
+func GenerateRandomSuffix() string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	result := make([]byte, 8)
+	randomBytes := make([]byte, 8)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback to a simple pattern if crypto/rand fails (should never happen)
+		return "abc12345"
+	}
+	for i := 0; i < 8; i++ {
+		result[i] = alphabet[int(randomBytes[i])%len(alphabet)]
+	}
+	return string(result)
+}
+
+// hasRandomSuffix reports whether cluster_name already ends in the 8-character
+// suffix the platform expects (*-XXXXXXXX, alphanumeric). A name that has one
+// is passed through untouched; one that does not gets a freshly generated
+// suffix appended before create.
+func hasRandomSuffix(clusterName string) bool {
+	pattern := regexp.MustCompile(`-[a-zA-Z0-9]{8}$`)
+	return pattern.MatchString(clusterName)
+}
+
+// getNetworkInfoByPlatform network_id, network name
+func getNetworkInfoByPlatform(ctx context.Context, client fptcloud_subnet.SubnetService, mgpuClient *MgpuClusterApiClient, vpcId, platform string, w *managedGpuClusterDataWorker, data *managedGpuClusterData) (string, string, error) {
+	if strings.ToLower(platform) == "vmw" {
+		// For VMW platform, try to get network ID from worker's network name
+		networkName := w.ProviderConfig.NetworkName
+		tflog.Info(ctx, fmt.Sprintf("DEBUG: Worker %s - networkName from ProviderConfig: '%s'", w.Name, networkName))
+		if networkName != "" {
+			// Use FindSubnetByName to get both network ID and name
+			subnet, err := client.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{
+				NetworkName: networkName,
+				VpcId:       vpcId,
+			})
+			if err == nil && subnet != nil {
+				return subnet.NetworkID, subnet.NetworkName, nil
+			}
+		}
+
+		// Fallback: try to get network ID from cluster's networking config
+		clusterNetworkID := data.Spec.Networking.Nodes
+		if clusterNetworkID != "" {
+			// Try to find the network name for this network ID
+			networks, err := client.ListSubnet(vpcId)
+			if err == nil {
+				for _, n := range *networks {
+					if n.NetworkID == clusterNetworkID {
+						return n.NetworkID, n.NetworkName, nil
+					}
+				}
+			}
+			// If we can't find the network name, return the network ID and empty name
+			return clusterNetworkID, "", nil
+		}
+
+		// Final fallback to empty values
+		return "", networkName, nil
+	}
+
+	// OSP: network_id is the HPC subnet catalog ID (fptcloud_hpc_subnet),
+	// reported back as infrastructureConfig.subnetIDBM — NOT
+	// infrastructureConfig.networks.id, which is osp_network_id instead and
+	// does not exist in the regular subnet catalog getNetworkByIdOrName reads.
+	hpcSubnet, err := mgpuClient.fetchHpcSubnetById(ctx, vpcId, platform, data.Spec.Provider.InfrastructureConfig.SubnetIDBM)
+	if err != nil {
+		return "", "", err
+	}
+	return hpcSubnet.ID, hpcSubnet.Name, nil
+}
+
+// getNetworkByIdOrName network_id, network name
+func getNetworkByIdOrName(ctx context.Context, client fptcloud_subnet.SubnetService, vpcId string, networkName string, networkId string) (string, string, error) {
+	if networkName != "" && networkId != "" {
+		return "", "", errors.New("only specify network name or id")
+	}
+
+	if networkName != "" {
+		tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network "+networkName)
+
+		networks, err := client.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{
+			NetworkName: networkName,
+			NetworkID:   networkId,
+			VpcId:       vpcId,
+		})
+		if err != nil {
+			return "", "", err
+		}
+
+		return networks.NetworkID, networks.NetworkName, nil
+	} else {
+		tflog.Info(ctx, "Resolving network ID for VPC "+vpcId+", network_id "+networkId)
+
+		networks, err := client.ListSubnet(vpcId)
+		if err != nil {
+			return "", "", err
+		}
+
+		for _, n := range *networks {
+			if n.NetworkID == networkId {
+				return n.NetworkID, n.NetworkName, nil
+			}
+		}
+
+		return "", "", errors.New("no such network found")
+	}
+}
+
+func TopFields() map[string]schema.Attribute {
+	topLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
+	requiredStrings := []string{
+		"vpc_id", "cluster_name", "network_id", "ssh_key_id",
+	}
+	// Optional string fields
+	optionalStrings := []string{
+		"edge_gateway_name", "edge_gateway_id", "purpose",
+	}
+	// Optional string fields that cannot be changed on a live cluster: the
+	// backend has no endpoint for them, so changing one has to recreate the
+	// cluster rather than silently plan an in-place update that would fail or,
+	// worse, appear to succeed. See SRS 11.3.
+	//
+	// k8s_version and purpose stay out of this list on purpose: the former has
+	// its own upgrade endpoint, and the latter is rejected by ValidateUpdate
+	// with a clearer message than a surprise replacement would give.
+	immutableOptionalStrings := []string{
+		"network_type", "pod_network", "pod_prefix", "service_network", "service_prefix",
+		// Bare metal has no working upgrade endpoint (the console hides the
+		// action too), so a new version means a new cluster.
+		"k8s_version",
+	}
+	// Required int fields
+	requiredInts := []string{}
+	// Optional int fields
+	optionalInts := []string{"k8s_max_pod", "network_node_prefix"}
+	// Optional bool fields
+	optionalBools := []string{}
+	// Optional list fields
+	optionalLists := []string{}
+
+	for _, attribute := range requiredStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Required:      true,
+			PlanModifiers: forceNewPlanModifiersString,
+			Description:   descriptions[attribute],
+		}
+	}
+
+	// internal_subnet_lb is Required but NOT ForceNew: updateInternalSubnetLb
+	// (utils.go) updates it in place via a dedicated API call, so changing it
+	// must not force cluster replacement.
+	topLevelAttributes["internal_subnet_lb"] = schema.StringAttribute{
+		Required:    true,
+		Description: descriptions["internal_subnet_lb"],
+	}
+
+	for _, attribute := range optionalStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersString,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range immutableOptionalStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Optional: true,
+			Computed: true,
+			// Both modifiers matter: UseStateForUnknown keeps the value out of
+			// every unrelated plan, RequiresReplace makes a real change
+			// recreate the cluster.
+			PlanModifiers: keepStateForceNewPlanModifiersString,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredInts {
+		topLevelAttributes[attribute] = schema.Int64Attribute{
+			Required:      true,
+			PlanModifiers: forceNewPlanModifiersInt,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalInts {
+		topLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersInt,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalBools {
+		topLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersBool,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		topLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:      true,
+			Computed:      true,
+			ElementType:   types.StringType,
+			PlanModifiers: keepStatePlanModifiersList,
+			Description:   descriptions[attribute],
+		}
+	}
+
+	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
+		Description:   "Configuration for cluster autoscaler.",
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersObject,
+		AttributeTypes: map[string]attr.Type{
+			"is_enable_auto_scaling":           types.BoolType,
+			"scale_down_delay_after_add":       types.Int64Type,
+			"scale_down_delay_after_delete":    types.Int64Type,
+			"scale_down_delay_after_failure":   types.Int64Type,
+			"scale_down_unneeded_time":         types.Int64Type,
+			"scale_down_utilization_threshold": types.Float64Type,
+			"scan_interval":                    types.Int64Type,
+			"expander":                         types.StringType,
+		},
+	}
+
+	// software is a Set: a cluster can carry several operators at once, and
+	// their order carries no meaning — reordering them in config must not
+	// produce a plan diff.
+	topLevelAttributes["gpu_software"] = schema.SetAttribute{
+		Description:   descriptions["gpu_software"],
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersSet,
+		ElementType:   types.ObjectType{AttrTypes: softwareAttrTypes},
+	}
+
+	topLevelAttributes["cluster_endpoint_access"] = schema.ObjectAttribute{
+		Description:   "Configuration for cluster endpoint access.",
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersObject,
+		AttributeTypes: map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+	}
+
+	return topLevelAttributes
+}
+
+func PoolFields() map[string]schema.Attribute {
+	poolLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
+	requiredStrings := []string{
+		"name",
+	}
+	// Required string fields that cannot be changed on an existing pool.
+	// configure-worker-cluster treats flavor as optional for pools that
+	// already exist and ignores a new value (SRS 4.1), so the pool has to be
+	// recreated instead.
+	//
+	// name stays out of this list: renaming a pool is how you replace one —
+	// configure-worker-cluster drops the pool missing from the list and
+	// creates the newly named one, leaving the rest of the cluster alone.
+	immutableRequiredStrings := []string{
+		"hpc_flavor_id",
+	}
+	// Optional string fields
+	optionalStrings := []string{"network_name", "network_id", "container_runtime", "hpc_flavor_name", "gpu_type"}
+	// Required int fields
+	requiredInts := []string{"hpc_number_server"}
+	// Optional int fields
+	optionalInts := []string{}
+	// Required bool fields
+	requiredBools := []string{}
+	// Optional bool fields
+	optionalBools := []string{"worker_base"}
+	// Optional list fields
+	optionalLists := []string{"tags"}
+
+	for _, attribute := range requiredStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range immutableRequiredStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Required:      true,
+			PlanModifiers: forceNewPlanModifiersString,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersString,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredInts {
+		poolLevelAttributes[attribute] = schema.Int64Attribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalInts {
+		poolLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersInt,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredBools {
+		poolLevelAttributes[attribute] = schema.BoolAttribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+
+	for _, attribute := range optionalBools {
+		poolLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:      true,
+			Computed:      true,
+			PlanModifiers: keepStatePlanModifiersBool,
+			Description:   descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		poolLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:      true,
+			Computed:      true,
+			ElementType:   types.StringType,
+			PlanModifiers: keepStatePlanModifiersList,
+			Description:   descriptions[attribute],
+		}
+	}
+
+	// kv is a Set (not a List): entries are unordered key/value pairs, so
+	// reordering them in config must not produce a plan diff, and the API
+	// response order (a Go map, effectively random) must not be rejected as
+	// inconsistent with the plan.
+	poolLevelAttributes["kv"] = schema.SetAttribute{
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersSet,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"name":  types.StringType,
+				"value": types.StringType,
+			},
+		},
+	}
+
+	// taints is a Set for the same reason as kv: entries are unordered, so
+	// reordering them in config must not produce a plan diff, and the API
+	// response order must not be rejected as inconsistent with the plan.
+	poolLevelAttributes["taints"] = schema.SetAttribute{
+		Optional:      true,
+		Computed:      true,
+		PlanModifiers: keepStatePlanModifiersSet,
+		ElementType: types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"key":    types.StringType,
+				"value":  types.StringType,
+				"effect": types.StringType,
+			},
+		},
+	}
+
+	// The three GPU blocks are optional and not computed: when the user does
+	// not set one, nothing is sent to the API for any of its fields. They
+	// mirror how the console splits GPU configuration for a worker group:
+	// which driver, how GPUs are shared, and how they are partitioned.
+	poolLevelAttributes["gpu_driver"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["gpu_driver"],
+		AttributeTypes: gpuDriverAttrTypes,
+	}
+
+	poolLevelAttributes["gpu_sharing"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["gpu_sharing"],
+		AttributeTypes: gpuSharingAttrTypes,
+	}
+
+	return poolLevelAttributes
+}
+
+// MapTerraformToJson map terraform to json to CREATE
+func MapTerraformToJson(r *resourceManagedGpuCluster, ctx context.Context, from *managedGpuCluster, to *managedGpuClusterJson, vpcId string, platform string) *diag2.ErrorDiagnostic {
+	to.ClusterName = from.ClusterName.ValueString()
+	to.K8SVersion = from.K8SVersion.ValueString()
+	to.Purpose = from.Purpose.ValueString()
+
+	var defaultNetworkID, defaultNetworkName string
+
+	// network_id on OSP comes from the HPC subnet catalog (fptcloud_hpc_subnet),
+	// a different catalog from the regular VMW-style subnet listing
+	// (fptcloud_subnet) — the two do not share IDs, so resolving it against
+	// ListSubnet would always fail with "no such network found". Resolve
+	// network_id/network_name and vm_subnet/osp_network_id from the same
+	// HPC subnet lookup instead.
+	if strings.EqualFold(platform, "osp") {
+		hpcSubnet, err := r.mgpuClusterClient.fetchHpcSubnetById(ctx, vpcId, platform, from.NetworkID.ValueString())
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error resolving network_id", err.Error())
+			return &d
+		}
+		defaultNetworkID = hpcSubnet.ID
+		defaultNetworkName = hpcSubnet.Name
+		to.VmSubnet = hpcSubnet.SubnetCidr
+		to.OspNetworkId = hpcSubnet.OspNetworkId
+	} else {
+		networkID, networkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", from.NetworkID.ValueString())
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error getting default network", err.Error())
+			return &d
+		}
+		defaultNetworkID = networkID
+		defaultNetworkName = networkName
+	}
+
+	pools := make([]*managedGpuClusterPoolJson, 0)
+	for _, item := range from.Pools {
+		name := item.WorkerPoolID.ValueString()
+
+		// KVs
+		kvs := make([]map[string]string, 0)
+		if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
+			// Sort KV blocks by key name for a deterministic request payload
+			for _, kv := range sortKVByKey(item.Kv) {
+				if kv.Name.IsNull() && kv.Value.IsNull() {
+					continue
+				}
+				key := kv.Name.ValueString()
+				val := kv.Value.ValueString()
+				if key == "" && val == "" {
+					continue
+				}
+
+				// Skip system-generated keys when sending request
+				if isSystemGeneratedKey(key) {
+					continue
+				}
+
+				kvs = append(kvs, map[string]string{key: val})
+			}
+		}
+
+		// Taints
+		taints := make([]map[string]interface{}, 0)
+		if !item.Taints.IsNull() && !item.Taints.IsUnknown() {
+			for _, taintElement := range item.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					key := taintAttrs["key"].(types.String)
+					value := taintAttrs["value"].(types.String)
+					effect := taintAttrs["effect"].(types.String)
+
+					if key.IsNull() && value.IsNull() && effect.IsNull() {
+						continue
+					}
+					keyStr := key.ValueString()
+					valStr := value.ValueString()
+					effectStr := effect.ValueString()
+					if keyStr == "" && valStr == "" && effectStr == "" {
+						continue
+					}
+					taintMap := map[string]interface{}{
+						keyStr: map[string]string{
+							"value":  valStr,
+							"effect": effectStr,
+						},
+					}
+					taints = append(taints, taintMap)
+				}
+			}
+		}
+
+		driverInstallationType, gpuDriverVersion := gpuDriverFields(item.GpuDriver)
+
+		gpuTemplateVersion, err := r.resolveGpuTemplateVersion(ctx, vpcId, platform, from.K8SVersion.ValueString(), driverInstallationType, gpuDriverVersion)
+		if err != nil {
+			d := diag2.NewErrorDiagnostic("Error resolving gpu_template_version", err.Error())
+			return &d
+		}
+
+		migStrategy, migProfile, sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
+
+		newItem := &managedGpuClusterPoolJson{
+			HpcFlavorId:            item.HpcFlavorId.ValueString(),
+			HpcFlavorName:          item.HpcFlavorName.ValueString(),
+			HpcNumberServer:        item.HpcNumberServer.ValueInt64(),
+			WorkerPoolID:           &name,
+			WorkerBase:             item.WorkerBase.ValueBool(),
+			MaxClient:              maxClient,
+			GpuDriverVersion:       gpuDriverVersion,
+			DriverInstallationType: driverInstallationType,
+			GpuTemplateVersion:     gpuTemplateVersion,
+			Tags:                   listToTagsString(item.Tags),
+			IsCreate:               true,
+			IsScale:                false,
+			IsOthers:               false,
+			// Bare metal pools are a fixed server count, so there is no
+			// min/max range to autoscale between.
+			AutoScale:         false,
+			IsDisplayGPU:      false,
+			ContainerRuntime:  item.ContainerRuntime.ValueString(),
+			Kv:                kvs,
+			Taints:            taints,
+			GpuType:           item.GpuType.ValueString(),
+			MigProfile:        migProfileForRequest(migProfile),
+			WorkerMigStrategy: migStrategy,
+			SharingClient:     sharingClient,
+		}
+
+		if item.NetworkName.ValueString() == "" && item.NetworkID.ValueString() == "" {
+			newItem.NetworkName = defaultNetworkName
+			newItem.NetworkID = defaultNetworkID
+		} else if item.NetworkID.ValueString() == "" {
+			// If network_id is empty but network_name is provided, use cluster's network_id
+			newItem.NetworkName = item.NetworkName.ValueString()
+			newItem.NetworkID = defaultNetworkID
+		} else if item.NetworkName.ValueString() == "" {
+			// If network_id is provided but network_name is empty, use cluster's network_name
+			newItem.NetworkName = defaultNetworkName
+			newItem.NetworkID = item.NetworkID.ValueString()
+		} else {
+			if item.NetworkName.ValueString() == "" {
+				_, networkName, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, "", item.NetworkID.ValueString())
+				if err != nil {
+					d := diag2.NewErrorDiagnostic("Error getting network by id", err.Error())
+					return &d
+				}
+				newItem.NetworkName = networkName
+				newItem.NetworkID = item.NetworkID.ValueString()
+			} else {
+				networkID, _, err := getNetworkByIdOrName(ctx, r.subnetClient, vpcId, item.NetworkName.ValueString(), "")
+				if err != nil {
+					d := diag2.NewErrorDiagnostic("Error getting network by name", err.Error())
+					return &d
+				}
+				newItem.NetworkID = networkID
+				newItem.NetworkName = item.NetworkName.ValueString()
+			}
+		}
+
+		pools = append(pools, newItem)
+	}
+	to.Pools = pools
+
+	to.NetworkID = from.NetworkID.ValueString()
+	to.PodNetwork = from.PodNetwork.ValueString()
+	to.PodPrefix = from.PodPrefix.ValueString()
+	to.ServiceNetwork = from.ServiceNetwork.ValueString()
+	to.ServicePrefix = from.ServicePrefix.ValueString()
+	to.K8SMaxPod = from.K8SMaxPod.ValueInt64()
+	to.NetworkType = from.NetworkType.ValueString()
+	to.EdgeGatewayId = from.EdgeGatewayId.ValueString()
+
+	// Bare-metal-only fields.
+	to.NetworkNodePrefix = from.NetworkNodePrefix.ValueInt64()
+
+	// ssh_name and ssh_public_key are resolved from ssh_id — the user only
+	// sets ssh_id (e.g. from the fptcloud_ssh data source), same as
+	// vm_subnet/osp_network_id being resolved from network_id.
+	sshKey, err := r.sshClient.FindSSHKey(from.SshId.ValueString())
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error resolving ssh_id", err.Error())
+		return &d
+	}
+	to.SshId = sshKey.ID
+	to.SshName = sshKey.Name
+	to.SshPublicKey = sshKey.PublicKey
+
+	platform, e := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if e != nil {
+		d := diag2.NewErrorDiagnostic("Error getting platform for VPC "+vpcId, e.Error())
+		return &d
+	}
+
+	// Both platforms take the same wire field; only the meaning of the value differs
+	// (OSP: subnet ID, VMW: subnet CIDR).
+	to.InternalSubnetLb = from.InternalSubnetLb.ValueString()
+
+	if strings.ToLower(platform) == "osp" {
+		to.EdgeGatewayId = ""
+		to.EdgeGatewayName = ""
+
+		// lbInternalNetwork mirrors the subnet backing internal_subnet_lb
+		// (on OSP, internal_subnet_lb is a subnet ID). Left unset when
+		// internal_subnet_lb is not configured.
+		if subnetId := from.InternalSubnetLb.ValueString(); subnetId != "" {
+			subnet, subnetErr := r.findNetworkSubnetById(vpcId, subnetId)
+			if subnetErr != nil {
+				return subnetErr
+			}
+			to.LbInternalNetwork = lbInternalNetworkFromSubnet(subnet)
+		}
+	} else {
+		// get edge gateway name
+		edgeGatewayId := to.EdgeGatewayId
+		edge, err := r.GetEdgeGateway(ctx, edgeGatewayId, vpcId)
+		if err != nil {
+			return err
+		}
+		to.EdgeGatewayName = edge.Name
+	}
+
+	if !from.ClusterEndpointAccess.IsNull() && !from.ClusterEndpointAccess.IsUnknown() {
+		attrs := from.ClusterEndpointAccess.Attributes()
+
+		typeStr := attrs["type"].(types.String).ValueString()
+
+		allowCidrsAttr := attrs["allow_cidr"].(types.List)
+		var allowCidrs []string
+		for _, v := range allowCidrsAttr.Elements() {
+			allowCidrs = append(allowCidrs, v.(types.String).ValueString())
+		}
+
+		to.ClusterEndpointAccess = &ClusterEndpointAccessJson{
+			Type:      typeStr,
+			AllowCidr: allowCidrs,
+		}
+	}
+
+	if !from.ClusterAutoscaler.IsNull() && !from.ClusterAutoscaler.IsUnknown() {
+		autoscalerAttrs := from.ClusterAutoscaler.Attributes()
+
+		clusterAutoscaler := map[string]interface{}{
+			"isEnableAutoScaling":           autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool(),
+			"scaleDownDelayAfterAdd":        autoscalerAttrs["scale_down_delay_after_add"].(types.Int64).ValueInt64(),
+			"scaleDownDelayAfterDelete":     autoscalerAttrs["scale_down_delay_after_delete"].(types.Int64).ValueInt64(),
+			"scaleDownDelayAfterFailure":    autoscalerAttrs["scale_down_delay_after_failure"].(types.Int64).ValueInt64(),
+			"scaleDownUnneededTime":         autoscalerAttrs["scale_down_unneeded_time"].(types.Int64).ValueInt64(),
+			"scaleDownUtilizationThreshold": autoscalerAttrs["scale_down_utilization_threshold"].(types.Float64).ValueFloat64(),
+			"scanInterval":                  autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64(),
+			"expander":                      strings.ToLower(autoscalerAttrs["expander"].(types.String).ValueString()),
+		}
+
+		to.ClusterAutoscaler = clusterAutoscaler
+	}
+
+	// software is not part of the create-cluster body: operators are installed
+	// by the separate GPU-software call that follows it (see gpu_software.go).
+	// Real console requests carry no such field either.
+
+	to.TypeCreate = "create"
+
+	return nil
+}
+
+// objectString reads one string attribute out of an object, treating a null or
+// unknown value as absent rather than asserting on it.
+func objectString(attrs map[string]attr.Value, name string) string {
+	v, ok := attrs[name].(types.String)
+	if !ok || v.IsNull() || v.IsUnknown() {
+		return ""
+	}
+	return v.ValueString()
+}
+
+// objectInt64 is objectString's counterpart for numeric attributes.
+func objectInt64(attrs map[string]attr.Value, name string) int64 {
+	v, ok := attrs[name].(types.Int64)
+	if !ok || v.IsNull() || v.IsUnknown() {
+		return 0
+	}
+	return v.ValueInt64()
+}
+
+// gpuDriverFields reads installation_type and version out of the gpu_driver
+// block, treating a null or unknown block as both fields absent.
+func gpuDriverFields(gpuDriver types.Object) (installationType string, version string) {
+	if gpuDriver.IsNull() || gpuDriver.IsUnknown() {
+		return "", ""
+	}
+	attrs := gpuDriver.Attributes()
+	return objectString(attrs, "installation_type"), objectString(attrs, "version")
+}
+
+// resolveGpuTemplateVersion derives gpuTemplateVersion from the gpu-drivers
+// catalog entry matching driverInstallationType/gpuDriverVersion (its
+// imageID) — the user only picks installation_type/version in gpu_driver;
+// there is no Terraform field for gpu_template_version. Returns "" when
+// driverInstallationType is empty (gpu_driver not set) so callers can send
+// nothing, matching how the rest of the wire fields behave when the block is
+// absent.
+func (r *resourceManagedGpuCluster) resolveGpuTemplateVersion(ctx context.Context, vpcId, platform, k8sVersion, driverInstallationType, gpuDriverVersion string) (string, error) {
+	if driverInstallationType == "" {
+		return "", nil
+	}
+
+	drivers, err := r.mgpuClusterClient.fetchGpuDrivers(ctx, vpcId, platform, driverInstallationType, k8sVersion)
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range drivers {
+		if entry.Value == gpuDriverVersion {
+			return entry.ImageID, nil
+		}
+	}
+
+	return "", nil
+}
+
+// gpuDriverAttrTypes is the gpu_driver object's attribute type map, shared by
+// every place that builds or reads a gpu_driver types.Object.
+var gpuDriverAttrTypes = map[string]attr.Type{
+	"installation_type": types.StringType,
+	"version":           types.StringType,
+}
+
+// gpuDriverObjectValue builds the gpu_driver state value read back from the
+// API. When the worker reports no installation type, the block is left null
+// rather than an object of empty strings, so a config that never set
+// gpu_driver does not see a permanent diff.
+func gpuDriverObjectValue(installationType, version string) types.Object {
+	if installationType == "" && version == "" {
+		return types.ObjectNull(gpuDriverAttrTypes)
+	}
+	return types.ObjectValueMust(gpuDriverAttrTypes, map[string]attr.Value{
+		"installation_type": types.StringValue(installationType),
+		"version":           types.StringValue(version),
+	})
+}
+
+// gpuSharingAttrTypes is the gpu_sharing object's attribute type map.
+var gpuSharingAttrTypes = map[string]attr.Type{
+	"mig_strategy":        types.StringType,
+	"mig_profile":         types.StringType,
+	"sharing_client_type": types.StringType,
+	"max_client":          types.Int64Type,
+}
+
+// gpuSharingFields reads the gpu_sharing block, treating a null or unknown
+// block as every field absent.
+func gpuSharingFields(gpuSharing types.Object) (migStrategy, migProfile, clientType string, maxClient int64) {
+	if gpuSharing.IsNull() || gpuSharing.IsUnknown() {
+		return "", "", "", 0
+	}
+	attrs := gpuSharing.Attributes()
+	return objectString(attrs, "mig_strategy"),
+		objectString(attrs, "mig_profile"),
+		objectString(attrs, "sharing_client_type"),
+		objectInt64(attrs, "max_client")
+}
+
+// migProfileForRequest is the mig profile as create-cluster wants it: a pool
+// with no MIG still carries a profile saying so ("all-disabled") rather than
+// omitting the field.
+func migProfileForRequest(profile string) string {
+	if profile == "" {
+		return gpuMigDisabled
+	}
+	return profile
+}
+
+// gpuSharingObjectValue builds the gpu_sharing state value read back from the
+// GPU-software endpoint.
+//
+// prior is whatever the pool already had in state, and it decides what an
+// all-off reading means. The API cannot tell the two cases apart — a pool that
+// never configured sharing and one that configured NONE everywhere both read
+// back as NONE/all-disabled — but Terraform can:
+//
+//   - prior null (config never set the block): stay null, otherwise a config
+//     without gpu_sharing would diff forever.
+//   - prior set (config asked for NONE explicitly): keep an object carrying
+//     those NONE values. Collapsing it to null here would break the plan's
+//     promise and fail the apply with "was object, but now null".
+//
+// priorGpuSharingByPool indexes the gpu_sharing values already in state by
+// pool name, for gpuSharingObjectValue to disambiguate an all-off reading.
+func priorGpuSharingByPool(pools []*managedGpuClusterPool) map[string]types.Object {
+	prior := make(map[string]types.Object, len(pools))
+	for _, pool := range pools {
+		if pool == nil {
+			continue
+		}
+		prior[pool.WorkerPoolID.ValueString()] = pool.GpuSharing
+	}
+	return prior
+}
+
+func gpuSharingObjectValue(prior types.Object, migStrategy, migProfile, clientType string, maxClient int64) types.Object {
+	allOff := migStrategy == "" && migProfile == "" && clientType == "" && maxClient == 0
+	priorSet := !prior.IsNull() && !prior.IsUnknown()
+
+	if allOff && !priorSet {
+		return types.ObjectNull(gpuSharingAttrTypes)
+	}
+
+	if allOff {
+		// Echo back what the config asked for rather than the empty strings
+		// normalizeGpuNone produced, so state matches config exactly.
+		priorMigStrategy, priorMigProfile, priorClientType, priorMaxClient := gpuSharingFields(prior)
+		return types.ObjectValueMust(gpuSharingAttrTypes, map[string]attr.Value{
+			"mig_strategy":        stringOrNull(priorMigStrategy),
+			"mig_profile":         stringOrNull(priorMigProfile),
+			"sharing_client_type": stringOrNull(priorClientType),
+			"max_client":          types.Int64Value(priorMaxClient),
+		})
+	}
+
+	return types.ObjectValueMust(gpuSharingAttrTypes, map[string]attr.Value{
+		"mig_strategy":        stringOrNull(migStrategy),
+		"mig_profile":         stringOrNull(migProfile),
+		"sharing_client_type": stringOrNull(clientType),
+		"max_client":          types.Int64Value(maxClient),
+	})
+}
+
+// remapPools
+func (r *resourceManagedGpuCluster) remapPools(ctx context.Context, vpcId, platform, k8sVersion string, item *managedGpuClusterPool, name string, clusterNetworkID string, clusterNetworkName string) (*managedGpuClusterPoolJson, error) {
+
+	var workerPoolID *string
+	if name == "" || name == "worker-new" || item.WorkerPoolID.IsNull() || item.WorkerPoolID.IsUnknown() {
+		workerPoolID = nil // new pool
+	} else {
+		workerPoolID = &name // existing pool
+	}
+
+	kvs := make([]map[string]string, 0)
+	if !item.Kv.IsNull() && !item.Kv.IsUnknown() {
+		// Sort KV blocks by key name for a deterministic request payload
+		for _, kv := range sortKVByKey(item.Kv) {
+			if kv.Name.IsNull() && kv.Value.IsNull() {
+				continue
+			}
+			key := kv.Name.ValueString()
+			val := kv.Value.ValueString()
+			if key == "" && val == "" {
+				continue
+			}
+
+			// Skip system-generated keys when sending request
+			if isSystemGeneratedKey(key) {
+				continue
+			}
+
+			kvs = append(kvs, map[string]string{key: val})
+		}
+	}
+
+	taints := make([]map[string]interface{}, 0)
+	if !item.Taints.IsNull() && !item.Taints.IsUnknown() {
+		for _, taintElement := range item.Taints.Elements() {
+			if taintObj, ok := taintElement.(types.Object); ok {
+				taintAttrs := taintObj.Attributes()
+				key := taintAttrs["key"].(types.String)
+				value := taintAttrs["value"].(types.String)
+				effect := taintAttrs["effect"].(types.String)
+
+				if key.IsNull() && value.IsNull() && effect.IsNull() {
+					continue
+				}
+				keyStr := key.ValueString()
+				valStr := value.ValueString()
+				effectStr := effect.ValueString()
+				if keyStr == "" && valStr == "" && effectStr == "" {
+					continue
+				}
+				taintMap := map[string]interface{}{
+					keyStr: map[string]string{
+						"value":  valStr,
+						"effect": effectStr,
+					},
+				}
+				taints = append(taints, taintMap)
+			}
+		}
+	}
+
+	// Handle network ID and name for VMW platform
+	networkID := item.NetworkID.ValueString()
+	networkName := item.NetworkName.ValueString()
+
+	// If network ID is empty (common for VMW platform), use cluster's network ID and name
+	if networkID == "" {
+		networkID = clusterNetworkID
+		networkName = clusterNetworkName
+	}
+
+	driverInstallationType, gpuDriverVersion := gpuDriverFields(item.GpuDriver)
+
+	gpuTemplateVersion, err := r.resolveGpuTemplateVersion(ctx, vpcId, platform, k8sVersion, driverInstallationType, gpuDriverVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	migStrategy, migProfile, sharingClient, maxClient := gpuSharingFields(item.GpuSharing)
+
+	newItem := &managedGpuClusterPoolJson{
+		WorkerPoolID:           workerPoolID,
+		HpcFlavorId:            item.HpcFlavorId.ValueString(),
+		HpcFlavorName:          item.HpcFlavorName.ValueString(),
+		HpcNumberServer:        item.HpcNumberServer.ValueInt64(),
+		MaxClient:              maxClient,
+		NetworkID:              networkID,
+		NetworkName:            networkName,
+		DriverInstallationType: driverInstallationType,
+		GpuDriverVersion:       gpuDriverVersion,
+		GpuTemplateVersion:     gpuTemplateVersion,
+		Tags:                   listToTagsString(item.Tags),
+		ContainerRuntime:       item.ContainerRuntime.ValueString(),
+		Kv:                     kvs,
+		Taints:                 taints,
+		GpuType:                item.GpuType.ValueString(),
+		MigProfile:             migProfileForRequest(migProfile),
+		WorkerMigStrategy:      migStrategy,
+		SharingClient:          sharingClient,
+		// Bare metal pools are a fixed server count, so there is no min/max
+		// range to autoscale between.
+		AutoScale:    false,
+		IsDisplayGPU: false,
+		IsCreate:     false,
+		IsScale:      false,
+		IsOthers:     false,
+		WorkerBase:   item.WorkerBase.ValueBool(),
+	}
+
+	// Set IsCreate for new pool
+	if workerPoolID == nil {
+		newItem.IsCreate = true
+	}
+
+	return newItem, nil
+}
+
+// checkForError
+func (r *resourceManagedGpuCluster) CheckForError(a []byte) *diag2.ErrorDiagnostic {
+	var re map[string]interface{}
+	err := json.Unmarshal(a, &re)
+	if err != nil {
+		res := diag2.NewErrorDiagnostic("Error unmarshalling response", err.Error())
+		return &res
+	}
+	if e, ok := re["error"]; ok {
+		if e == true {
+			res := diag2.NewErrorDiagnostic("Response contained an error field", "Response body was "+string(a))
+			return &res
+		}
+	}
+	return nil
+}
+
+// diff
+func (r *resourceManagedGpuCluster) Diff(ctx context.Context, from *managedGpuCluster, to *managedGpuCluster) *diag2.ErrorDiagnostic {
+	// Kubernetes upgrades, hibernation and auto-upgrade are not handled here:
+	// bare-metal clusters do not support them (see the note in types.go), and
+	// k8s_version forces replacement rather than an in-place upgrade.
+
+	// Handle cluster endpoint CIDR changes
+	if !to.ClusterEndpointAccess.Equal(from.ClusterEndpointAccess) {
+		err := r.updateClusterEndpointCIDR(ctx, to, from)
+		if err != nil {
+			return err
+		}
+	}
+
+	if !to.ClusterAutoscaler.Equal(from.ClusterAutoscaler) {
+		err := r.updateClusterAutoscaler(ctx, to, from)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Handle internal subnet LB changes
+	if !to.InternalSubnetLb.Equal(from.InternalSubnetLb) {
+		err := r.updateInternalSubnetLb(ctx, to, from)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Worker pool changes
+	if r.DiffPool(ctx, from, to) {
+		if err := r.updateWorkerPools(ctx, from, to); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// diffPool
+func (r *resourceManagedGpuCluster) DiffPool(ctx context.Context, from *managedGpuCluster, to *managedGpuCluster) bool {
+	fromPool := map[string]*managedGpuClusterPool{}
+	toPool := map[string]*managedGpuClusterPool{}
+
+	kvMap := func(p *managedGpuClusterPool) map[string]string {
+		m := map[string]string{}
+		// Treat both null and empty Set as empty map for comparison
+		if !p.Kv.IsNull() && !p.Kv.IsUnknown() {
+			for _, kvElement := range p.Kv.Elements() {
+				if kvObj, ok := kvElement.(types.Object); ok {
+					kvAttrs := kvObj.Attributes()
+					k := kvAttrs["name"].(types.String).ValueString()
+					v := kvAttrs["value"].(types.String).ValueString()
+					if k != "" || v != "" {
+						m[k] = v
+					}
+				}
+			}
+		}
+		return m
+	}
+
+	taintMap := func(p *managedGpuClusterPool) map[string]interface{} {
+		m := map[string]interface{}{}
+		if !p.Taints.IsNull() && !p.Taints.IsUnknown() {
+			for _, taintElement := range p.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					k := taintAttrs["key"].(types.String).ValueString()
+					v := taintAttrs["value"].(types.String).ValueString()
+					effect := taintAttrs["effect"].(types.String).ValueString()
+					if k != "" || v != "" || effect != "" {
+						m[k] = map[string]string{
+							"value":  v,
+							"effect": effect,
+						}
+					}
+				}
+			}
+		}
+		return m
+	}
+	for _, pool := range from.Pools {
+		fromPool[pool.WorkerPoolID.ValueString()] = pool
+		fmt.Printf("fromPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
+	}
+	for _, pool := range to.Pools {
+		toPool[pool.WorkerPoolID.ValueString()] = pool
+		fmt.Printf("toPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
+	}
+	if len(fromPool) != len(toPool) {
+		return true
+	}
+	for _, pool := range from.Pools {
+		f := fromPool[pool.WorkerPoolID.ValueString()]
+		t := toPool[pool.WorkerPoolID.ValueString()]
+
+		// Skip KV comparison for system-generated labels (like nvidia.com/device-plugin.config)
+		userDefinedKvMap := filterUserDefinedKV(kvMap(f))
+		userDefinedTvMap := filterUserDefinedKV(kvMap(t))
+
+		if f.HpcNumberServer != t.HpcNumberServer ||
+			f.HpcFlavorId != t.HpcFlavorId ||
+			f.WorkerBase != t.WorkerBase ||
+			!f.Tags.Equal(t.Tags) ||
+			!f.GpuDriver.Equal(t.GpuDriver) ||
+			!f.GpuSharing.Equal(t.GpuSharing) ||
+			!reflect.DeepEqual(userDefinedKvMap, userDefinedTvMap) ||
+			!reflect.DeepEqual(taintMap(f), taintMap(t)) {
+			return true
+		}
+	}
+	return false
+}
+
+// InternalRead
+func (r *resourceManagedGpuCluster) InternalRead(ctx context.Context, id string, state *managedGpuCluster) (*managedGpuClusterReadResponse, error) {
+	vpcId := state.VpcId.ValueString()
+	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		return nil, err
+	}
+	platform = strings.ToLower(platform)
+	v1Path := commons.ApiPath.ManagedGpuClusterGet(vpcId, platform, id)
+	v2Path := commons.ApiPath.ManagedGpuClusterGetV2(vpcId, platform, id)
+	primaryPath, fallbackPath := v1Path, v2Path
+	if requiresV2API(state.K8SVersion.ValueString()) {
+		primaryPath, fallbackPath = v2Path, v1Path
+	}
+	a, err := r.mgpuClusterClient.sendGetV2Aware(primaryPath, fallbackPath, platform)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cluster read response
+	var d managedGpuClusterReadResponse
+	err = json.Unmarshal(a, &d)
+	if err != nil {
+		return nil, err
+	}
+	if d.Error {
+		return nil, fmt.Errorf("error: %v", d.Mess)
+	}
+	data := d.Data
+
+	// id
+	state.Id = types.StringValue(data.Metadata.Name)
+
+	// cluster_name
+	state.ClusterName = types.StringValue(getClusterName(data.Metadata.Name))
+
+	// vpc_id
+	state.VpcId = types.StringValue(vpcId)
+
+	// k8s_version
+	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
+
+	// pod_network, pod_prefix
+	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
+	state.PodNetwork = types.StringValue(podNetwork[0])
+	state.PodPrefix = types.StringValue(podNetwork[1])
+
+	// service_network, service_prefix
+	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
+	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
+	state.ServicePrefix = types.StringValue(serviceNetwork[1])
+
+	// k8s_max_pod
+	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
+
+	// network_node_prefix — the prefix length of infrastructureConfig.networks.workers
+	// (e.g. "10.102.17.0/24" -> 24). Bare-metal only; VMW does not report this CIDR.
+	state.NetworkNodePrefix = types.Int64Null()
+	if workersCidr := data.Spec.Provider.InfrastructureConfig.Networks.Workers; workersCidr != "" {
+		if parts := strings.Split(workersCidr, "/"); len(parts) == 2 {
+			if prefix, err := strconv.Atoi(parts[1]); err == nil {
+				state.NetworkNodePrefix = types.Int64Value(int64(prefix))
+			}
+		}
+	}
+
+	// network_type
+	state.NetworkType = types.StringValue(data.Spec.Networking.Type)
+
+	// purpose
+	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
+		state.Purpose = types.StringValue("public")
+	} else if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "firewall") {
+		state.Purpose = types.StringValue("firewall")
+	} else {
+		state.Purpose = types.StringValue("private")
+	}
+
+	// internal_subnet_lb
+	// OSP reports it as a subnet ID under internalNetworksLB; VMW reports it as a CIDR
+	// under networks.lbv2Subnet.
+	if strings.ToLower(platform) == "osp" {
+		internalSubnetLb := ""
+		if lb := data.Spec.Provider.InfrastructureConfig.InternalNetworksLB; lb != nil && lb.Id != "" {
+			// lb.Id is network/subnets' own internal id, not the network_id
+			// the user set internal_subnet_lb to (that's what
+			// fptcloud_subnet/findNetworkSubnetById match against) — resolve
+			// it back to the matching network_id.
+			if subnet, err := r.findNetworkSubnetByOwnId(vpcId, lb.Id); err == nil {
+				internalSubnetLb = subnet.NetworkID
+			} else {
+				tflog.Warn(ctx, "Could not resolve internal_subnet_lb's network_id: "+err.Error())
+			}
+		}
+		state.InternalSubnetLb = types.StringValue(internalSubnetLb)
+	} else {
+		state.InternalSubnetLb = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Lbv2Subnet)
+	}
+
+	// ssh_key_id — not computed, but must still be read back explicitly on
+	// Import (there is no prior config/state to carry it forward from).
+	if len(data.Spec.Provider.Workers) > 0 {
+		if sshId := data.Spec.Provider.Workers[0].ProviderConfig.SshKey.ID; sshId != "" {
+			state.SshId = types.StringValue(sshId)
+		}
+	}
+
+	// network_id of Cluster
+	if len(data.Spec.Provider.Workers) > 0 {
+		// Use the first worker to determine cluster network info
+		clusterNetworkID, _, err := getNetworkInfoByPlatform(ctx, r.subnetClient, r.mgpuClusterClient, vpcId, platform, data.Spec.Provider.Workers[0], &data)
+		if err == nil {
+			state.NetworkID = types.StringValue(clusterNetworkID)
+			tflog.Info(ctx, fmt.Sprintf("DEBUG: Set cluster NetworkID to: '%s'", clusterNetworkID))
+		} else {
+			tflog.Warn(ctx, fmt.Sprintf("DEBUG: Error getting cluster network info: %v", err))
+		}
+	}
+
+	// cluster_autoscaler
+	state.ClusterAutoscaler, _ = internalReadClusterAutoscaler(data.Spec.Kubernetes.ClusterAutoscaler)
+
+	// cluster_endpoint_access
+	state.ClusterEndpointAccess, _ = internalReadClusterEndpointAccess(data)
+
+	// edge_gateway_id
+	// if data.Spec.Provider.InfrastructureConfig.Networks.Id != "" {
+	// state.EdgeGatewayId = types.StringValue(data.Spec.Provider.InfrastructureConfig.Networks.Id)
+	// } else {
+	// state.EdgeGatewayId = types.StringNull()
+	// }
+	// edge_gateway_name and edge_gateway_id. A cluster without a gateway (every
+	// OSP one, where these are cleared before create) reads back as the empty
+	// string rather than null: both attributes are Optional+Computed, and a
+	// null state value cannot be carried across plans, so leaving them null
+	// makes every subsequent plan re-announce them as "(known after apply)".
+	gatewayRef := data.Spec.Provider.InfrastructureConfig.Networks.GatewayRef
+	if gatewayRef.Id != "" {
+		state.EdgeGatewayId = types.StringValue(gatewayRef.Id)
+		state.EdgeGatewayName = types.StringValue(gatewayRef.Name)
+	} else {
+		state.EdgeGatewayName = types.StringValue("")
+		state.EdgeGatewayId = types.StringValue("")
+	}
+
+	// pools
+	apiPools := make([]*managedGpuClusterPool, 0)
+
+	// gpu_type, gpu_sharing and mig live in the GPU-software backend, not in
+	// the shoot: get-shoot-specific reports none of them. Read them here so a
+	// pool's GPU configuration round-trips. A failure is not fatal — the
+	// cluster itself is readable without it (a cluster whose GPU-software
+	// install failed has no record there at all), so the blocks are just left
+	// null in that case.
+	gpuSoftware := readGpuSoftwareState(ctx, r.mgpuClusterClient, r.vpcClient, r.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+	gpuWorkers := gpuSoftware.workers
+	state.Software = gpuSoftware.software
+
+	// What each pool had before this read. An all-off gpu_sharing reading is
+	// ambiguous on its own — see gpuSharingObjectValue — so the previous value
+	// decides whether it means "not configured" or "configured as NONE".
+	priorGpuSharing := priorGpuSharingByPool(state.Pools)
+
+	for _, worker := range data.Spec.Provider.Workers {
+		networkId, networkName, e := getNetworkInfoByPlatform(ctx, r.subnetClient, r.mgpuClusterClient, vpcId, platform, worker, &data)
+		if e != nil {
+			return nil, e
+		}
+
+		item := &managedGpuClusterPool{
+			// name
+			WorkerPoolID: types.StringValue(worker.Name),
+			// hpc_flavor_id — bare-metal servers report this as
+			// providerConfig.serverType, not a fptcloud.com/flavor_pool_*
+			// label (that label belongs to mfke's response shape, not mgpu's).
+			HpcFlavorId: types.StringValue(worker.ProviderConfig.ServerType),
+			// hpc_flavor_name
+			HpcFlavorName: types.StringValue(worker.Machine.Type),
+			// hpc_number_server — bare metal pools are a fixed server count,
+			// which Gardener still reports as a min == max worker range.
+			HpcNumberServer: types.Int64Value(int64(worker.Maximum)),
+			// network_id
+			NetworkID: types.StringValue(networkId),
+			// network_name
+			NetworkName: types.StringValue(networkName),
+			// container_runtime
+			ContainerRuntime: types.StringValue(worker.Cri.Name),
+			// tags
+			Tags: tagsStringToList(worker.Tags()),
+			// gpu_driver
+			GpuDriver: gpuDriverObjectValue(worker.Machine.Image.DriverInstallationType, worker.Machine.Image.GpuDriverVersion),
+			// worker_base
+			WorkerBase: types.BoolValue(worker.IsWorkerBase()),
+			// gpu_type and gpu_sharing: filled in below from the
+			// GPU-software backend, the only place that reports them.
+			GpuType:    types.StringNull(),
+			GpuSharing: types.ObjectNull(gpuSharingAttrTypes),
+		}
+
+		if gw, ok := gpuWorkers[worker.Name]; ok {
+			item.GpuType = stringOrNull(gw.GpuType)
+			item.GpuSharing = gpuSharingObjectValue(
+				priorGpuSharing[worker.Name],
+				normalizeGpuNone(gw.MigMode),
+				normalizeGpuNone(gw.MigProfile),
+				normalizeGpuNone(gw.SharingClientType),
+				gw.MaxClient,
+			)
+			// The GPU-software backend is the authoritative source for the
+			// driver too: the shoot reports machine.image.driverInstallationType
+			// as null even for pools that were created with one.
+			if driver := gpuDriverObjectValue(gw.DriverType, gw.DriverVersion); !driver.IsNull() {
+				item.GpuDriver = driver
+			}
+		}
+
+		// kv
+		labelMap := make(map[string]string)
+		if len(worker.Labels) > 0 {
+			// Convert labels to map for filtering
+			for _, l := range worker.Labels {
+				switch m := l.(type) {
+				case map[string]interface{}:
+					for k, v := range m {
+						vs := fmt.Sprint(v)
+						labelMap[k] = vs
+					}
+				case map[string]string:
+					for k, v := range m {
+						labelMap[k] = v
+					}
+				}
+			}
+		}
+
+		// Filter out system-generated labels
+		userDefinedLabels := filterUserDefinedKV(labelMap)
+
+		// kv is a Set, so element order carries no meaning to Terraform -
+		// no need to preserve/derive an order when rebuilding it from the
+		// API's label map.
+		kvElements := make([]attr.Value, 0, len(userDefinedLabels))
+		for k, v := range userDefinedLabels {
+			kvElements = append(kvElements, types.ObjectValueMust(
+				map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+				map[string]attr.Value{
+					"name":  types.StringValue(k),
+					"value": types.StringValue(v),
+				},
+			))
+		}
+		item.Kv = types.SetValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"name":  types.StringType,
+					"value": types.StringType,
+				},
+			},
+			kvElements,
+		)
+
+		// taints
+		taintElements := make([]attr.Value, 0)
+		if len(worker.Taints) > 0 {
+			for _, t := range worker.Taints {
+				switch taintData := t.(type) {
+				case map[string]interface{}:
+					for key, taintValue := range taintData {
+						if taintMap, ok := taintValue.(map[string]interface{}); ok {
+							value := ""
+							effect := ""
+							if v, exists := taintMap["value"]; exists {
+								value = fmt.Sprint(v)
+							}
+							if e, exists := taintMap["effect"]; exists {
+								effect = fmt.Sprint(e)
+							}
+							taintElements = append(taintElements, types.ObjectValueMust(
+								map[string]attr.Type{
+									"key":    types.StringType,
+									"value":  types.StringType,
+									"effect": types.StringType,
+								},
+								map[string]attr.Value{
+									"key":    types.StringValue(key),
+									"value":  types.StringValue(value),
+									"effect": types.StringValue(effect),
+								},
+							))
+						}
+					}
+				}
+			}
+		}
+
+		// Always create a set, even if empty
+		item.Taints = types.SetValueMust(
+			types.ObjectType{
+				AttrTypes: map[string]attr.Type{
+					"key":    types.StringType,
+					"value":  types.StringType,
+					"effect": types.StringType,
+				},
+			},
+			taintElements,
+		)
+
+		apiPools = append(apiPools, item)
+	}
+
+	state.Pools = apiPools
+
+	return &d, nil
+}
+
+// getEdgeGateway
+func (r *resourceManagedGpuCluster) GetEdgeGateway(_ context.Context, edgeId string, vpcId string) (*fptcloud_edge_gateway.EdgeGatewayData, *diag2.ErrorDiagnostic) {
+	path := commons.ApiPath.EdgeGatewayList(vpcId)
+	res, err := r.client.SendGetRequest(path)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return nil, &d
+	}
+	var resp fptcloud_edge_gateway.EdgeGatewayResponse
+	if err = json.Unmarshal(res, &resp); err != nil {
+		diag := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return nil, &diag
+	}
+	for _, item := range resp.Data {
+		if item.EdgeGatewayId == edgeId {
+			return &item, nil
+		}
+	}
+	diag := diag2.NewErrorDiagnostic("No such Edge Gateway in this VPC", fmt.Sprintf("No edge gateway with ID %s was found in VPC %s", edgeId, vpcId))
+	return nil, &diag
+}
+
+// getClusterName
+func getClusterName(name string) string {
+	var indices []int
+	for i, c := range name {
+		if c == '-' {
+			indices = append(indices, i)
+		}
+	}
+	if len(indices) == 0 {
+		return name
+	}
+	last := indices[len(indices)-1]
+	clusterName := string([]rune(name)[:last])
+	return clusterName
+}
+
+// errorCallingApi
+func errorCallingApi(s string) string {
+	return fmt.Sprintf("Error calling path: %s", s)
+}
+
+// Helper function to convert types.List to string with \n separator
+func listToTagsString(tagsList types.List) string {
+	if tagsList.IsNull() || tagsList.IsUnknown() {
+		return ""
+	}
+
+	var tags []string
+	for _, element := range tagsList.Elements() {
+		if stringVal, ok := element.(types.String); ok {
+			tags = append(tags, stringVal.ValueString())
+		}
+	}
+
+	return strings.Join(tags, "\n")
+}
+
+// Helper function to convert string with \n separator to types.List
+func tagsStringToList(tagsString string) types.List {
+	if tagsString == "" {
+		return types.ListValueMust(types.StringType, []attr.Value{})
+	}
+
+	tags := strings.Split(tagsString, "\n")
+	var elements []attr.Value
+	for _, tag := range tags {
+		if strings.TrimSpace(tag) != "" {
+			elements = append(elements, types.StringValue(strings.TrimSpace(tag)))
+		}
+	}
+
+	return types.ListValueMust(types.StringType, elements)
+}
+
+func (w *managedGpuClusterDataWorker) Tags() string {
+	return w.Annotations["tagging.fke.fptcloud.com/worker-tags"]
+}
+
+// MaxClient reads the maxClient value from the addons configuration
+// The maxClient is stored in spec.addons.gpuOperator.timeSliceConfig.maxClient
+// Format: ["pool-name:value"] e.g. ["gpu-test:2"]
+func (r *resourceManagedGpuCluster) MaxClientFromAddons(spec *managedGpuClusterDataSpec, poolName string) int64 {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return 0
+	}
+
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		// Parse format "pool-name:value" e.g. "gpu-test:2"
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			parts := strings.Split(maxClientStr, ":")
+			if len(parts) == 2 {
+				if value, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+					return value
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func (w *managedGpuClusterDataWorker) IsWorkerBase() bool {
+	return w.SystemComponents.Allow
+}
+
+func (r *resourceManagedGpuCluster) updateClusterEndpointCIDR(ctx context.Context, plan *managedGpuCluster, state *managedGpuCluster,
+) *diag2.ErrorDiagnostic {
+	vpcId := state.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+		return &d
+	}
+	platform = strings.ToLower(platform)
+	v1Path := commons.ApiPath.ManagedGpuClusterUpdateEndpointCIDR(vpcId, platform, state.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedGpuClusterUpdateEndpointCIDRV2(vpcId, platform, state.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(state.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
+
+	// Lấy type từ state
+	endpointAccess := state.ClusterEndpointAccess.Attributes()
+	endpointType := endpointAccess["type"].(types.String).ValueString()
+
+	// Convert allow_cidr (types.List -> []string)
+	allowCidrsList := plan.ClusterEndpointAccess.Attributes()["allow_cidr"].(types.List)
+	var allowCidrs []string
+	for _, e := range allowCidrsList.Elements() {
+		if s, ok := e.(types.String); ok && !s.IsNull() {
+			allowCidrs = append(allowCidrs, s.ValueString())
+		}
+	}
+
+	requestBody := map[string]interface{}{
+		"type":      endpointType, // lấy từ state
+		"allowCidr": allowCidrs,   // đúng key name theo API
+	}
+
+	resp, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+
+	tflog.Info(ctx, "Cluster endpoint CIDR API response: "+string(resp))
+	tflog.Info(ctx, "Successfully updated cluster endpoint CIDR.")
+
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+
+	return nil
+}
+
+func (r *resourceManagedGpuCluster) updateClusterAutoscaler(ctx context.Context, plan *managedGpuCluster, state *managedGpuCluster) *diag2.ErrorDiagnostic {
+	vpcId := state.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error getting platform", err.Error())
+		return &d
+	}
+	platform = strings.ToLower(platform)
+	v1Path := commons.ApiPath.ManagedGpuClusterUpdateClusterAutoscaler(vpcId, platform, state.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedGpuClusterUpdateClusterAutoscalerV2(vpcId, platform, state.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(state.K8SVersion.ValueString()) {
+		path, fallbackPath = v2Path, v1Path
+	}
+
+	// Get cluster autoscaler attributes from plan
+	autoscalerAttrs := plan.ClusterAutoscaler.Attributes()
+
+	requestBody := map[string]interface{}{
+		"isEnableAutoScaling":           autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool(),
+		"scaleDownDelayAfterAdd":        autoscalerAttrs["scale_down_delay_after_add"].(types.Int64).ValueInt64(),
+		"scaleDownDelayAfterDelete":     autoscalerAttrs["scale_down_delay_after_delete"].(types.Int64).ValueInt64(),
+		"scaleDownDelayAfterFailure":    autoscalerAttrs["scale_down_delay_after_failure"].(types.Int64).ValueInt64(),
+		"scaleDownUnneededTime":         autoscalerAttrs["scale_down_unneeded_time"].(types.Int64).ValueInt64(),
+		"scaleDownUtilizationThreshold": autoscalerAttrs["scale_down_utilization_threshold"].(types.Float64).ValueFloat64(),
+		"scanInterval":                  autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64(),
+		"expander":                      strings.ToLower(autoscalerAttrs["expander"].(types.String).ValueString()),
+	}
+
+	resp, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+
+	tflog.Info(ctx, "Cluster autoscaler API response: "+string(resp))
+
+	// Check for API errors in response
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+
+	tflog.Info(ctx, "Successfully updated cluster autoscaler.")
+
+	return nil
+}
+
+func (r *resourceManagedGpuCluster) updateInternalSubnetLb(ctx context.Context, plan *managedGpuCluster, state *managedGpuCluster) *diag2.ErrorDiagnostic {
+	vpcId := state.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+	platform = strings.ToLower(platform)
+
+	internalSubnetLb := plan.InternalSubnetLb.ValueString()
+	if internalSubnetLb == "" {
+		d := diag2.NewErrorDiagnostic(
+			"internal_subnet_lb cannot be removed",
+			"Detaching the internal subnet LB from an existing cluster is not supported; specify a subnet or destroy the cluster.",
+		)
+		return &d
+	}
+
+	// VMW takes the CIDR verbatim, OSP expects the full subnet descriptor
+	var payload interface{} = internalSubnetLb
+	if platform == "osp" {
+		subnet, diagErr := r.findNetworkSubnetById(vpcId, internalSubnetLb)
+		if diagErr != nil {
+			return diagErr
+		}
+		payload = map[string]interface{}{
+			"label4sending": subnet.Name,
+			"label":         subnet.Description,
+			"value":         subnet.ID,
+			"cidr":          fmt.Sprintf("%s/%d", subnet.DefaultGateway, subnet.SubnetPrefixLength),
+			"networkType":   subnet.NetworkType,
+		}
+	}
+
+	// seedName is only known to the shoot itself, so read it back from the cluster
+	cluster, err := r.InternalRead(ctx, state.Id.ValueString(), state)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
+		return &d
+	}
+
+	requestBody := map[string]interface{}{
+		"internal_subnet_lb": payload,
+		"seedName":           cluster.Data.Spec.SeedName,
+	}
+
+	v1Path := commons.ApiPath.ManagedGpuClusterConfigInternalSubnetLb(vpcId, platform, state.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedGpuClusterConfigInternalSubnetLbV2(vpcId, platform, state.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(cluster.Data.Spec.Kubernetes.Version) {
+		path, fallbackPath = v2Path, v1Path
+	}
+	resp, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, requestBody)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+
+	tflog.Info(ctx, "Successfully updated internal subnet LB.")
+	return nil
+}
+
+// fetchNetworkSubnets lists every subnet from GET /v1/vmware/vpc/{vpcId}/network/subnets.
+// SubnetService itself is not used for this because none of its endpoints
+// report networkType or the prefix length, both of which config-internal-subnet-lb
+// requires.
+func (r *resourceManagedGpuCluster) fetchNetworkSubnets(vpcId string) ([]networkSubnet, *diag2.ErrorDiagnostic) {
+	path := commons.ApiPath.Subnet(vpcId)
+	res, err := r.client.SendGetRequest(path)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return nil, &d
+	}
+
+	var subnets networkSubnetListResponse
+	if err = json.Unmarshal(res, &subnets); err != nil {
+		d := diag2.NewErrorDiagnostic("Error unmarshalling subnets of VPC "+vpcId, err.Error())
+		return nil, &d
+	}
+
+	return subnets.Data, nil
+}
+
+// findNetworkSubnetById resolves the subnet backing internal_subnet_lb.
+// internal_subnet_lb is the subnet id the fptcloud_subnet data source reports
+// (Subnet.ID, backed by GET /v2/vpc/{vpcId}/networks) — matched here against
+// this endpoint's network_id field, not its own id, since the two are
+// different identifiers for the same subnet.
+func (r *resourceManagedGpuCluster) findNetworkSubnetById(vpcId string, subnetId string) (*networkSubnet, *diag2.ErrorDiagnostic) {
+	subnets, d := r.fetchNetworkSubnets(vpcId)
+	if d != nil {
+		return nil, d
+	}
+
+	for _, s := range subnets {
+		if s.NetworkID == subnetId {
+			return &s, nil
+		}
+	}
+
+	err := diag2.NewErrorDiagnostic(
+		"Subnet not found for internal_subnet_lb",
+		fmt.Sprintf("No subnet with ID %s exists in VPC %s", subnetId, vpcId),
+	)
+	return nil, &err
+}
+
+// findNetworkSubnetByOwnId resolves a network/subnets entry by its own id
+// (as opposed to its network_id) — needed to read internal_subnet_lb back:
+// the API reports internalNetworksLB.id using this endpoint's own id, which
+// must be translated back to the network_id the user's config uses.
+func (r *resourceManagedGpuCluster) findNetworkSubnetByOwnId(vpcId string, ownId string) (*networkSubnet, error) {
+	subnets, d := r.fetchNetworkSubnets(vpcId)
+	if d != nil {
+		return nil, errors.New(d.Detail())
+	}
+
+	for _, s := range subnets {
+		if s.ID == ownId {
+			return &s, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no subnet with id %s exists in VPC %s", ownId, vpcId)
+}
+
+func (r *resourceManagedGpuCluster) updateWorkerPools(ctx context.Context, from *managedGpuCluster, to *managedGpuCluster) *diag2.ErrorDiagnostic {
+	// Read current cluster state
+	d, err := r.InternalRead(ctx, from.Id.ValueString(), from)
+	if err != nil {
+		di := diag2.NewErrorDiagnostic("Error reading cluster state", err.Error())
+		return &di
+	}
+
+	vpcId := from.VpcId.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+
+	// Get cluster's network name for VMW platform
+	clusterNetworkName := ""
+	if strings.ToLower(platform) == "vmw" {
+		// For VMW platform, try to get network name from subnet service
+		subnets, err := r.subnetClient.ListSubnet(vpcId)
+		if err == nil {
+			for _, subnet := range *subnets {
+				if subnet.NetworkID == from.NetworkID.ValueString() {
+					clusterNetworkName = subnet.Name
+					break
+				}
+			}
+		}
+	}
+
+	// Prepare pools data
+	pools := []*managedGpuClusterPoolJson{}
+	for _, pool := range to.Pools {
+		item, err := r.remapPools(ctx, vpcId, platform, to.K8SVersion.ValueString(), pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
+		if err != nil {
+			di := diag2.NewErrorDiagnostic("Error resolving gpu_template_version", err.Error())
+			return &di
+		}
+		pools = append(pools, item)
+	}
+
+	// The cluster's current SSH key has to be echoed back: without it the
+	// backend mints a brand new key for the cluster, silently replacing the one
+	// it was created with. Verified twice on live clusters, on both API
+	// families — omitting the pair fails the apply with an inconsistent-result
+	// error on ssh_key_id.
+	var sshName, sshId string
+	if workers := d.Data.Spec.Provider.Workers; len(workers) > 0 && workers[0] != nil {
+		sshName = workers[0].ProviderConfig.SshKey.Name
+		sshId = workers[0].ProviderConfig.SshKey.ID
+	}
+
+	// currentNetworking echoes the cluster's node network back. Live testing
+	// showed the backend tolerates its absence for pool operations (scale, add,
+	// remove), but the console always sends it and it costs nothing to match.
+	body := managedGpuClusterEditWorker{
+		K8sVersion:        to.K8SVersion.ValueString(),
+		CurrentNetworking: d.Data.Spec.Networking.Nodes,
+		Pools:             pools,
+		TypeConfigure:     "configure",
+		SshName:           sshName,
+		SshId:             sshId,
+	}
+
+	// Call API to configure workers
+	v1Path := commons.ApiPath.ManagedGpuClusterConfigWorker(vpcId, platform, from.Id.ValueString())
+	v2Path := commons.ApiPath.ManagedGpuClusterConfigWorkerV2(vpcId, platform, from.Id.ValueString())
+	path, fallbackPath := v1Path, v2Path
+	if requiresV2API(d.Data.Spec.Kubernetes.Version) {
+		path, fallbackPath = v2Path, v1Path
+	}
+	res, err := r.mgpuClusterClient.sendPatchV2Aware(ctx, path, fallbackPath, platform, body)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error configuring worker", err.Error())
+		return &d
+	}
+	if e2 := r.CheckForError(res); e2 != nil {
+		return e2
+	}
+
+	return nil
+}
+
+// isSystemGeneratedKey checks if a key is system-generated
+func isSystemGeneratedKey(key string) bool {
+	systemKeys := []string{
+		"nvidia.com/device-plugin.config", // System auto-generates this for GPU pools
+		"worker.fptcloud/type",            // Backend auto-generates this on the worker (e.g. "gpu"), independent of what the pool's kv sends
+		// Add more system-generated keys here if needed
+	}
+
+	for _, systemKey := range systemKeys {
+		if key == systemKey {
+			return true
+		}
+	}
+	return false
+}
+
+// System-generated keys like "nvidia.com/device-plugin.config" should be ignored
+func filterUserDefinedKV(kvMap map[string]string) map[string]string {
+	userDefined := make(map[string]string)
+
+	for k, v := range kvMap {
+		if !isSystemGeneratedKey(k) {
+			userDefined[k] = v
+		}
+	}
+
+	return userDefined
+}
+
+// sortKVByKey returns the kv entries as a slice sorted by name, for callers
+// that need deterministic ordering (e.g. building the API request payload).
+// kv itself is a Set in the schema, where element order carries no meaning
+// to Terraform, so this is purely a determinism convenience, not something
+// that affects plan/apply consistency.
+func sortKVByKey(kvSet types.Set) []KV {
+	if kvSet.IsNull() || kvSet.IsUnknown() {
+		return nil
+	}
+
+	kvElements := kvSet.Elements()
+	kvs := make([]KV, 0, len(kvElements))
+	for _, kvElement := range kvElements {
+		if kvObj, ok := kvElement.(types.Object); ok {
+			kvAttrs := kvObj.Attributes()
+			kvs = append(kvs, KV{
+				Name:  kvAttrs["name"].(types.String),
+				Value: kvAttrs["value"].(types.String),
+			})
+		}
+	}
+
+	sort.Slice(kvs, func(i, j int) bool {
+		return kvs[i].Name.ValueString() < kvs[j].Name.ValueString()
+	})
+
+	return kvs
+}
+
+func internalReadClusterAutoscaler(ca managedGpuClusterDataClusterAutoscaler) (types.Object, diag2.Diagnostics) {
+	var (
+		scaleDownAdd, scaleDownDel, scaleDownFail int64
+		scaleDownUnneeded, scanInterval           int64
+	)
+
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterAdd); err == nil {
+		scaleDownAdd = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterDelete); err == nil {
+		scaleDownDel = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownDelayAfterFailure); err == nil {
+		scaleDownFail = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScaleDownUnneededTime); err == nil {
+		scaleDownUnneeded = int64(d.Seconds())
+	}
+	if d, err := time.ParseDuration(ca.ScanInterval); err == nil {
+		scanInterval = int64(d.Seconds())
+	}
+
+	typesMap := map[string]attr.Type{
+		"is_enable_auto_scaling":           types.BoolType,
+		"scale_down_delay_after_add":       types.Int64Type,
+		"scale_down_delay_after_delete":    types.Int64Type,
+		"scale_down_delay_after_failure":   types.Int64Type,
+		"scale_down_unneeded_time":         types.Int64Type,
+		"scale_down_utilization_threshold": types.Float64Type,
+		"scan_interval":                    types.Int64Type,
+		"expander":                         types.StringType,
+	}
+
+	values := map[string]attr.Value{
+		"is_enable_auto_scaling":           types.BoolValue(true),
+		"scale_down_delay_after_add":       types.Int64Value(scaleDownAdd),
+		"scale_down_delay_after_delete":    types.Int64Value(scaleDownDel),
+		"scale_down_delay_after_failure":   types.Int64Value(scaleDownFail),
+		"scale_down_unneeded_time":         types.Int64Value(scaleDownUnneeded),
+		"scale_down_utilization_threshold": types.Float64Value(ca.ScaleDownUtilizationThreshold),
+		"scan_interval":                    types.Int64Value(scanInterval),
+		"expander":                         types.StringValue(ca.Expander),
+	}
+
+	return types.ObjectValue(typesMap, values)
+}
+
+func internalReadClusterEndpointAccess(data managedGpuClusterData) (types.Object, diag2.Diagnostics) {
+	accessMap := map[string]attr.Value{
+		"type": types.StringValue("public"),
+		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("0.0.0.0/0"),
+		}),
+	}
+
+	// Determine cluster type from metadata labels
+	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
+		accessMap["type"] = types.StringValue("public")
+	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
+		for _, extension := range data.Spec.Extensions {
+			if extension.Type == "private-network" && extension.ProviderConfig != nil {
+				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
+					if privateCluster {
+						accessMap["type"] = types.StringValue("private")
+					} else {
+						accessMap["type"] = types.StringValue("mixed")
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Parse extensions field to get CIDR configuration
+	for _, extension := range data.Spec.Extensions {
+		if extension.ProviderConfig == nil {
+			continue
+		}
+
+		var cidrValues []attr.Value
+
+		// ACL type (public)
+		if extension.Type == "acl" {
+			if rule, ok := extension.ProviderConfig["rule"].(map[string]interface{}); ok {
+				if cidrs, exists := rule["cidrs"].([]interface{}); exists {
+					for _, cidr := range cidrs {
+						if cidrStr, ok := cidr.(string); ok {
+							cidrValues = append(cidrValues, types.StringValue(cidrStr))
+						}
+					}
+				}
+			}
+		}
+
+		// private-network type (private/mixed)
+		if extension.Type == "private-network" {
+			if allowCIDRs, exists := extension.ProviderConfig["allowCIDRs"].([]interface{}); exists {
+				for _, cidr := range allowCIDRs {
+					if cidrStr, ok := cidr.(string); ok {
+						cidrValues = append(cidrValues, types.StringValue(cidrStr))
+					}
+				}
+			}
+		}
+
+		// Update if found any CIDR values
+		if len(cidrValues) > 0 {
+			accessMap["allow_cidr"] = types.ListValueMust(types.StringType, cidrValues)
+		}
+	}
+
+	return types.ObjectValue(
+		map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+		accessMap,
+	)
+}
+
+func (m *MgpuClusterApiClient) checkServiceAccount(ctx context.Context, vpcId string, platform string) (bool, error) {
+	path := commons.ApiPath.ManagedGpuClusterCheckEnableServiceAccount(vpcId, strings.ToLower(platform))
+
+	maxRetries := 10
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		tflog.Info(ctx, fmt.Sprintf("Checking service account (attempt %d/%d): %s", attempt, maxRetries, path))
+
+		_, err := m.sendGet(path, strings.ToUpper(platform))
+		if err == nil {
+			// No error means status code is 200, service account is enabled
+			tflog.Info(ctx, "Service account check passed")
+			return true, nil
+		}
+
+		// Check if it's an HTTPError to get status code
+		var httpErr commons.HTTPError
+		if errors.As(err, &httpErr) {
+			// If status code is 200 (shouldn't happen, but just in case)
+			if httpErr.Code == 200 {
+				tflog.Info(ctx, "Service account check passed")
+				return true, nil
+			}
+			// Non-200 status code
+			lastErr = fmt.Errorf("service account check returned status code %d", httpErr.Code)
+		} else {
+			// Network or other error
+			lastErr = err
+		}
+
+		if attempt < maxRetries {
+			tflog.Info(ctx, "Service account check failed, retrying in 1 second...")
+			time.Sleep(1 * time.Second)
+			continue
+		}
+	}
+
+	return false, lastErr
+}
+
+// gpuDriverZoneForRegion maps the client's internal region code to the "zone"
+// query param the gpu-drivers endpoint expects. Only JP is confirmed so far;
+// the remaining regions are pending confirmation from the backend team.
+func gpuDriverZoneForRegion(region string) (string, error) {
+	switch region {
+	case "JP/JCSI2":
+		return "jcncp01", nil
+	default:
+		return "", fmt.Errorf("gpu-drivers zone mapping is not yet defined for region %q", region)
+	}
+}
+
+// fetchGpuDrivers calls the gpu-drivers catalog for one driver_installation_type
+// and returns the driver versions it offers. USER_INSTALL comes back as a
+// single entry with an empty value, meaning there is no version to pick.
+func (m *MgpuClusterApiClient) fetchGpuDrivers(ctx context.Context, vpcId string, platform string, driverType string, k8sVersion string) ([]gpuDriverEntry, error) {
+	zone, err := gpuDriverZoneForRegion(m.Client.Region)
+	if err != nil {
+		return nil, err
+	}
+
+	path := commons.ApiPath.ManagedGpuClusterGpuDrivers(vpcId, driverType, zone, k8sVersion)
+	tflog.Info(ctx, "Fetching GPU drivers: "+path)
+
+	a, err := m.SendGetWithInfraType(path, strings.ToUpper(platform))
+	if err != nil {
+		return nil, err
+	}
+
+	var resp gpuDriverListResponse
+	if err := json.Unmarshal(a, &resp); err != nil {
+		return nil, fmt.Errorf("error unmarshalling gpu-drivers response: %w", err)
+	}
+
+	return resp.DriverList, nil
+}
+
+// fetchVmSubnetAndOspNetworkId resolves a cluster's network_id into the
+// vm_subnet (CIDR) and osp_network_id create-cluster expects on OSP. Neither
+// value is exposed by the regular fptcloud_subnet listing, so this hits the
+// OSP-specific HPC subnet catalog (the same one fptcloud_hpc_subnet reads)
+// directly, keyed by the subnet id the user already put in network_id.
+func (m *MgpuClusterApiClient) fetchHpcSubnetById(ctx context.Context, vpcId string, platform string, networkId string) (*hpcSubnet, error) {
+	path := commons.ApiPath.ManagedGpuClusterHpcSubnets(vpcId, 1, 256)
+	tflog.Info(ctx, "Fetching HPC subnets: "+path)
+
+	a, err := m.sendGet(path, strings.ToUpper(platform))
+	if err != nil {
+		return nil, err
+	}
+
+	var resp hpcSubnetListResponse
+	if err := json.Unmarshal(a, &resp); err != nil {
+		return nil, fmt.Errorf("error unmarshalling hpc-subnets response: %w", err)
+	}
+
+	for _, s := range resp.Data {
+		if s.ID == networkId {
+			return &s, nil
+		}
+	}
+
+	return nil, fmt.Errorf("network_id %q not found in HPC subnet catalog (see the fptcloud_hpc_subnet data source)", networkId)
+}
+
+// func (m *MgpuClusterApiClient) checkQuotaResource(ctx context.Context, vpcId string, platform string) (bool, error) {
+// path := commons.ApiPath.ManagedGpuClusterCheckQuotaResource(vpcId, strings.ToLower(platform))
+
+// tflog.Info(ctx, fmt.Sprintf("Checking quota resource: %s", path))
+
+// responseBody, err := m.sendPost(ctx, path, strings.ToUpper(platform), nil)
+// if err != nil {
+// // Check if it's an HTTPError (non-200 status code from HTTP layer)
+// var httpErr commons.HTTPError
+// if errors.As(err, &httpErr) {
+// // Try to parse the response body if available
+// var quotaResp quotaResourceResponse
+// if parseErr := json.Unmarshal([]byte(httpErr.Reason), &quotaResp); parseErr == nil {
+// // If we can parse the response, use the message from API
+// if len(quotaResp.Mess) > 0 {
+// return false, errors.New(strings.Join(quotaResp.Mess, "; "))
+// }
+// }
+// return false, fmt.Errorf("quota resource check returned status code %d: %s", httpErr.Code, httpErr.Reason)
+// }
+// // Network or other error
+// return false, err
+// }
+
+// // Parse response to check status_code
+// var quotaResp quotaResourceResponse
+// if err := json.Unmarshal(responseBody, &quotaResp); err != nil {
+// return false, fmt.Errorf("error parsing quota resource response: %w", err)
+// }
+
+// // Check status_code from response
+// if quotaResp.StatusCode == 200 {
+// tflog.Info(ctx, "Quota resource check passed")
+// return true, nil
+// }
+
+// // Non-200 status code, return message from API
+// errorMsg := fmt.Sprintf("quota resource check failed with status code %d", quotaResp.StatusCode)
+// if len(quotaResp.Mess) > 0 {
+// errorMsg = strings.Join(quotaResp.Mess, "; ")
+// }
+// return false, errors.New(errorMsg)
+// }

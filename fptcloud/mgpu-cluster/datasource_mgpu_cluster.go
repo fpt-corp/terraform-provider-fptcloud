@@ -1,0 +1,479 @@
+package fptcloud_mgpu_cluster
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+	"terraform-provider-fptcloud/commons"
+	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
+	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
+	fptcloud_vpc "terraform-provider-fptcloud/fptcloud/vpc"
+
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+var (
+	_ datasource.DataSource              = &datasourceManagedGpuCluster{}
+	_ datasource.DataSourceWithConfigure = &datasourceManagedGpuCluster{}
+)
+
+type datasourceManagedGpuCluster struct {
+	client            *commons.Client
+	mgpuClusterClient *MgpuClusterApiClient
+	subnetClient      fptcloud_subnet.SubnetService
+	tenancyClient     *fptcloud_dfke.TenancyApiClient
+	// vpcClient resolves the account's tenant id, which the GPU-software
+	// endpoints require as a query parameter.
+	vpcClient fptcloud_vpc.Service
+}
+
+func (d *datasourceManagedGpuCluster) Configure(ctx context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) {
+	if request.ProviderData == nil {
+		return
+	}
+
+	client, ok := request.ProviderData.(*commons.Client)
+	if !ok {
+		response.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *commons.Client, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+		)
+
+		return
+	}
+
+	d.client = client
+	d.mgpuClusterClient = newMgpuClusterApiClient(d.client)
+	d.subnetClient = fptcloud_subnet.NewSubnetService(d.client)
+	d.tenancyClient = fptcloud_dfke.NewTenancyApiClient(d.client)
+	d.vpcClient = fptcloud_vpc.NewService(d.client)
+}
+
+func (d *datasourceManagedGpuCluster) Metadata(ctx context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
+	response.TypeName = request.ProviderTypeName + "_managed_gpu_cluster"
+}
+
+func (d *datasourceManagedGpuCluster) Schema(ctx context.Context, request datasource.SchemaRequest, response *datasource.SchemaResponse) {
+	topLevelAttributes := d.topFields()
+	poolAttributes := d.poolFields()
+
+	topLevelAttributes["id"] = schema.StringAttribute{
+		Computed: true,
+	}
+	topLevelAttributes["cluster_name"] = schema.StringAttribute{
+		Required: true,
+	}
+	topLevelAttributes["vpc_id"] = schema.StringAttribute{
+		Required: true,
+	}
+
+	response.Schema = schema.Schema{
+		Description: "Retrieve information about a Bare Metal (GPU) Kubernetes cluster.",
+		Attributes:  topLevelAttributes,
+	}
+
+	response.Schema.Blocks = map[string]schema.Block{
+		"pools": schema.ListNestedBlock{
+			NestedObject: schema.NestedBlockObject{
+				Attributes: poolAttributes,
+			},
+		},
+	}
+}
+
+func (d *datasourceManagedGpuCluster) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) {
+	var state managedGpuCluster
+	diags := request.Config.Get(ctx, &state)
+
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	_, err := d.internalRead(ctx, state.ClusterName.ValueString(), &state)
+	if err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
+		return
+	}
+
+	diags = response.State.Set(ctx, &state)
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+}
+
+func NewDataSourceManagedGpuCluster() datasource.DataSource {
+	return &datasourceManagedGpuCluster{}
+}
+
+func (d *datasourceManagedGpuCluster) internalRead(ctx context.Context, id string, state *managedGpuCluster) (*managedGpuClusterReadResponse, error) {
+	vpcId := state.VpcId.ValueString()
+	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
+
+	platform, err := d.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		return nil, err
+	}
+
+	platform = strings.ToLower(platform)
+
+	v1Path := commons.ApiPath.ManagedGpuClusterGet(vpcId, platform, id)
+	v2Path := commons.ApiPath.ManagedGpuClusterGetV2(vpcId, platform, id)
+	primaryPath, fallbackPath := v1Path, v2Path
+	if requiresV2API(state.K8SVersion.ValueString()) {
+		primaryPath, fallbackPath = v2Path, v1Path
+	}
+	a, err := d.mgpuClusterClient.sendGetV2Aware(primaryPath, fallbackPath, platform)
+	if err != nil {
+		return nil, err
+	}
+
+	var response managedGpuClusterReadResponse
+	err = json.Unmarshal(a, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.Error {
+		return nil, fmt.Errorf("error: %v", response.Mess)
+	}
+
+	data := response.Data
+
+	state.Id = types.StringValue(data.Metadata.Name)
+	state.VpcId = types.StringValue(vpcId)
+	// keep clusterName
+	//state.NetworkID
+	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
+
+	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
+		state.Purpose = types.StringValue("public")
+	} else if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "firewall") {
+		state.Purpose = types.StringValue("firewall")
+	} else {
+		state.Purpose = types.StringValue("private")
+	}
+
+	poolNames, err := validatePoolNames(state.Pools)
+	if err != nil {
+		return nil, err
+	}
+
+	workers := map[string]*managedGpuClusterDataWorker{}
+
+	// Sort workers to ensure consistent order: worker_base first, then by name
+	for _, worker := range data.Spec.Provider.Workers {
+		workers[worker.Name] = worker
+
+		if len(state.Pools) == 0 {
+			poolNames = append(poolNames, worker.Name)
+		}
+	}
+
+	var pool []*managedGpuClusterPool
+
+	// gpu_type, gpu_sharing and the cluster's operators live in the
+	// GPU-software backend, which get-shoot-specific does not report. See
+	// readGpuSoftwareState on why a failure here leaves them null rather than
+	// failing the read.
+	gpuSoftware := readGpuSoftwareState(ctx, d.mgpuClusterClient, d.vpcClient, d.client.Region, vpcId, data.Metadata.Name, platform, state.K8SVersion.ValueString())
+	gpuWorkers := gpuSoftware.workers
+	state.Software = gpuSoftware.software
+
+	for _, name := range poolNames {
+		w, ok := workers[name]
+		if !ok {
+			continue
+		}
+
+		// Only use networkId and error from getNetworkInfoByPlatform
+		networkId, _, e := getNetworkInfoByPlatform(ctx, d.subnetClient, d.mgpuClusterClient, vpcId, platform, w, &data)
+
+		if e != nil {
+			return nil, e
+		}
+
+		item := &managedGpuClusterPool{
+			WorkerPoolID: types.StringValue(w.Name),
+			// hpc_flavor_id — bare-metal servers report this as
+			// providerConfig.serverType, not a fptcloud.com/flavor_pool_*
+			// label (that label belongs to mfke's response shape, not mgpu's).
+			HpcFlavorId:     types.StringValue(w.ProviderConfig.ServerType),
+			HpcFlavorName:   types.StringValue(w.Machine.Type),
+			HpcNumberServer: types.Int64Value(int64(w.Maximum)),
+			NetworkID:       types.StringValue(networkId),
+			GpuDriver:       gpuDriverObjectValue(w.Machine.Image.DriverInstallationType, w.Machine.Image.GpuDriverVersion),
+			WorkerBase:      types.BoolValue(w.IsWorkerBase()),
+			Tags:            tagsStringToList(w.Tags()),
+			// gpu_type and gpu_sharing: filled in below from the
+			// GPU-software backend, the only place that reports them.
+			GpuType:    types.StringNull(),
+			GpuSharing: types.ObjectNull(gpuSharingAttrTypes),
+		}
+
+		if gw, ok := gpuWorkers[w.Name]; ok {
+			item.GpuType = stringOrNull(gw.GpuType)
+			// A data source has no prior value to disambiguate an all-off
+			// reading against, so it reports null in that case.
+			item.GpuSharing = gpuSharingObjectValue(
+				types.ObjectNull(gpuSharingAttrTypes),
+				normalizeGpuNone(gw.MigMode),
+				normalizeGpuNone(gw.MigProfile),
+				normalizeGpuNone(gw.SharingClientType),
+				gw.MaxClient,
+			)
+			// The GPU-software backend is the authoritative source for the
+			// driver too: the shoot reports machine.image.driverInstallationType
+			// as null even for pools that were created with one.
+			if driver := gpuDriverObjectValue(gw.DriverType, gw.DriverVersion); !driver.IsNull() {
+				item.GpuDriver = driver
+			}
+		}
+
+		pool = append(pool, item)
+	}
+
+	state.Pools = pool
+
+	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
+	state.PodNetwork = types.StringValue(podNetwork[0])
+	state.PodPrefix = types.StringValue(podNetwork[1])
+
+	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
+	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
+	state.ServicePrefix = types.StringValue(serviceNetwork[1])
+
+	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
+
+	// network_node_prefix — the prefix length of infrastructureConfig.networks.workers
+	// (e.g. "10.102.17.0/24" -> 24). Bare-metal only; VMW does not report this CIDR.
+	if workersCidr := data.Spec.Provider.InfrastructureConfig.Networks.Workers; workersCidr != "" {
+		if parts := strings.Split(workersCidr, "/"); len(parts) == 2 {
+			if prefix, err := strconv.Atoi(parts[1]); err == nil {
+				state.NetworkNodePrefix = types.Int64Value(int64(prefix))
+			}
+		}
+	}
+
+	return &response, nil
+}
+
+// MaxClient reads the maxClient value from the addons configuration
+// The maxClient is stored in spec.addons.gpuOperator.timeSliceConfig.maxClient
+// Format: ["pool-name:value"] e.g. ["gpu-test:2"]
+func (d *datasourceManagedGpuCluster) MaxClientFromAddons(spec *managedGpuClusterDataSpec, poolName string) int64 {
+	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+		return 0
+	}
+
+	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
+		// Parse format "pool-name:value" e.g. "gpu-test:2"
+		if strings.HasPrefix(maxClientStr, poolName+":") {
+			parts := strings.Split(maxClientStr, ":")
+			if len(parts) == 2 {
+				if value, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+					return value
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func (d *datasourceManagedGpuCluster) topFields() map[string]schema.Attribute {
+	topLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
+	requiredStrings := []string{
+		"vpc_id", "cluster_name", "k8s_version", "purpose",
+		"pod_network", "pod_prefix", "service_network", "service_prefix",
+		"network_id",
+	}
+	// Optional string fields
+	optionalStrings := []string{
+		"internal_subnet_lb", "edge_gateway_name", "ssh_key_id",
+	}
+	// Required int fields
+	requiredInts := []string{}
+	// Optional int fields
+	optionalInts := []string{"k8s_max_pod", "network_node_prefix"}
+	// Optional bool fields
+	optionalBools := []string{}
+	// Optional list fields
+	optionalLists := []string{}
+
+	for _, attribute := range requiredStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalStrings {
+		topLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredInts {
+		topLevelAttributes[attribute] = schema.Int64Attribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalInts {
+		topLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalBools {
+		topLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		topLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:    true,
+			ElementType: types.StringType,
+			Description: descriptions[attribute],
+		}
+	}
+
+	topLevelAttributes["k8s_version"] = schema.StringAttribute{
+		Required:    true,
+		Description: descriptions["k8s_version"],
+	}
+
+	// Object-typed attributes. These must mirror the fields of
+	// managedGpuCluster exactly: the struct is shared with the resource, and a
+	// schema that disagrees with it fails at state-conversion time.
+	topLevelAttributes["cluster_autoscaler"] = schema.ObjectAttribute{
+		Computed:    true,
+		Description: descriptions["cluster_autoscaler"],
+		AttributeTypes: map[string]attr.Type{
+			"is_enable_auto_scaling":           types.BoolType,
+			"scale_down_delay_after_add":       types.Int64Type,
+			"scale_down_delay_after_delete":    types.Int64Type,
+			"scale_down_delay_after_failure":   types.Int64Type,
+			"scale_down_unneeded_time":         types.Int64Type,
+			"scale_down_utilization_threshold": types.Float64Type,
+			"scan_interval":                    types.Int64Type,
+			"expander":                         types.StringType,
+		},
+	}
+
+	topLevelAttributes["cluster_endpoint_access"] = schema.ObjectAttribute{
+		Computed:    true,
+		Description: descriptions["cluster_endpoint_access"],
+		AttributeTypes: map[string]attr.Type{
+			"type":       types.StringType,
+			"allow_cidr": types.ListType{ElemType: types.StringType},
+		},
+	}
+
+	topLevelAttributes["gpu_software"] = schema.SetAttribute{
+		Computed:    true,
+		Description: descriptions["gpu_software"],
+		ElementType: types.ObjectType{AttrTypes: softwareAttrTypes},
+	}
+
+	topLevelAttributes["network_type"] = schema.StringAttribute{
+		Computed:    true,
+		Description: descriptions["network_type"],
+	}
+	topLevelAttributes["edge_gateway_id"] = schema.StringAttribute{
+		Computed:    true,
+		Description: descriptions["edge_gateway_id"],
+	}
+
+	return topLevelAttributes
+}
+
+func (d *datasourceManagedGpuCluster) poolFields() map[string]schema.Attribute {
+	poolLevelAttributes := map[string]schema.Attribute{}
+	// Required string fields
+	requiredStrings := []string{
+		"name", "hpc_flavor_id", "network_id",
+	}
+	// Optional string fields
+	optionalStrings := []string{"container_runtime", "network_name", "hpc_flavor_name", "gpu_type"}
+	// Required int fields
+	requiredInts := []string{"hpc_number_server"}
+	// Optional int fields
+	optionalInts := []string{}
+	// Required bool fields
+	requiredBools := []string{"auto_scale"}
+	// Optional bool fields
+	optionalBools := []string{}
+	// Optional list fields
+	optionalLists := []string{"tags"}
+
+	for _, attribute := range requiredStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalStrings {
+		poolLevelAttributes[attribute] = schema.StringAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredInts {
+		poolLevelAttributes[attribute] = schema.Int64Attribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalInts {
+		poolLevelAttributes[attribute] = schema.Int64Attribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range requiredBools {
+		poolLevelAttributes[attribute] = schema.BoolAttribute{
+			Required:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalBools {
+		poolLevelAttributes[attribute] = schema.BoolAttribute{
+			Optional:    true,
+			Description: descriptions[attribute],
+		}
+	}
+	for _, attribute := range optionalLists {
+		poolLevelAttributes[attribute] = schema.ListAttribute{
+			Optional:    true,
+			ElementType: types.StringType,
+			Description: descriptions[attribute],
+		}
+	}
+	// kv: list of map[string]string
+	poolLevelAttributes["kv"] = schema.ListAttribute{
+		Optional:    true,
+		ElementType: types.MapType{ElemType: types.StringType},
+		Description: descriptions["kv"],
+	}
+	poolLevelAttributes["gpu_driver"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["gpu_driver"],
+		AttributeTypes: gpuDriverAttrTypes,
+	}
+	poolLevelAttributes["gpu_sharing"] = schema.ObjectAttribute{
+		Optional:       true,
+		Description:    descriptions["gpu_sharing"],
+		AttributeTypes: gpuSharingAttrTypes,
+	}
+	return poolLevelAttributes
+}
