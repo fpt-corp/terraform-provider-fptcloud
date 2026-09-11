@@ -1,6 +1,7 @@
 package fptcloud_backup_veeam_test
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -241,17 +242,22 @@ func TestListInstances(t *testing.T) {
 	assert.Equal(t, "vm-1", resp.Data[0].Id)
 }
 
-// The key must be DETERMINISTIC: only if a retry carries the same key can the
-// backend recognise the same request and return the cached result instead of
-// creating a second job.
-func TestIdempotencyKeyIsDeterministic(t *testing.T) {
-	first := bkv.BuildIdempotencyKey("vpc-1", samplePayload())
-	second := bkv.BuildIdempotencyKey("vpc-1", samplePayload())
-	assert.Equal(t, first, second)
-	assert.NotEmpty(t, first)
+// A deterministic idempotency key made the backend answer a re-create of an
+// identical configuration with the previous job's id, doing no work, which
+// broke destroy-then-apply. The payload must therefore carry no key at all.
+func TestCreateJobSendsNoIdempotencyKey(t *testing.T) {
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		rw.WriteHeader(http.StatusOK)
+		_, _ = rw.Write([]byte(`{"status": true, "backup_job_id": "job-1"}`))
+	}))
+	defer server.Close()
 
-	other := samplePayload()
-	other.Name = "job-2"
-	assert.NotEqual(t, first, bkv.BuildIdempotencyKey("vpc-1", other))
-	assert.NotEqual(t, first, bkv.BuildIdempotencyKey("vpc-2", samplePayload()))
+	client, err := common.NewClientForTestingWithServer(server)
+	assert.Nil(t, err)
+
+	_, err = bkv.NewBackupVeeamService(client).CreateJob("vpc-1", samplePayload())
+	assert.Nil(t, err)
+	assert.NotContains(t, string(body), "idempotency")
 }

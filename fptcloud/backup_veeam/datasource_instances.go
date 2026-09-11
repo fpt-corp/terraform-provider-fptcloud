@@ -22,9 +22,11 @@ func readBackupVeeamInstances(_ context.Context, d *schema.ResourceData, m inter
 	service := NewBackupVeeamService(client)
 	vpcId := d.Get("vpc_id").(string)
 
+	// The schema field is named for the state it selects; the service argument
+	// keeps the API's own name for the query parameter it sets.
 	response, err := service.ListInstances(
 		vpcId,
-		d.Get("not_backup").(bool),
+		d.Get("unprotected_only").(bool),
 		d.Get("job_id").(string),
 		d.Get("status").(string),
 	)

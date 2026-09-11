@@ -2,24 +2,32 @@ data "fptcloud_vpc" "this" {
   name = "your_vpc_name"
 }
 
-# Instances that do not belong to any active backup job yet.
+# Instances you can put into a backup job.
 #
-# The server also excludes instances that are initialising, unresolved, not
-# deployed, or mounted for instant recovery, so this list is shorter than the
-# full instance list of the VPC.
+# unprotected_only defaults to true, so this returns only instances that do not
+# belong to a job yet. An instance can belong to only one job, so building a job
+# from an already protected instance fails with duplicateVm.
+#
+# The server also excludes instances mounted for instant recovery. It filters by
+# power state only when `status` is given, so without it the result can include
+# instances that are initialising, unresolved, or not yet deployed.
 data "fptcloud_backup_veeam_instances" "available" {
-  vpc_id     = data.fptcloud_vpc.this.id
-  not_backup = true
+  vpc_id = data.fptcloud_vpc.this.id
 }
 
 # When editing an existing job, pass its id so its own instances stay in the
-# result instead of being filtered out as "already in a job".
+# result instead of being filtered out as already protected.
 data "fptcloud_backup_veeam_instances" "for_edit" {
-  vpc_id     = data.fptcloud_vpc.this.id
-  not_backup = true
-  job_id     = "your_backup_job_id"
+  vpc_id = data.fptcloud_vpc.this.id
+  job_id = "your_backup_job_id"
 }
 
-output "available_instance_names" {
-  value = [for vm in data.fptcloud_backup_veeam_instances.available.instances : vm.name]
+# Every instance in the VPC, protected or not.
+data "fptcloud_backup_veeam_instances" "all" {
+  vpc_id           = data.fptcloud_vpc.this.id
+  unprotected_only = false
+}
+
+output "available_instances" {
+  value = data.fptcloud_backup_veeam_instances.available.instances
 }

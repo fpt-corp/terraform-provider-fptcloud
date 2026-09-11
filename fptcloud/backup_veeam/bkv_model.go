@@ -70,7 +70,6 @@ type CreateJobPayload struct {
 	Schedule              *SchedulePayload `json:"schedule,omitempty"`
 	NotificationMethodIds []string         `json:"notification_method_ids"`
 	IsCapacityTierEnabled bool             `json:"is_capacity_tier_enabled"`
-	IdempotencyKey        string           `json:"idempotency_key,omitempty"`
 }
 
 type BackupObject struct {

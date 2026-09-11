@@ -207,3 +207,78 @@ func TestResourceBackupVeeamJobShape(t *testing.T) {
 	assert.NotNil(t, res.Timeouts)
 	assert.Nil(t, res.InternalValidate(nil, true))
 }
+
+// The detail endpoint answers with Veeam's casing, `WeekDays`, while the create
+// endpoint takes `weekDays`. Storing the raw value gives every later plan a
+// diff that never converges, so the read path has to canonicalise it.
+func TestFlattenJobDetailCanonicalisesDailyType(t *testing.T) {
+	for _, fromApi := range []string{"WeekDays", "weekdays", "WEEKDAYS", "weekDays"} {
+		d := schema.TestResourceDataRaw(t, resourceBackupVeeamJobSchema, map[string]interface{}{})
+		detail := &JobDetail{
+			Id:              "job-1",
+			Name:            "job-1",
+			BackupRetention: RetentionPayload{Cycles: 7, LimitType: "Days"},
+			BackupSchedule: &SchedulePayload{
+				ScheduleType:  "daily",
+				DailySchedule: &DailySchedulePayload{Type: fromApi, RunAt: "22:00:00"},
+			},
+		}
+
+		assert.Nil(t, flattenJobDetail(d, detail))
+		schedule := d.Get("schedule").([]interface{})[0].(map[string]interface{})
+		daily := schedule["daily"].([]interface{})[0].(map[string]interface{})
+		assert.Equal(t, "weekDays", daily["type"], "API returned %q", fromApi)
+	}
+}
+
+func TestFlattenJobDetailKeepsEverydayAndUnknownDailyType(t *testing.T) {
+	cases := map[string]string{
+		"EveryDay": "Everyday", // the API's casing maps onto the schema's
+		"Everyday": "Everyday",
+		// Not a value the schema knows: left as-is so the plan shows the
+		// mismatch rather than the provider hiding it.
+		"SelectedDays": "SelectedDays",
+	}
+
+	for fromApi, want := range cases {
+		d := schema.TestResourceDataRaw(t, resourceBackupVeeamJobSchema, map[string]interface{}{})
+		detail := &JobDetail{
+			Id:              "job-1",
+			Name:            "job-1",
+			BackupRetention: RetentionPayload{Cycles: 7, LimitType: "Days"},
+			BackupSchedule: &SchedulePayload{
+				ScheduleType:  "daily",
+				DailySchedule: &DailySchedulePayload{Type: fromApi, RunAt: "22:00:00"},
+			},
+		}
+
+		assert.Nil(t, flattenJobDetail(d, detail))
+		schedule := d.Get("schedule").([]interface{})[0].(map[string]interface{})
+		daily := schedule["daily"].([]interface{})[0].(map[string]interface{})
+		assert.Equal(t, want, daily["type"], "API returned %q", fromApi)
+	}
+}
+
+// The API omits notification_method_ids when a job has no notifications, which
+// unmarshals to a nil slice. Writing nil leaves the attribute null in state,
+// while a configuration that computes an empty list - a `for` expression that
+// matches nothing, or a literal [] - yields a known empty set. Terraform then
+// reports a diff on every plan, and applying it changes nothing, so the diff
+// never converges.
+func TestFlattenJobDetailWritesEmptyNotificationSetNotNull(t *testing.T) {
+	d := schema.TestResourceDataRaw(t, resourceBackupVeeamJobSchema, map[string]interface{}{})
+	detail := &JobDetail{
+		Id:                    "job-1",
+		Name:                  "job-1",
+		BackupRetention:       RetentionPayload{Cycles: 7, LimitType: "Days"},
+		NotificationMethodIds: nil,
+	}
+
+	assert.Nil(t, flattenJobDetail(d, detail))
+
+	raw, ok := d.GetOk("notification_method_ids")
+	assert.False(t, ok, "an empty set reports ok=false, which is expected")
+	set, isSet := d.Get("notification_method_ids").(*schema.Set)
+	assert.True(t, isSet, "must be a set, not nil: %#v", raw)
+	assert.Equal(t, 0, set.Len())
+}

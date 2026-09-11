@@ -109,3 +109,22 @@ func TestNameValidateFuncAcceptsAllowedCharacters(t *testing.T) {
 	_, errs := validateFunc("job-db_01 v1.2", "name")
 	assert.Empty(t, errs)
 }
+
+// The default decides what a user gets when they write the minimal block, so
+// it is part of the contract. unprotected_only must default to TRUE: this data
+// source exists to answer "which instances can I put into a job", and
+// returning protected instances by default yields a configuration that plans
+// cleanly and then fails on apply with duplicateVm.
+func TestInstancesDataSourceDefaultsToUnprotectedOnly(t *testing.T) {
+	field, ok := dataSourceBackupVeeamInstancesSchema["unprotected_only"]
+	assert.True(t, ok, "unprotected_only must exist")
+	assert.Equal(t, true, field.Default)
+	assert.True(t, field.Optional)
+}
+
+// The old name is the API's query parameter, not a description of the result:
+// not_backup=false applies no filter at all. It must not be a schema field.
+func TestInstancesDataSourceDoesNotExposeApiParameterName(t *testing.T) {
+	_, ok := dataSourceBackupVeeamInstancesSchema["not_backup"]
+	assert.False(t, ok)
+}

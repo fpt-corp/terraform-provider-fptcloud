@@ -17,26 +17,34 @@ data "fptcloud_vpc" "this" {
   name = "your_vpc_name"
 }
 
-# Instances that do not belong to any active backup job yet.
+# Instances you can put into a backup job.
 #
-# The server also excludes instances that are initialising, unresolved, not
-# deployed, or mounted for instant recovery, so this list is shorter than the
-# full instance list of the VPC.
+# unprotected_only defaults to true, so this returns only instances that do not
+# belong to a job yet. An instance can belong to only one job, so building a job
+# from an already protected instance fails with duplicateVm.
+#
+# The server also excludes instances mounted for instant recovery. It filters by
+# power state only when `status` is given, so without it the result can include
+# instances that are initialising, unresolved, or not yet deployed.
 data "fptcloud_backup_veeam_instances" "available" {
-  vpc_id     = data.fptcloud_vpc.this.id
-  not_backup = true
+  vpc_id = data.fptcloud_vpc.this.id
 }
 
 # When editing an existing job, pass its id so its own instances stay in the
-# result instead of being filtered out as "already in a job".
+# result instead of being filtered out as already protected.
 data "fptcloud_backup_veeam_instances" "for_edit" {
-  vpc_id     = data.fptcloud_vpc.this.id
-  not_backup = true
-  job_id     = "your_backup_job_id"
+  vpc_id = data.fptcloud_vpc.this.id
+  job_id = "your_backup_job_id"
 }
 
-output "available_instance_names" {
-  value = [for vm in data.fptcloud_backup_veeam_instances.available.instances : vm.name]
+# Every instance in the VPC, protected or not.
+data "fptcloud_backup_veeam_instances" "all" {
+  vpc_id           = data.fptcloud_vpc.this.id
+  unprotected_only = false
+}
+
+output "available_instances" {
+  value = data.fptcloud_backup_veeam_instances.available.instances
 }
 ```
 
@@ -49,9 +57,9 @@ output "available_instance_names" {
 
 ### Optional
 
-- `job_id` (String) Keep the instances that belong to this job in the result. Use it when editing an existing job.
-- `not_backup` (Boolean) When true, only return instances that do not belong to an active backup job yet.
-- `status` (String) Only return instances with this status.
+- `job_id` (String) Keep the instances belonging to this job in the result instead of filtering them out as already protected. Use it when editing an existing job. It has no effect unless `unprotected_only` is `true`.
+- `status` (String) Comma-separated instance statuses to include, for example `POWERED_ON,POWERED_OFF`. The server filters by status ONLY when this is set: left empty, the result can include instances that are initialising, unresolved or not yet deployed, none of which can be added to a job.
+- `unprotected_only` (Boolean) Only return instances that do not belong to a backup job yet - the ones assignable to a job. Set it to `false` to list every instance in the VPC, protected or not.
 
 ### Read-Only
 

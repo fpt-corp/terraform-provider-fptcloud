@@ -189,6 +189,17 @@ func flattenJobDetail(d *schema.ResourceData, detail *JobDetail) error {
 		displayNames = append(displayNames, obj.VmDisplayName)
 	}
 
+	// A nil slice and an empty slice are the same thing in Go but not in
+	// Terraform: nil lands in state as null, while a configuration that
+	// computes an empty list - a `for` expression matching nothing, or a
+	// literal [] - is a known empty set. Every refresh then reports drift on a
+	// job that has not changed. The API omits notification_method_ids for a job
+	// with no notifications, so normalise it here.
+	notificationIds := detail.NotificationMethodIds
+	if notificationIds == nil {
+		notificationIds = []string{}
+	}
+
 	setters := map[string]interface{}{
 		"name":                     detail.Name,
 		"description":              detail.Description,
@@ -196,7 +207,7 @@ func flattenJobDetail(d *schema.ResourceData, detail *JobDetail) error {
 		"is_capacity_tier_enabled": detail.IsCapacityTierEnabled,
 		"vm_ids":                   vmIds,
 		"vm_display_names":         displayNames,
-		"notification_method_ids":  detail.NotificationMethodIds,
+		"notification_method_ids":  notificationIds,
 		"retention": []interface{}{map[string]interface{}{
 			"cycles":     detail.BackupRetention.Cycles,
 			"limit_type": detail.BackupRetention.LimitType,
@@ -216,6 +227,26 @@ func flattenJobDetail(d *schema.ResourceData, detail *JobDetail) error {
 	return nil
 }
 
+// canonicalDailyType maps the daily schedule type the API reads back onto the
+// spelling the schema accepts.
+//
+// The create endpoint takes `weekDays`, but the detail endpoint passes Veeam's
+// own value straight through, which is `WeekDays`. The backend lowercases the
+// monthly fields on the way out (JobDetailController.__get_monthly_schedule)
+// and simply forgot to do the same for the daily type. Writing the raw value
+// into state gives every subsequent plan a diff that never converges: apply it
+// and the API answers `WeekDays` again.
+func canonicalDailyType(value string) string {
+	for _, candidate := range scheduleDailyTypes {
+		if strings.EqualFold(candidate, value) {
+			return candidate
+		}
+	}
+	// An unrecognised value is left alone rather than guessed at, so the plan
+	// shows the mismatch instead of the provider hiding it.
+	return value
+}
+
 func flattenSchedule(payload *SchedulePayload) []interface{} {
 	if payload == nil {
 		return nil
@@ -227,7 +258,7 @@ func flattenSchedule(payload *SchedulePayload) []interface{} {
 	case "daily":
 		if daily := payload.DailySchedule; daily != nil {
 			scheduleMap["daily"] = []interface{}{map[string]interface{}{
-				"type":   daily.Type,
+				"type":   canonicalDailyType(daily.Type),
 				"run_at": daily.RunAt,
 			}}
 		}
@@ -271,7 +302,9 @@ func createBackupVeeamJob(ctx context.Context, d *schema.ResourceData, m interfa
 	service := NewBackupVeeamService(client)
 	vpcId := d.Get("vpc_id").(string)
 
-	response, err := service.CreateJob(vpcId, expandJobPayload(d))
+	payload := expandJobPayload(d)
+
+	response, err := service.CreateJob(vpcId, payload)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -289,6 +322,9 @@ func createBackupVeeamJob(ctx context.Context, d *schema.ResourceData, m interfa
 
 	name := strings.TrimSpace(d.Get("name").(string))
 	if _, err := WaitForJobSettled(ctx, service, vpcId, jobId, name, d.Timeout(schema.TimeoutCreate)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := WaitForVmIdsSettled(ctx, service, vpcId, jobId, payload.VmIds, d.Timeout(schema.TimeoutCreate)); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -338,12 +374,20 @@ func updateBackupVeeamJob(ctx context.Context, d *schema.ResourceData, m interfa
 	service := NewBackupVeeamService(client)
 	vpcId := d.Get("vpc_id").(string)
 
-	if _, err := service.UpdateJob(vpcId, d.Id(), expandJobPayload(d)); err != nil {
+	payload := expandJobPayload(d)
+
+	if _, err := service.UpdateJob(vpcId, d.Id(), payload); err != nil {
 		return diag.FromErr(err)
 	}
 
 	name := strings.TrimSpace(d.Get("name").(string))
 	if _, err := WaitForJobSettled(ctx, service, vpcId, d.Id(), name, d.Timeout(schema.TimeoutUpdate)); err != nil {
+		return diag.FromErr(err)
+	}
+
+	// Status settles before the instance list does, so reading now would store
+	// the previous list and leave the next plan showing a diff.
+	if err := WaitForVmIdsSettled(ctx, service, vpcId, d.Id(), payload.VmIds, d.Timeout(schema.TimeoutUpdate)); err != nil {
 		return diag.FromErr(err)
 	}
 

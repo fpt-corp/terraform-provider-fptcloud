@@ -1,8 +1,6 @@
 package fptcloud_backup_veeam
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -39,7 +37,7 @@ func NewBackupVeeamService(client *common.Client) BackupVeeamService {
 // BackupErrorType class.
 func describeErrorType(errorType string, message string) string {
 	hints := map[string]string{
-		"duplicateVm":          "an instance can belong to only one active backup job; use the fptcloud_backup_veeam_instances data source with not_backup = true to list the instances still available",
+		"duplicateVm":          "an instance can belong to only one active backup job; use the fptcloud_backup_veeam_instances data source to list the instances still available",
 		"vmNotFound":           "the instance does not exist; check vm_ids",
 		"vmNotInVpc":           "the instance does not belong to this VPC; check vpc_id and vm_ids",
 		"reachLimitQuota":      "the tenant's backup quota is exhausted; contact FPT Cloud to raise it, Terraform cannot resolve this",
@@ -72,22 +70,6 @@ func checkMutationResponse(resp JobMutationResponse) error {
 	return nil
 }
 
-// BuildIdempotencyKey derives a key DETERMINISTICALLY from the request body.
-// It must not be a random UUID: a retry has to carry the same key for the
-// backend to recognise it as the same request and return the cached result
-// instead of creating a second job.
-func BuildIdempotencyKey(vpcId string, payload CreateJobPayload) string {
-	// The key must not depend on itself, so clear the field before hashing.
-	payload.IdempotencyKey = ""
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		body = []byte(payload.Name)
-	}
-	sum := sha256.Sum256(append([]byte(vpcId+"|"), body...))
-	return "tf-" + hex.EncodeToString(sum[:16])
-}
-
 // decorateServerError adds a hint for HTTP 500 on create and update. The
 // backend does not null-check the tenant, so a VPC without the Backup Veeam
 // service returns 500 with a meaningless body - and this is the first error a
@@ -100,8 +82,16 @@ func decorateServerError(action string, err error) error {
 }
 
 func (s *backupVeeamServiceImpl) CreateJob(vpcId string, payload CreateJobPayload) (JobMutationResponse, error) {
-	payload.IdempotencyKey = BuildIdempotencyKey(vpcId, payload)
-
+	// No idempotency key is sent. A deterministic key - the only kind a
+	// provider can produce, since it has no per-attempt handle from Terraform -
+	// makes the backend answer a re-create of an identical configuration with
+	// the PREVIOUS job's id without doing any work. That breaks
+	// `terraform destroy` followed by `terraform apply`, and `-replace`, both of
+	// which send a byte-identical payload. Verified against the dev backend.
+	//
+	// Nothing is lost that matters: job names are unique per VPC, so a retry
+	// after a half-finished create is rejected with "Job with the same name
+	// already exists" rather than silently creating a second job.
 	raw, err := s.client.SendPostRequest(common.ApiPath.BackupVeeamCreateJob(vpcId), payload)
 	if err != nil {
 		return JobMutationResponse{}, decorateServerError("creating the backup job", err)

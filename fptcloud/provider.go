@@ -118,6 +118,7 @@ func Provider() *schema.Provider {
 			"fptcloud_load_balancer_v2_l7_rule":             fptcloud_load_balancer_v2.DataSourceL7Rule(),
 			"fptcloud_load_balancer_v2_sizes":               fptcloud_load_balancer_v2.DataSourceSizes(),
 			"fptcloud_tagging":                              fptcloud_tagging.DataSourceTagging(),
+			"fptcloud_backup_veeam_job":                     fptcloud_backup_veeam.DataSourceBackupVeeamJob(),
 			"fptcloud_backup_veeam_jobs":                    fptcloud_backup_veeam.DataSourceBackupVeeamJobs(),
 			"fptcloud_backup_veeam_instances":               fptcloud_backup_veeam.DataSourceBackupVeeamInstances(),
 			"fptcloud_alert_notification_methods":           fptcloud_alert.DataSourceAlertNotificationMethods(),

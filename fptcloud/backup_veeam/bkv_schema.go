@@ -216,10 +216,19 @@ var resourceBackupVeeamJobSchema = map[string]*schema.Schema{
 		Description: "The schedule of the backup job.",
 	},
 	"notification_method_ids": {
-		Type:        schema.TypeSet,
-		Optional:    true,
-		Elem:        &schema.Schema{Type: schema.TypeString},
-		Description: "IDs of notification methods. Always source these from the `fptcloud_alert_notification_methods` data source: the API silently ignores IDs it does not recognise, so a hand-typed ID leaves the job with no notifications and no error.",
+		Type:     schema.TypeSet,
+		Optional: true,
+		// Computed as well as Optional so that an empty set and null are not
+		// treated as different values. SDKv2 stores an empty set as null after
+		// create, while Read writes an empty set, and every later plan then
+		// reports drift on a job nobody touched. The cost is the usual
+		// Optional+Computed one: deleting the attribute from the configuration
+		// keeps the current methods, so clear them with an explicit `= []`.
+		Computed: true,
+		Elem:     &schema.Schema{Type: schema.TypeString},
+		Description: "IDs of notification methods. Always source these from the `fptcloud_alert_notification_methods` data source: " +
+			"the API silently ignores IDs it does not recognise, so a hand-typed ID leaves the job with no notifications and no error. " +
+			"Set it to `[]` to remove every notification method; removing the argument keeps the current ones.",
 	},
 	"enabled": {
 		Type:        schema.TypeBool,
@@ -282,21 +291,36 @@ var dataSourceBackupVeeamInstancesSchema = map[string]*schema.Schema{
 		ValidateFunc: validation.NoZeroValues,
 		Description:  "The ID of the VPC to list instances from.",
 	},
-	"not_backup": {
-		Type:        schema.TypeBool,
-		Optional:    true,
-		Default:     false,
-		Description: "When true, only return instances that do not belong to an active backup job yet.",
+	// Named after the API's own vocabulary for this state - VmBackupState
+	// calls it PROTECTED / UNPROTECTED - rather than after the query parameter
+	// it sets, which is `not_backup`. That parameter is a switch ("apply the
+	// not-backed-up filter"), so reading it as a description of the result gets
+	// it backwards: not_backup=false applies no filter and returns every
+	// instance, protected ones included.
+	//
+	// Defaults to true because that is what this data source is for: the
+	// instances you can put into a job. Returning protected instances by
+	// default produces a configuration that plans cleanly and then fails on
+	// apply with duplicateVm.
+	"unprotected_only": {
+		Type:     schema.TypeBool,
+		Optional: true,
+		Default:  true,
+		Description: "Only return instances that do not belong to a backup job yet - the ones assignable to a job. " +
+			"Set it to `false` to list every instance in the VPC, protected or not.",
 	},
 	"job_id": {
-		Type:        schema.TypeString,
-		Optional:    true,
-		Description: "Keep the instances that belong to this job in the result. Use it when editing an existing job.",
+		Type:     schema.TypeString,
+		Optional: true,
+		Description: "Keep the instances belonging to this job in the result instead of filtering them out as already protected. " +
+			"Use it when editing an existing job. It has no effect unless `unprotected_only` is `true`.",
 	},
 	"status": {
-		Type:        schema.TypeString,
-		Optional:    true,
-		Description: "Only return instances with this status.",
+		Type:     schema.TypeString,
+		Optional: true,
+		Description: "Comma-separated instance statuses to include, for example `POWERED_ON,POWERED_OFF`. " +
+			"The server filters by status ONLY when this is set: left empty, the result can include instances " +
+			"that are initialising, unresolved or not yet deployed, none of which can be added to a job.",
 	},
 	"instances": {
 		Type:     schema.TypeList,
@@ -317,6 +341,15 @@ var dataSourceBackupVeeamInstancesSchema = map[string]*schema.Schema{
 // logic testable without building a *schema.ResourceDiff through SDK
 // internals.
 func validateJobDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
+	// vm_display_names is derived from vm_ids by the server. Without marking it
+	// unknown, a plan that changes vm_ids still prints the previous names, which
+	// reads as though the instances were not changing at all.
+	if diff.Id() != "" && diff.HasChange("vm_ids") {
+		if err := diff.SetNewComputed("vm_display_names"); err != nil {
+			return err
+		}
+	}
+
 	scheduleRaw, ok := diff.GetOk("schedule")
 	if !ok {
 		return nil
@@ -404,4 +437,117 @@ func validateScheduleConfig(scheduleMap map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+// dataSourceBackupVeeamJobSchema mirrors the resource field names so
+// flattenJobDetail can be reused verbatim. It is written out rather than
+// derived from the resource schema because computed fields must carry no
+// ValidateFunc and no Default, which the resource schema does.
+//
+// `status` and `enabled` are deliberately absent: the detail endpoint does not
+// return them. Read those from fptcloud_backup_veeam_jobs.
+var dataSourceBackupVeeamJobSchema = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the VPC that owns the job.",
+	},
+	"job_id": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		Computed:     true,
+		ExactlyOneOf: []string{"job_id", "name"},
+		Description:  "The ID of the job to read. Set either this or `name`.",
+	},
+	"name": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		Computed:     true,
+		ExactlyOneOf: []string{"job_id", "name"},
+		Description: "The name of the job to read, matched exactly. Set either this or `job_id`. " +
+			"Looking a job up by name costs one extra request, because only the list endpoint can search by name.",
+	},
+	"description": {
+		Type:     schema.TypeString,
+		Computed: true,
+	},
+	"schedule_enabled": {
+		Type:        schema.TypeBool,
+		Computed:    true,
+		Description: "Whether the job has a schedule.",
+	},
+	"is_capacity_tier_enabled": {
+		Type:     schema.TypeBool,
+		Computed: true,
+	},
+	"vm_ids": {
+		Type:        schema.TypeSet,
+		Computed:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "IDs of the instances this job protects.",
+	},
+	"vm_display_names": {
+		Type:        schema.TypeSet,
+		Computed:    true,
+		Elem:        &schema.Schema{Type: schema.TypeString},
+		Description: "Display names of the protected instances. Instance names can change, so do not match on them.",
+	},
+	"notification_method_ids": {
+		Type:     schema.TypeSet,
+		Computed: true,
+		Elem:     &schema.Schema{Type: schema.TypeString},
+	},
+	"retention": {
+		Type:     schema.TypeList,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"cycles":     {Type: schema.TypeInt, Computed: true},
+				"limit_type": {Type: schema.TypeString, Computed: true},
+			},
+		},
+	},
+	"schedule": {
+		Type:     schema.TypeList,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"type": {Type: schema.TypeString, Computed: true},
+				"daily": {
+					Type:     schema.TypeList,
+					Computed: true,
+					Elem: &schema.Resource{
+						Schema: map[string]*schema.Schema{
+							"type":   {Type: schema.TypeString, Computed: true},
+							"run_at": {Type: schema.TypeString, Computed: true},
+						},
+					},
+				},
+				"monthly": {
+					Type:     schema.TypeList,
+					Computed: true,
+					Elem: &schema.Resource{
+						Schema: map[string]*schema.Schema{
+							"run_at":              {Type: schema.TypeString, Computed: true},
+							"day_number_in_month": {Type: schema.TypeString, Computed: true},
+							"day_of_week":         {Type: schema.TypeString, Computed: true},
+							"day_of_month":        {Type: schema.TypeInt, Computed: true},
+						},
+					},
+				},
+				"period": {
+					Type:     schema.TypeList,
+					Computed: true,
+					Elem: &schema.Resource{
+						Schema: map[string]*schema.Schema{
+							"full_period": {Type: schema.TypeInt, Computed: true},
+							"start_hour":  {Type: schema.TypeInt, Computed: true},
+							"end_hour":    {Type: schema.TypeInt, Computed: true},
+						},
+					},
+				},
+			},
+		},
+	},
 }

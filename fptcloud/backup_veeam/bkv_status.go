@@ -40,6 +40,24 @@ func IsPendingStatus(status string) bool { return containsStatus(pendingStatuses
 
 func IsFailedStatus(status string) bool { return containsStatus(failedStatuses, status) }
 
+// pollTimeout trims the CRUD timeout before handing it to StateChangeConf.
+//
+// The SDK cancels the context exactly at the CRUD timeout, so a StateChangeConf
+// given the same duration races that cancellation: whichever fires first
+// decides the message the user sees, and when the context wins they get a bare
+// "context deadline exceeded" instead of one naming the job and its last
+// status. HashiCorp's guidance is to keep the StateChangeConf timeout below the
+// CRUD timeout for exactly this reason.
+func pollTimeout(crudTimeout time.Duration) time.Duration {
+	const margin = 30 * time.Second
+	// A timeout too small to trim safely is halved instead, so the margin can
+	// never turn into a zero or negative budget.
+	if crudTimeout <= 2*margin {
+		return crudTimeout / 2
+	}
+	return crudTimeout - margin
+}
+
 // WaitForJobSettled waits until the job leaves its pending state.
 //
 // It polls the LIST endpoint, not detail: detail answers 200 as soon as the
@@ -62,7 +80,7 @@ func WaitForJobSettled(ctx context.Context, svc BackupVeeamService, vpcId string
 			}
 			return item, item.Status, nil
 		},
-		Timeout:                   timeout,
+		Timeout:                   pollTimeout(timeout),
 		Delay:                     3 * time.Second,
 		MinTimeout:                3 * time.Second,
 		ContinuousTargetOccurence: 1,
@@ -102,11 +120,66 @@ func WaitForJobGone(ctx context.Context, svc BackupVeeamService, vpcId string, j
 			}
 			return detail, "EXISTS", nil
 		},
-		Timeout:    timeout,
+		Timeout:    pollTimeout(timeout),
 		Delay:      3 * time.Second,
 		MinTimeout: 3 * time.Second,
 	}
 
 	_, err := stateConf.WaitForStateContext(ctx)
 	return err
+}
+
+// WaitForVmIdsSettled waits until the job's instance list matches what was
+// sent.
+//
+// Status settles before the backup_object rows do: measured against the dev
+// backend, an update that removes an instance returns with status out of
+// UPDATING while detail still reports the old list, and the new list appears
+// about 15 seconds later. Reading straight after WaitForJobSettled therefore
+// writes a stale vm_ids into state, and the next plan shows a diff on a job
+// that is in fact correct.
+func WaitForVmIdsSettled(ctx context.Context, svc BackupVeeamService, vpcId string, jobId string, want []string, timeout time.Duration) error {
+	wanted := make(map[string]bool, len(want))
+	for _, id := range want {
+		wanted[id] = true
+	}
+
+	stateConf := &retry.StateChangeConf{
+		Pending: []string{"stale"},
+		Target:  []string{"match"},
+		Refresh: func() (interface{}, string, error) {
+			detail, err := svc.GetJobDetail(vpcId, jobId)
+			if err != nil {
+				return nil, "", err
+			}
+			if detail == nil {
+				return nil, "", fmt.Errorf("backup job %s disappeared while waiting for its instance list", jobId)
+			}
+			if sameVmIds(detail.BackupObject, wanted) {
+				return detail, "match", nil
+			}
+			return detail, "stale", nil
+		},
+		Timeout:    pollTimeout(timeout),
+		Delay:      3 * time.Second,
+		MinTimeout: 5 * time.Second,
+	}
+
+	_, err := stateConf.WaitForStateContext(ctx)
+	if err != nil {
+		return fmt.Errorf("the backup job was updated but its instance list did not settle: %v", err)
+	}
+	return nil
+}
+
+func sameVmIds(objects []BackupObject, wanted map[string]bool) bool {
+	if len(objects) != len(wanted) {
+		return false
+	}
+	for _, obj := range objects {
+		if !wanted[obj.VmId] {
+			return false
+		}
+	}
+	return true
 }
