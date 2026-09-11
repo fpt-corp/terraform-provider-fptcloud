@@ -128,7 +128,7 @@ resource "fptcloud_backup_veeam_job" "archive_monthly" {
 
 - `description` (String) The description of the backup job, at most 100 characters.
 - `is_capacity_tier_enabled` (Boolean) Whether capacity tier is enabled. The API refuses to change this on an existing job, so changing it destroys and recreates the job, losing its restore points.
-- `notification_method_ids` (Set of String) IDs of notification methods. Always source these from the `fptcloud_alert_notification_methods` data source: the API silently ignores IDs it does not recognise, so a hand-typed ID leaves the job with no notifications and no error.
+- `notification_method_ids` (Set of String) IDs of notification methods. Always source these from the `fptcloud_alert_notification_methods` data source: the API silently ignores IDs it does not recognise, so a hand-typed ID leaves the job with no notifications and no error. Set it to `[]` to remove every notification method; removing the argument keeps the current ones.
 - `schedule` (Block List, Max: 1) The schedule of the backup job. (see [below for nested schema](#nestedblock--schedule))
 - `schedule_enabled` (Boolean) Whether the backup job has a schedule.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
