@@ -17,6 +17,7 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
   vpc_id = "<vpc_id>"
   name = "terraform_lb"
   description = "terraform_lb"
+  scheme = "internet_facing"
   floating_ip = null
   size = "Basic-1"
   network_id = "<network_id>"
@@ -64,44 +65,6 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
 }
 ```
 
-### Scheme (Internet facing / Internal)
-
-`scheme` decides whether the load balancer is reachable from the Internet: `internet_facing` sits on a `NAT_ROUTED` subnet, `internal` sits on an `ISOLATED` subnet.
-
-`network_id` is required on OSP, same as before this field existed — `scheme` does not replace it and never picks a subnet on your behalf. Leave `scheme` unset and it is derived from the subnet `network_id` already points to:
-
-```terraform
-data "fptcloud_subnet" "isolated" {
-  vpc_id = "<vpc_id>"
-  filter {
-    key    = "name"
-    values = ["<subnet_name>"]
-  }
-}
-
-resource "fptcloud_load_balancer_v2_lb" "internal_example" {
-  # ... other configuration ...
-  network_id = data.fptcloud_subnet.isolated.subnets[0].id
-  # scheme left out -- derived from the subnet above (ISOLATED -> internal)
-}
-```
-
-Set `scheme` explicitly only to double-check it against the subnet you picked — a mismatch (e.g. `scheme = "internet_facing"` on an `ISOLATED` subnet) is rejected on create:
-
-```terraform
-resource "fptcloud_load_balancer_v2_lb" "internal_explicit" {
-  # ... other configuration ...
-  scheme     = "internal"
-  network_id = data.fptcloud_subnet.isolated.subnets[0].id
-}
-```
-
-Notes:
-
-- `scheme` can only be set when the load balancer is created; it is read-only afterwards. Editing it in an existing configuration is rejected with a clear error at `apply` time (the backend does not support updating it) — it is not silently ignored, and it does not leave a persistent diff. To run a load balancer with a different scheme, create a new one.
-- An `internal` load balancer does not support external pool members; the API rejects the request.
-- OSP platform only. On VMW there is no internal scheme at all, so leave `scheme` unset (or set `internet_facing`) — requesting `internal` on VMW is rejected with a clear error rather than silently stored as `internet_facing`.
-
 ### Manage tags via `fptcloud_tagging` data source
 
 `tag_ids` is unrelated to the `tags` field seen on `fptcloud_load_balancer_v2_lb` data sources — that one is an internal marker identifying the object as LBv2 for Portal, not FPT Cloud's tagging service. See the [data source docs](../data-sources/load_balancer_v2_lb.md#tags-vs-resource_tags) for details.
@@ -136,7 +99,7 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
 - `egw_id` (String) The edge gateway ID of the load balancer. Platform ID on VMW; null on OSP
 - `floating_ip` (String) The floating IP ID of the load balancer
 - `network_id` (String) The network ID of the load balancer. The subnet's ID on OSP; null on VMW
-- `scheme` (String) The scheme of the load balancer: `internet_facing` (default) or `internal`. Cannot be changed after creation
+- `scheme` (String) The scheme of the load balancer. Cannot be changed after creation
 - `tag_ids` (Set of String) List of tag IDs to associate with the load balancer
 - `vip_address` (String) The VIP address of the load balancer. If not specified, a VIP address is automatically assigned
 
