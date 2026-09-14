@@ -1,3 +1,15 @@
+## [0.3.70] - 2026-09-14
+
+### Resource
+
+- Feat: expose `scheme` (`internet_facing` or `internal`) on `fptcloud_load_balancer_v2_lb`, forwarded on create and read back into state ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+- Update: `scheme` is derived from the subnet `network_id` already points to when left unset; `network_id` stays required on OSP, the same as before this field existed ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+- Fix: reject changing `scheme` on an existing load balancer with a clear error at apply time, instead of silently ignoring the change and leaving the plan permanently out of sync ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+
+### Datasource
+
+- Feat: expose `scheme` on `fptcloud_load_balancer_v2_lb` and `fptcloud_load_balancer_v2_lbs` ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+
 ## [0.3.69] - 2026-09-11
 
 ### Resource

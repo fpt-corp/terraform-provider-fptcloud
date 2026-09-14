@@ -17,6 +17,7 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
   vpc_id = "<vpc_id>"
   name = "terraform_lb"
   description = "terraform_lb"
+  scheme = "internet_facing"
   floating_ip = null
   size = "Basic-1"
   network_id = "<network_id>"
@@ -98,6 +99,7 @@ resource "fptcloud_load_balancer_v2_lb" "example" {
 - `egw_id` (String) The edge gateway ID of the load balancer. Platform ID on VMW; null on OSP
 - `floating_ip` (String) The floating IP ID of the load balancer
 - `network_id` (String) The network ID of the load balancer. The subnet's ID on OSP; null on VMW
+- `scheme` (String) The scheme of the load balancer. Cannot be changed after creation
 - `tag_ids` (Set of String) List of tag IDs to associate with the load balancer
 - `vip_address` (String) The VIP address of the load balancer. If not specified, a VIP address is automatically assigned
 

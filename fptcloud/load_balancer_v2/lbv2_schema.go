@@ -2,6 +2,7 @@ package fptcloud_load_balancer_v2
 
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 var dataSourceLoadBalancers = map[string]*schema.Schema{
@@ -117,6 +118,11 @@ var dataSourceLoadBalancers = map[string]*schema.Schema{
 					Type:        schema.TypeString,
 					Computed:    true,
 					Description: "The creation time of the load balancer",
+				},
+				"scheme": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "The scheme of the load balancer: `internet_facing` or `internal`",
 				},
 				// "tags" marks the object as LBv2 so Portal syncs it;
 				// "resource_tags" is FPT Cloud's real tagging service.
@@ -270,6 +276,11 @@ var dataSourceLoadBalancer = map[string]*schema.Schema{
 		Type:        schema.TypeString,
 		Computed:    true,
 		Description: "The creation time of the load balancer",
+	},
+	"scheme": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "The scheme of the load balancer: `internet_facing` or `internal`",
 	},
 	"tags": {
 		Type: schema.TypeList,
@@ -495,6 +506,13 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 		Optional:    true,
 		Computed:    true,
 		Description: "The edge gateway ID of the load balancer. Platform ID on VMW; null on OSP",
+	},
+	"scheme": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		Computed:     true,
+		ValidateFunc: validation.StringInSlice([]string{"internet_facing", "internal"}, false),
+		Description: "The scheme of the load balancer: `internet_facing` (default) or `internal`. Cannot be changed after creation",
 	},
 	"tag_ids": {
 		Type:        schema.TypeSet,
