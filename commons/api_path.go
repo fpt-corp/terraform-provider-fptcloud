@@ -241,6 +241,17 @@ var ApiPath = struct {
 	CreateTag func(tenantId string) string
 	UpdateTag func(tenantId, tagId string) string
 	DeleteTag func(tenantId, tagId string) string
+
+	// Backup Veeam
+	BackupVeeamCreateJob func(vpcId string) string
+	BackupVeeamUpdateJob func(vpcId string, jobId string) string
+	BackupVeeamJobDetail func(vpcId string, jobId string) string
+	BackupVeeamListJobs  func(vpcId string, page int, pageSize int, name string, status string) string
+	BackupVeeamDeleteJob func(vpcId string, jobId string) string
+	BackupVeeamInstances func(vpcId string, notBackup bool, jobId string, status string) string
+
+	// Alert (used for the notification methods of a backup job)
+	AlertNotificationMethods func(vpcId string, level string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -1053,5 +1064,54 @@ var ApiPath = struct {
 	},
 	DeleteTag: func(tenantId, tagId string) string {
 		return fmt.Sprintf("/v2/org/%s/tag/%s/delete", tenantId, tagId)
+	},
+
+	// Backup Veeam
+	// Three API quirks, reproduced verbatim:
+	//   - detail uses "backup/job/" SINGULAR, every other path uses "backup/jobs/"
+	//   - delete puts the job id AT THE END, not in the middle
+	//   - update uses POST, not PUT
+	BackupVeeamCreateJob: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs/create", vpcId)
+	},
+	BackupVeeamUpdateJob: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs/%s/update", vpcId, jobId)
+	},
+	BackupVeeamJobDetail: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/job/%s/detail", vpcId, jobId)
+	},
+	BackupVeeamListJobs: func(vpcId string, page int, pageSize int, name string, status string) string {
+		path := fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs?page=%d&page_size=%d", vpcId, page, pageSize)
+		if name != "" {
+			path += "&name=" + url.QueryEscape(name)
+		}
+		if status != "" {
+			path += "&status=" + url.QueryEscape(status)
+		}
+		return path
+	},
+	BackupVeeamDeleteJob: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs/delete/%s", vpcId, jobId)
+	},
+	BackupVeeamInstances: func(vpcId string, notBackup bool, jobId string, status string) string {
+		path := fmt.Sprintf("/v1/vmware/vpc/%s/backup/instances?page=1&page_size=9999", vpcId)
+		if notBackup {
+			path += "&not_backup=true"
+		}
+		if jobId != "" {
+			path += "&job_id=" + url.QueryEscape(jobId)
+		}
+		if status != "" {
+			path += "&status=" + url.QueryEscape(status)
+		}
+		return path
+	},
+
+	// Alert
+	AlertNotificationMethods: func(vpcId string, level string) string {
+		if level == "" {
+			level = "VPC"
+		}
+		return fmt.Sprintf("/v1/vmware/vpc/%s/alert/alarm-notification/list?level=%s", vpcId, url.QueryEscape(level))
 	},
 }

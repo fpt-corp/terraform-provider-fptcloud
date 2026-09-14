@@ -1,3 +1,16 @@
+## [0.3.69] - 2026-09-11
+
+### Resource
+
+- Feat: manage Backup Veeam jobs with `fptcloud_backup_veeam_job`: create, update, list and delete, with several instances per job and daily, monthly or hourly schedules. Adding or removing an instance updates the job in place and keeps its restore points
+
+### Datasource
+
+- Feat: `fptcloud_backup_veeam_job` reads one backup job in full - its schedule, retention, instances and notification methods - by id or by name. The plural data source returns none of those
+- Feat: `fptcloud_backup_veeam_instances` lists the instances that can still be assigned to a backup job
+- Feat: `fptcloud_backup_veeam_jobs` lists the backup jobs in a VPC
+- Feat: `fptcloud_alert_notification_methods` lists notification channels, used to fill `notification_method_ids` on a backup job
+
 ## [0.3.68] - 2026-09-11
 
 ### Resource
