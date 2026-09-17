@@ -261,3 +261,58 @@ func TestCreateJobSendsNoIdempotencyKey(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotContains(t, string(body), "idempotency")
 }
+
+// Starting a session is the one endpoint in this family whose success path does
+// carry status, along with the history id. It is always the clone endpoint: the
+// in-place one is not called at all, because the portal hides the option that
+// would select it.
+func TestStartInstantRecoveryReadsTheHistoryId(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc-1/backup/restores/instant-recovery-clone/point-1": `{
+			"status": true,
+			"message": "Your request has been received and is being processed",
+			"history_id": "hist-1"
+		}`,
+	})
+	defer server.Close()
+
+	resp, err := bkv.NewBackupVeeamService(mockClient).StartInstantRecovery("vpc-1", "point-1", bkv.InstantRecoveryPayload{
+		RestorePointId: "point-1",
+		Type:           bkv.InstantRecoveryTypeCustomized,
+		Destination:    &bkv.InstantRecoveryDestination{RestoredVmName: "db-ir"},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, "hist-1", resp.HistoryId)
+}
+
+func TestStartInstantRecoveryRejectionIsAnError(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc-1/backup/restores/instant-recovery-clone/point-1": `{
+			"status": false, "message": "Restore point not found"
+		}`,
+	})
+	defer server.Close()
+
+	_, err := bkv.NewBackupVeeamService(mockClient).StartInstantRecovery("vpc-1", "point-1", bkv.InstantRecoveryPayload{
+		RestorePointId: "point-1",
+		Type:           bkv.InstantRecoveryTypeCustomized,
+		Destination:    &bkv.InstantRecoveryDestination{RestoredVmName: "db-ir"},
+	})
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "Restore point not found")
+}
+
+// A VPC without the Backup Veeam service answers 500 with a meaningless body,
+// and it is the first error a new user hits.
+func TestRestoreCloneDecoratesTheServerError(t *testing.T) {
+	client, server := clientReturningStatus(t, http.StatusInternalServerError, `{"message": "Internal Server Error"}`)
+	defer server.Close()
+
+	_, err := bkv.NewBackupVeeamService(client).RestoreClone("vpc-1", bkv.RestoreClonePayload{
+		RestoreVmPointId: "point-1",
+		NewVmName:        "db-recovered",
+		KeepOriginalVm:   true,
+	})
+	assert.NotNil(t, err)
+	assert.Contains(t, err.Error(), "Backup Veeam service is enabled")
+}
