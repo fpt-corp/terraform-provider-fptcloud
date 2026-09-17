@@ -1,3 +1,11 @@
+## [Unreleased]
+
+### Resource
+
+- Fix: `fptcloud_storage` with `type = "EXTERNAL"` no longer times out on create. The provider now calls the console's async create endpoint, which answers with the storage id right away, and waits for the storage to become `ENABLED` (and, when `instance_id` is set, to be attached to that instance). Before, the API held the request until the whole Celery create finished. `LOCAL` storages still use the previous endpoint
+- Fix: the async endpoint does not take `tag_ids`, so the provider applies them itself once an `EXTERNAL` storage is `ENABLED`
+- Feat: if the create request of an `EXTERNAL` storage times out (client timeout, HTTP 502 or 504), the apply no longer fails. The provider looks the storage up by name until a new one appears, for up to `timeouts.create` (default `15m`), and fails only if none does
+
 ## [0.3.69] - 2026-09-11
 
 ### Resource

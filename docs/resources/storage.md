@@ -43,8 +43,16 @@ Do not point this resource at the root disk of an instance, it is managed by `st
 
 - `instance_id` (String) The instance attached the storage (require if storage type is local)
 - `tag_ids` (Set of String) List of tag IDs to associate with the storage
+- `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
 - `created_at` (String) The created at of the storage
 - `id` (String) The id of the storage
+
+<a id="nestedblock--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) Default `15m`. Only used for an `EXTERNAL` storage when the create request itself times out (client timeout, or HTTP 502/504 from the gateway). The request may still have been queued, so instead of failing the provider looks the storage up by name until a new one appears, for at most this long. Waiting for the storage to become `ENABLED` afterwards is still bounded by the provider `timeout`.
