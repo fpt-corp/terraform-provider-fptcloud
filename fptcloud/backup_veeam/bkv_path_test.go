@@ -31,3 +31,21 @@ func TestBackupVeeamApiPaths(t *testing.T) {
 	assert.Equal(t, "/v1/vmware/vpc/vpc-1/alert/alarm-notification/list?level=VPC",
 		common.ApiPath.AlertNotificationMethods(vpcId, "VPC"))
 }
+
+func TestBackupVeeamRestoreAndInstantRecoveryPaths(t *testing.T) {
+	vpcId := "vpc-1"
+	pointId := "point-1"
+
+	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/restores/point-1/restore",
+		common.ApiPath.BackupVeeamRestore(vpcId, pointId))
+	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/restores/point-1/restore/clone",
+		common.ApiPath.BackupVeeamRestoreClone(vpcId, pointId))
+
+	// Starting a session uses "restores/instant-recovery-clone"...
+	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/restores/instant-recovery-clone/point-1",
+		common.ApiPath.BackupVeeamInstantRecoveryClone(vpcId, pointId))
+
+	assert.Equal(t, "/v1/vmware/vpc/vpc-1/backup/vm-instant-recovery",
+		common.ApiPath.BackupVeeamMounts(vpcId))
+
+}

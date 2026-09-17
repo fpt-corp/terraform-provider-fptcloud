@@ -14,6 +14,9 @@ import (
 // an acceptable failure mode for this version.
 const listPageSize = 1000
 
+// historyPageSize is small on purpose: the history list is only ever read to
+// find the newest row of one instance, and it comes back newest first.
+
 type BackupVeeamService interface {
 	CreateJob(vpcId string, payload CreateJobPayload) (JobMutationResponse, error)
 	UpdateJob(vpcId string, jobId string, payload CreateJobPayload) (JobMutationResponse, error)
@@ -22,6 +25,16 @@ type BackupVeeamService interface {
 	FindJobInList(vpcId string, jobId string, name string) (*JobListItem, error)
 	DeleteJob(vpcId string, jobId string) error
 	ListInstances(vpcId string, notBackup bool, jobId string, status string) (InstanceListResponse, error)
+
+	ListRestoreGroups(vpcId string) (RestoreGroupListResponse, error)
+	ListRestorePoints(vpcId string, jobId string, vmId string) (RestorePointListResponse, error)
+	GetRestorePoint(vpcId string, jobId string, vmId string, restorePointId string) (*RestorePointItem, error)
+	Restore(vpcId string, payload RestorePayload) (RestoreResponse, error)
+	RestoreClone(vpcId string, payload RestoreClonePayload) (RestoreResponse, error)
+
+	StartInstantRecovery(vpcId string, pointId string, payload InstantRecoveryPayload) (InstantRecoveryResponse, error)
+	ListMounts(vpcId string) (MountListResponse, error)
+	FindMountForRestorePoint(vpcId string, mountName string, recoveredVmName string, restorePointTime string) (*MountItem, error)
 }
 
 type backupVeeamServiceImpl struct {
@@ -224,4 +237,210 @@ func (s *backupVeeamServiceImpl) ListInstances(vpcId string, notBackup bool, job
 		return InstanceListResponse{}, fmt.Errorf("could not parse the instance list: %v", err)
 	}
 	return result, nil
+}
+
+// --- Restore ---------------------------------------------------------------
+
+func (s *backupVeeamServiceImpl) ListRestoreGroups(vpcId string) (RestoreGroupListResponse, error) {
+	raw, err := s.client.SendGetRequest(common.ApiPath.BackupVeeamRestoreGroups(vpcId, 1, listPageSize))
+	if err != nil {
+		return RestoreGroupListResponse{}, fmt.Errorf("listing the instances that have restore points failed: %v", err)
+	}
+
+	var result RestoreGroupListResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return RestoreGroupListResponse{}, fmt.Errorf("could not parse the restore group list: %v", err)
+	}
+	return result, nil
+}
+
+func (s *backupVeeamServiceImpl) ListRestorePoints(vpcId string, jobId string, vmId string) (RestorePointListResponse, error) {
+	raw, err := s.client.SendGetRequest(common.ApiPath.BackupVeeamRestorePoints(vpcId, jobId, vmId))
+	if err != nil {
+		return RestorePointListResponse{}, fmt.Errorf("listing restore points failed: %v", err)
+	}
+
+	var result RestorePointListResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return RestorePointListResponse{}, fmt.Errorf("could not parse the restore point list: %v", err)
+	}
+	return result, nil
+}
+
+// GetRestorePoint finds one restore point. There is no endpoint that reads a
+// restore point by id on its own, so this filters the job's list - which is
+// also the only place the point's status can be read.
+func (s *backupVeeamServiceImpl) GetRestorePoint(vpcId string, jobId string, vmId string, restorePointId string) (*RestorePointItem, error) {
+	list, err := s.ListRestorePoints(vpcId, jobId, vmId)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Items {
+		if list.Items[i].Id == restorePointId {
+			return &list.Items[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *backupVeeamServiceImpl) Restore(vpcId string, payload RestorePayload) (RestoreResponse, error) {
+	// The id goes in the path as well as the body. The backend reads only the
+	// body, but the portal sends both and this keeps the two callers identical.
+	raw, err := s.client.SendPostRequest(common.ApiPath.BackupVeeamRestore(vpcId, payload.RestoreVmPointId), payload)
+	if err != nil {
+		return RestoreResponse{}, decorateServerError("restoring the instance", err)
+	}
+
+	var result RestoreResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return RestoreResponse{}, fmt.Errorf("could not parse the restore response: %v", err)
+	}
+
+	// Same HTTP-200-on-failure shape as the job endpoints: a rejection arrives
+	// as 200 with status:false, or with error_type set and no status at all.
+	// The success path answers with resource_id and no status field, so an
+	// empty error_type plus an empty message counts as accepted.
+	if result.ErrorType != "" {
+		return result, fmt.Errorf("%s", describeErrorType(result.ErrorType, result.Message))
+	}
+	if !result.Status && result.ResourceId == "" {
+		message := result.Message
+		if message == "" {
+			message = "the API rejected the restore without giving a reason"
+		}
+		return result, fmt.Errorf("%s", message)
+	}
+	return result, nil
+}
+
+// RestoreClone runs a "Restore keep": the restore point is brought back as a
+// new instance and the original is left alone.
+//
+// The response shape is identical to a plain restore, including the fact that
+// the success path carries no status field, so the same three-way check
+// applies.
+func (s *backupVeeamServiceImpl) RestoreClone(vpcId string, payload RestoreClonePayload) (RestoreResponse, error) {
+	raw, err := s.client.SendPostRequest(common.ApiPath.BackupVeeamRestoreClone(vpcId, payload.RestoreVmPointId), payload)
+	if err != nil {
+		return RestoreResponse{}, decorateServerError("restoring the instance to a new one", err)
+	}
+
+	var result RestoreResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return RestoreResponse{}, fmt.Errorf("could not parse the restore response: %v", err)
+	}
+
+	if result.ErrorType != "" {
+		return result, fmt.Errorf("%s", describeErrorType(result.ErrorType, result.Message))
+	}
+	if !result.Status && result.ResourceId == "" {
+		message := result.Message
+		if message == "" {
+			message = "the API rejected the restore without giving a reason"
+		}
+		return result, fmt.Errorf("%s", message)
+	}
+	return result, nil
+}
+
+// StartInstantRecovery mounts a backup as a new instance that runs straight
+// from it.
+//
+// Unlike restore, this response DOES carry status on the success path, along
+// with a history_id.
+func (s *backupVeeamServiceImpl) StartInstantRecovery(vpcId string, pointId string, payload InstantRecoveryPayload) (InstantRecoveryResponse, error) {
+	action := "starting the instant recovery session"
+
+	raw, err := s.client.SendPostRequest(common.ApiPath.BackupVeeamInstantRecoveryClone(vpcId, pointId), payload)
+	if err != nil {
+		return InstantRecoveryResponse{}, decorateServerError(action, err)
+	}
+
+	var result InstantRecoveryResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return InstantRecoveryResponse{}, fmt.Errorf("could not parse the instant recovery response: %v", err)
+	}
+
+	if result.ErrorType != "" {
+		return result, fmt.Errorf("%s", describeErrorType(result.ErrorType, result.Message))
+	}
+	if !result.Status {
+		message := result.Message
+		if message == "" {
+			message = "the API rejected the instant recovery without giving a reason"
+		}
+		return result, fmt.Errorf("%s", message)
+	}
+	return result, nil
+}
+
+// ListMounts lists the instant recovery sessions of the whole VPC.
+func (s *backupVeeamServiceImpl) ListMounts(vpcId string) (MountListResponse, error) {
+	raw, err := s.client.SendGetRequest(common.ApiPath.BackupVeeamMounts(vpcId))
+	if err != nil {
+		return MountListResponse{}, fmt.Errorf("listing instant recovery sessions failed: %v", err)
+	}
+
+	var result MountListResponse
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return MountListResponse{}, fmt.Errorf("could not parse the instant recovery session list: %v", err)
+	}
+	return result, nil
+}
+
+// FindMountForRestorePoint identifies the session this provider just started.
+//
+// The list carries no restore point id, so the session has to be recognised
+// from what it does carry:
+//
+//   - A session started under a chosen name is found by that name, which is
+//     unique because an instance name has to be.
+//   - A session mounted in place has no name of its own, so it is matched on
+//     the pair (recovered_vm_name, restore_point_time) - the instance the
+//     restore point belongs to, and when the point was taken. Both values come
+//     straight off the restore point, and restore_point_time uses the same
+//     format as the point's restore_at.
+//
+// NOT backup_id, even though both the mount and the restore point have a field
+// by that name: measured against the dev backend, a session mounted from a
+// point whose backup_id was 71cdb10b-... reported 331edde5-... on the mount.
+// They are different ids that happen to share a name.
+//
+// Matching several sessions is reported as an error rather than guessed at: the
+// id picked here is what a later `terraform destroy` unmounts, and unmounting
+// somebody else's session discards their data.
+func (s *backupVeeamServiceImpl) FindMountForRestorePoint(vpcId string, mountName string, recoveredVmName string, restorePointTime string) (*MountItem, error) {
+	if mountName == "" && (recoveredVmName == "" || restorePointTime == "") {
+		return nil, fmt.Errorf("cannot identify the instant recovery session: the restore point reports neither an " +
+			"instance name nor a timestamp to match it against")
+	}
+
+	list, err := s.ListMounts(vpcId)
+	if err != nil {
+		return nil, err
+	}
+
+	var candidates []MountItem
+	for _, item := range list.Data {
+		if mountName != "" {
+			if item.VmMountName == mountName {
+				candidates = append(candidates, item)
+			}
+			continue
+		}
+		if item.RecoveredVmName == recoveredVmName && item.RestorePointTime == restorePointTime {
+			candidates = append(candidates, item)
+		}
+	}
+
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	if len(candidates) == 1 {
+		return &candidates[0], nil
+	}
+	return nil, fmt.Errorf(
+		"found %d instant recovery sessions that all look like this one, so the right one cannot be told apart. "+
+			"Check the Instant Recovery tab in the portal and stop the sessions that are not wanted, then apply again",
+		len(candidates))
 }

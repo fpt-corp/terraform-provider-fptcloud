@@ -6,6 +6,21 @@
 - Fix: the async endpoint does not take `tag_ids`, so the provider applies them itself once an `EXTERNAL` storage is `ENABLED`
 - Feat: if the create request of an `EXTERNAL` storage times out (client timeout, HTTP 502 or 504), the apply no longer fails. The provider looks the storage up by name until a new one appears, for up to `timeouts.create` (default `15m`), and fails only if none does
 
+## [0.3.70] - 2026-09-17
+
+### Resource
+
+- Feat: restore an instance from a backup restore point with `fptcloud_backup_veeam_restore`, the same operation as "Restore Instance" in the portal, including quick rollback and power-on-after-restore. This overwrites the running instance
+- Feat: restore into a **new** instance with `fptcloud_backup_veeam_restore_clone`, the same operation as "Restore keep" in the portal: the restore point is brought back under a new name and the original instance keeps running
+- Feat: run a backup as a new instance straight from the backup with `fptcloud_backup_veeam_instant_recovery`, the same operation as "Instant Recovery" in the portal. Only the portal's "Restore to the new instance" mode is offered: the API has an in-place mode as well, but the portal hides the option that selects it. Note that an open session blocks the backup job of the instance it was mounted from, so the new data source below is worth a look when a job stops running
+- All three are actions rather than pieces of infrastructure: every argument forces a new run, there is no in-place update and no import, and `terraform destroy` calls no API - it warns about what was left behind and stops tracking. A restore cannot be undone, the instance a restore keep created is not deleted, and an instant recovery session is left running (keeping the mounted instance or stopping the session is done in the portal)
+- An apply returns as soon as the platform has accepted the request. It does not wait for the restore to finish, and it does not report the outcome either: there is no dependable signal for either. A restore point's status is set to `PENDING` when the request is accepted and never cleared, so waiting for a `SUCCESS` would wait forever; and the one place the outcome is recorded - the portal's History tab - is a list with no id per entry, so an entry could only be matched to an apply by guessing. Progress and outcome are read in the portal
+
+### Datasource
+
+- Feat: `fptcloud_backup_veeam_restore_points` lists the restore points of one protected instance, newest first, with the date, size and type the portal's restore dialog shows
+- Feat: `fptcloud_backup_veeam_instant_recovery_sessions` lists the Instant Recovery sessions open in a VPC, including ones started from the portal - the place to look when a backup job stops running
+
 ## [0.3.69] - 2026-09-11
 
 ### Resource

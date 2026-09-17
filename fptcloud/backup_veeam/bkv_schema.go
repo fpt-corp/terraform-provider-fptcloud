@@ -551,3 +551,352 @@ var dataSourceBackupVeeamJobSchema = map[string]*schema.Schema{
 		},
 	},
 }
+
+// resourceBackupVeeamRestoreSchema describes a RESTORE, which is an action
+// rather than a piece of infrastructure.
+//
+// Terraform has no first-class way to say "run this once". The convention for
+// an action - the one aws_lambda_invocation and terraform_data use - is a
+// resource whose arguments are all ForceNew: applying it performs the action,
+// changing any argument performs it again, and destroying it only forgets. That
+// is what this is. `terraform destroy` CANNOT undo a restore.
+var resourceBackupVeeamRestoreSchema = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the VPC that owns the backup job.",
+	},
+	"backup_job_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description: "The ID of the backup job the restore point belongs to. Needed because the API has no endpoint that reads a " +
+			"restore point by ID on its own - a point can only be read from the list belonging to one job and one instance, " +
+			"which is how the provider checks the ID before it fires the restore.",
+	},
+	"vm_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the instance to restore. It must be the instance the restore point was taken from.",
+	},
+	"restore_point_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description: "The ID of the restore point to restore from. Source it from the `fptcloud_backup_veeam_restore_points` " +
+			"data source. Changing it runs the restore again.",
+	},
+	"quick_rollback": {
+		Type:     schema.TypeBool,
+		Optional: true,
+		Default:  false,
+		ForceNew: true,
+		Description: "Restore only the blocks that changed since the restore point was taken, which is faster. " +
+			"Shown as \"Quick rollback\" in the portal.",
+	},
+	"power_on_after_restore": {
+		Type:        schema.TypeBool,
+		Optional:    true,
+		Default:     false,
+		ForceNew:    true,
+		Description: "Power the instance on once the restore finishes.",
+	},
+	"triggers": {
+		Type:     schema.TypeMap,
+		Optional: true,
+		ForceNew: true,
+		Elem:     &schema.Schema{Type: schema.TypeString},
+		Description: "Arbitrary values that force the restore to run again when they change. Use it to repeat a restore " +
+			"from the SAME restore point, which no other argument can express because every other argument would still be equal.",
+	},
+
+	"restored_at": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "When the restore point being restored from was taken.",
+	},
+	"vm_display_name": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "Display name of the restored instance, read back from the API.",
+	},
+	"point_type": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "`full` or `incremental` - the kind of restore point that was used.",
+	},
+}
+
+var dataSourceBackupVeeamRestorePointsSchema = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the VPC.",
+	},
+	"backup_job_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the backup job that produced the restore points.",
+	},
+	"vm_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the protected instance.",
+	},
+	"point_type": {
+		Type:         schema.TypeString,
+		Optional:     true,
+		ValidateFunc: validation.StringInSlice([]string{"full", "incremental"}, false),
+		Description:  "Only return restore points of this kind: `full` or `incremental`.",
+	},
+	"points": {
+		Type:     schema.TypeList,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"id":               {Type: schema.TypeString, Computed: true},
+				"restore_at":       {Type: schema.TypeString, Computed: true},
+				"point_type":       {Type: schema.TypeString, Computed: true},
+				"backup_file_size": {Type: schema.TypeFloat, Computed: true},
+				"status":           {Type: schema.TypeString, Computed: true},
+				"vm_display_name":  {Type: schema.TypeString, Computed: true},
+			},
+		},
+		Description: "The restore points, newest first - the same order and the same columns the portal's restore dialog shows.",
+	},
+}
+
+// resourceBackupVeeamRestoreCloneSchema describes a "Restore keep": the same
+// action shape as a plain restore, but the restore point comes back as a NEW
+// instance and the original is left running.
+//
+// keep_original_vm is absent on purpose - see RestoreClonePayload.
+var resourceBackupVeeamRestoreCloneSchema = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the VPC that owns the backup job.",
+	},
+	"backup_job_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description: "The ID of the backup job the restore point belongs to. Needed because the API has no endpoint that reads a " +
+			"restore point by ID on its own - a point can only be read from the list belonging to one job and one instance, " +
+			"which is how the provider checks the ID before it fires the restore.",
+	},
+	"vm_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the instance the restore point was taken from. This instance is NOT modified.",
+	},
+	"restore_point_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description: "The ID of the restore point to restore from. Source it from the `fptcloud_backup_veeam_restore_points` " +
+			"data source. Changing it runs the restore again.",
+	},
+	"new_instance_name": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		StateFunc:    func(value interface{}) string { return strings.TrimSpace(value.(string)) },
+		Description: "Name for the new instance the restore point is brought back as. It must not be in use by another " +
+			"instance in the VPC. The server trims leading and trailing whitespace.",
+	},
+	"power_on_after_restore": {
+		Type:        schema.TypeBool,
+		Optional:    true,
+		Default:     false,
+		ForceNew:    true,
+		Description: "Power the new instance on once the restore finishes.",
+	},
+	"triggers": {
+		Type:     schema.TypeMap,
+		Optional: true,
+		ForceNew: true,
+		Elem:     &schema.Schema{Type: schema.TypeString},
+		Description: "Arbitrary values that force the restore to run again when they change. Use it to repeat a restore " +
+			"from the SAME restore point, which no other argument can express because every other argument would still be equal.",
+	},
+
+	"new_instance_id": {
+		Type:     schema.TypeString,
+		Computed: true,
+		Description: "ID of the instance that was created, looked up by name once the restore finished. Empty when the " +
+			"lookup did not find it - the restore itself still succeeded, and the instance is visible in the portal.",
+	},
+	"restored_at": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "When the restore point being restored from was taken.",
+	},
+	"vm_display_name": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "Display name of the instance the restore point was taken from, read back from the API.",
+	},
+	"point_type": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "`full` or `incremental` - the kind of restore point that was used.",
+	},
+}
+
+var resourceBackupVeeamInstantRecoverySchema = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the VPC that owns the backup job.",
+	},
+	"backup_job_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description: "The ID of the backup job the restore point belongs to. The provider reads the restore point from the " +
+			"job's list to learn which mounted session belongs to this resource.",
+	},
+	"vm_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the instance the restore point was taken from.",
+	},
+	"restore_point_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the restore point to mount. Source it from the `fptcloud_backup_veeam_restore_points` data source.",
+	},
+	"power_up": {
+		Type:        schema.TypeBool,
+		Optional:    true,
+		Default:     false,
+		ForceNew:    true,
+		Description: "Power the mounted instance on once the session starts.",
+	},
+	"nics_enabled": {
+		Type:     schema.TypeBool,
+		Optional: true,
+		Default:  false,
+		ForceNew: true,
+		Description: "Connect the mounted instance's network interfaces. Leaving this off is the safer default: a mounted " +
+			"instance with its network connected can collide with the original instance, which is still running.",
+	},
+	"vm_tags_restore_enabled": {
+		Type:        schema.TypeBool,
+		Optional:    true,
+		Default:     false,
+		ForceNew:    true,
+		Description: "Restore the instance's tags along with it.",
+	},
+	"mount_id": {
+		Type:     schema.TypeString,
+		Computed: true,
+		Description: "ID of the session in the portal's Instant Recovery tab, once it appears there. Empty while the " +
+			"platform is still mounting, and empty again once somebody migrates or stops the session.",
+	},
+	"state": {
+		Type:     schema.TypeString,
+		Computed: true,
+		Description: "The session state as Veeam Backup & Replication reports it. Passed through unchanged; the provider " +
+			"attaches no meaning to any particular value.",
+	},
+	"ready_migrate": {
+		Type:     schema.TypeBool,
+		Computed: true,
+		Description: "Whether the platform considers the session ready to be migrated - to be kept as a normal instance. " +
+			"Migrating is done in the portal; this attribute only reports the flag.",
+	},
+	"mount_name": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "Name of the mounted instance as it appears in the portal's Instant Recovery tab.",
+	},
+	"mounted_instance_id": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "ID of the mounted instance, once the portal has a record of it.",
+	},
+	"mode": {
+		Type:     schema.TypeString,
+		Computed: true,
+		Description: "Which kind of session the platform reports this as. Always `Customized`, the only kind the provider " +
+			"starts.",
+	},
+	"restore_point_time": {
+		Type:        schema.TypeString,
+		Computed:    true,
+		Description: "When the restore point being mounted was taken.",
+	},
+	"backup_id": {
+		Type:     schema.TypeString,
+		Computed: true,
+		Description: "ID of the backup the session was mounted from, as the session itself reports it. Note that this is NOT the " +
+			"`backup_id` of the restore point the session was started from - the two differ.",
+	},
+	"history_id": {
+		Type:     schema.TypeString,
+		Computed: true,
+		Description: "ID of the history entry the API created for this session. Useful for matching the session against the " +
+			"portal's History tab; there is no endpoint that reads it back.",
+	},
+	"new_instance_name": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ForceNew:     true,
+		ValidateFunc: validation.NoZeroValues,
+		StateFunc:    func(value interface{}) string { return strings.TrimSpace(value.(string)) },
+		Description: "Name for the instance the session mounts as. It must not be in use by another instance in the VPC. " +
+			"The provider also uses this name to recognise its own session in the VPC-wide session list.",
+	},
+}
+
+var dataSourceBackupVeeamInstantRecoverySessionsSchema = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the VPC.",
+	},
+	"sessions": {
+		Type:     schema.TypeList,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"vm_mount_id":        {Type: schema.TypeString, Computed: true},
+				"vm_mount_name":      {Type: schema.TypeString, Computed: true},
+				"recovered_vm_name":  {Type: schema.TypeString, Computed: true},
+				"vm_id":              {Type: schema.TypeString, Computed: true},
+				"state":              {Type: schema.TypeString, Computed: true},
+				"mode":               {Type: schema.TypeString, Computed: true},
+				"restore_point_time": {Type: schema.TypeString, Computed: true},
+				"backup_id":          {Type: schema.TypeString, Computed: true},
+				"ready_migrate":      {Type: schema.TypeBool, Computed: true},
+			},
+		},
+		Description: "Every instant recovery session open in the VPC, including sessions started from the portal.",
+	},
+}

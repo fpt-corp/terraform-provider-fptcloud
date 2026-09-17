@@ -251,6 +251,16 @@ var ApiPath = struct {
 	BackupVeeamDeleteJob func(vpcId string, jobId string) string
 	BackupVeeamInstances func(vpcId string, notBackup bool, jobId string, status string) string
 
+	// Backup Veeam - restore
+	BackupVeeamRestoreGroups func(vpcId string, page int, pageSize int) string
+	BackupVeeamRestorePoints func(vpcId string, jobId string, vmId string) string
+	BackupVeeamRestore       func(vpcId string, restorePointId string) string
+	BackupVeeamRestoreClone  func(vpcId string, restorePointId string) string
+
+	// Backup Veeam - instant recovery
+	BackupVeeamInstantRecoveryClone func(vpcId string, restorePointId string) string
+	BackupVeeamMounts               func(vpcId string) string
+
 	// Alert (used for the notification methods of a backup job)
 	AlertNotificationMethods func(vpcId string, level string) string
 }{
@@ -1112,6 +1122,40 @@ var ApiPath = struct {
 			path += "&status=" + url.QueryEscape(status)
 		}
 		return path
+	},
+
+	BackupVeeamRestoreGroups: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	BackupVeeamRestorePoints: func(vpcId string, jobId string, vmId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/%s/%s/restorepoints", vpcId, jobId, vmId)
+	},
+	// The path segment is the RESTORE POINT id, the same value the request body
+	// carries as restore_vm_point_id. The backend ignores the segment entirely
+	// and reads only the body; the portal sends the id in both places, so this
+	// does the same rather than inventing a third convention.
+	BackupVeeamRestore: func(vpcId string, restorePointId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores/%s/restore", vpcId, restorePointId)
+	},
+	BackupVeeamRestoreClone: func(vpcId string, restorePointId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores/%s/restore/clone", vpcId, restorePointId)
+	},
+
+	// Instant recovery. The path segment is again the RESTORE POINT id and is
+	// again ignored by the backend in favour of the body - same convention as
+	// the two restore paths above. Note the inconsistency the backend itself
+	// has: this one uses "restores/instant-recovery-clone", while the endpoints
+	// that act on a live session use "vm-instant-recovery".
+	//
+	// There is a sibling endpoint, "restores/instant-recovery/{point}", that
+	// mounts the backup in the instance's original location. It is not here on
+	// purpose: the portal hides the option that would call it, so no customer
+	// session has ever used that path.
+	BackupVeeamInstantRecoveryClone: func(vpcId string, restorePointId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores/instant-recovery-clone/%s", vpcId, restorePointId)
+	},
+	BackupVeeamMounts: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/vm-instant-recovery", vpcId)
 	},
 
 	// Alert
