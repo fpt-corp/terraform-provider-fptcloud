@@ -10,6 +10,7 @@ const ObjectStorageApiPrefix = "/v1/vmware/vpc"
 var ApiPath = struct {
 	SSH                        string
 	Storage                    func(vpcId string) string
+	CreateStorageAsync         func(vpcId string) string
 	StorageUpdateAttached      func(vpcId string, storageId string) string
 	UpdateStorageTags          func(vpcId string, storageId string) string
 	StoragePolicy              func(vpcId string) string
@@ -266,6 +267,12 @@ var ApiPath = struct {
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage", vpcId)
+	},
+	// The portal console's create endpoint: it queues the create and answers
+	// with the new id at once, where Storage (POST) blocks until the Celery
+	// task finishes and times out on slow creates.
+	CreateStorageAsync: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/create-storage", vpcId)
 	},
 	StorageUpdateAttached: func(vpcId string, storageId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage/%s/update-attached", vpcId, storageId)

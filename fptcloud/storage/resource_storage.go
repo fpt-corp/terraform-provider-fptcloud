@@ -3,6 +3,7 @@ package fptcloud_storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -69,7 +70,13 @@ func ResourceStorage() *schema.Resource {
 				Description: "List of tag IDs associated with the storage",
 			},
 		},
-		CreateContext: resourceStorageCreate,
+		// CreateWithoutTimeout: timeouts.create bounds only the name lookup that
+		// follows a timed-out create request. The wait for ENABLED keeps using
+		// the provider "timeout", as before, instead of sharing that budget.
+		CreateWithoutTimeout: resourceStorageCreate,
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(defaultCreateLookupTimeout),
+		},
 		ReadContext:   resourceStorageRead,
 		UpdateContext: resourceStorageUpdate,
 		DeleteContext: resourceStorageDelete,
@@ -126,7 +133,38 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 		return diag.Errorf("[ERR] Instance id is required with storage type LOCAL")
 	}
 
-	storageId, err := storageService.CreateStorage(storageModel)
+	isExternal := storageModel.Type == External
+	wantInstance := ""
+	var storageId string
+	var err error
+	if isExternal {
+		// The blocking create endpoint holds the request until the Celery task
+		// finishes and regularly times out, so EXTERNAL storages go through the
+		// async one. It has no name check, so keep the old duplicate guard here.
+		before, nameErr := storageService.LookupStorageByName(storageModel.VpcId, storageModel.Name)
+		if nameErr != nil {
+			return diag.Errorf("[ERR] Failed to check storage name %s: %s", storageModel.Name, nameErr)
+		}
+		if before.Found && before.Status == "ENABLED" {
+			return diag.Errorf("[ERR] Storage name %s already exists", storageModel.Name)
+		}
+		if storageModel.InstanceId != nil {
+			wantInstance = *storageModel.InstanceId
+		}
+		storageId, err = storageService.CreateStorageAsync(storageModel)
+		if errors.Is(err, ErrCreateRequestTimeout) {
+			// The request may have been queued anyway: look for the new
+			// storage by name before calling it a failure.
+			lookupTimeout := d.Timeout(schema.TimeoutCreate)
+			log.Printf("[WARN] %s; looking up storage %s by name for up to %s", err, storageModel.Name, lookupTimeout)
+			lookup := func() (StorageNameLookup, error) {
+				return storageService.LookupStorageByName(storageModel.VpcId, storageModel.Name)
+			}
+			storageId, err = waitForNewStorageByName(ctx, lookup, before.Id, lookupTimeout, createLookupInterval)
+		}
+	} else {
+		storageId, err = storageService.CreateStorage(storageModel)
+	}
 	if err != nil {
 		return diag.Errorf("[ERR] Failed to create storage: %s", err)
 	}
@@ -139,7 +177,7 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 
 	//Waiting for status active
 	createStateConf := &retry.StateChangeConf{
-		Pending: []string{"DISABLE", "PENDING", "DISABLED"},
+		Pending: []string{"DISABLE", "PENDING", "DISABLED", "CREATING", "ATTACHING"},
 		Target:  []string{"ENABLED"},
 		Refresh: func() (interface{}, string, error) {
 			findStorageModel := FindStorageDTO{
@@ -150,7 +188,7 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 			if err != nil {
 				return 0, "", common.DecodeError(err)
 			}
-			return resp, resp.Status, nil
+			return resp, createWaitState(resp, wantInstance), nil
 		},
 		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          3 * time.Second,
@@ -162,7 +200,33 @@ func resourceStorageCreate(ctx context.Context, d *schema.ResourceData, m interf
 		return diag.Errorf("[Error] Waiting for storage (%s) to be created: %s", d.Id(), err)
 	}
 
+	// The async endpoint ignores tag_ids; the blocking one applied them itself.
+	if isExternal && len(storageModel.TagIds) > 0 {
+		if _, err := storageService.UpdateTags(storageModel.VpcId, storageId, storageModel.TagIds); err != nil {
+			return diag.Errorf("[ERR] Storage %s was created but applying its tags failed: %s", storageId, err)
+		}
+	}
+
 	return resourceStorageRead(ctx, d, m)
+}
+
+// createWaitState maps a storage to the state the create wait tracks.
+//
+// Right after the async create the row exists with a null status (measured on
+// production: about 10 seconds), which must count as pending, not as an
+// unexpected state. The status turns ENABLED on the sync that follows the
+// create, and a sync started by another resource can get there before the
+// attach is done, so ENABLED only ends the wait once the storage is on the
+// requested instance.
+func createWaitState(storage *Storage, wantInstance string) string {
+	switch {
+	case storage.Status == "":
+		return "CREATING"
+	case storage.Status == "ENABLED" && wantInstance != "" && storage.InstanceId != wantInstance:
+		return "ATTACHING"
+	default:
+		return storage.Status
+	}
 }
 
 // function to read the Storage
@@ -385,4 +449,43 @@ func expandTagIDs(tagSet *schema.Set) []string {
 		tagIds = append(tagIds, tag.(string))
 	}
 	return tagIds
+}
+
+const defaultCreateLookupTimeout = 15 * time.Minute
+
+// createLookupInterval is a var only so tests can poll faster.
+var createLookupInterval = 10 * time.Second
+
+// waitForNewStorageByName polls the name lookup until a storage row other than
+// previousId carries the name, and returns its id. previousId is the row seen
+// before the create request: deleted storages keep a DISABLED row with their
+// name, so the name alone does not prove the create went through. The new row
+// is accepted in any status; a concurrent sync can already have marked it
+// DISABLED, and the caller waits for ENABLED afterwards. Lookup errors are
+// retried until the timeout, since the API that just timed out may still be
+// struggling.
+func waitForNewStorageByName(ctx context.Context, lookup func() (StorageNameLookup, error), previousId string, timeout time.Duration, interval time.Duration) (string, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		found, err := lookup()
+		if err != nil {
+			lastErr = err
+			log.Printf("[WARN] Looking up the storage by name failed, retrying: %s", err)
+		} else if found.Found && found.Id != previousId {
+			return found.Id, nil
+		}
+
+		if time.Now().Add(interval).After(deadline) {
+			if lastErr != nil {
+				return "", fmt.Errorf("create request timed out and no new storage appeared under its name within %s (last lookup error: %s)", timeout, lastErr)
+			}
+			return "", fmt.Errorf("create request timed out and no new storage appeared under its name within %s", timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(interval):
+		}
+	}
 }
