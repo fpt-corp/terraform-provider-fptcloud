@@ -52,7 +52,7 @@ func dataSourceBucketVersioningRead(ctx context.Context, d *schema.ResourceData,
 	bucketName := d.Get("bucket_name").(string)
 
 	versioning := service.GetBucketVersioning(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
-	if !versioning.Status {
+	if versioning == nil || !versioning.Status {
 		return diag.Errorf("Could not get versioning status for bucket %s", bucketName)
 	}
 

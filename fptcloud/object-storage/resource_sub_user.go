@@ -111,14 +111,12 @@ func resourceSubUserRead(ctx context.Context, d *schema.ResourceData, m interfac
 
 	subUserId := d.Id()
 	subUser := objectStorageService.DetailSubUser(vpcId, s3ServiceDetail.S3ServiceId, subUserId)
-	if subUser == nil {
+	// A sub-user that is no longer there is drift, not a failure: clearing the ID
+	// lets Terraform plan a recreate, whereas returning an error makes every
+	// subsequent plan fail until the state entry is removed by hand.
+	if subUser == nil || subUser.UserID == "" {
 		d.SetId("")
-		return diag.Errorf("sub-user with ID %s not found", subUserId)
-	}
-
-	if subUser.UserID == "" {
-		d.SetId("")
-		return diag.Errorf("sub-user with ID %s not found", subUserId)
+		return nil
 	}
 
 	if err := d.Set("user_id", subUser.UserID); err != nil {

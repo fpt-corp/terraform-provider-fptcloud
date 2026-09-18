@@ -48,7 +48,7 @@ func dataSourceBucketPolicyRead(ctx context.Context, d *schema.ResourceData, m i
 		return diag.FromErr(fmt.Errorf(regionError, d.Get("region_name").(string)))
 	}
 	policyResponse := service.GetBucketPolicy(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
-	if !policyResponse.Status {
+	if policyResponse == nil || !policyResponse.Status {
 		return diag.Errorf("failed to get bucket policy for bucket %s", bucketName)
 	}
 
