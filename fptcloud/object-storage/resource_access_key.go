@@ -108,27 +108,41 @@ func resourceAccessKeyRead(ctx context.Context, d *schema.ResourceData, m interf
 	service := NewObjectStorageService(client)
 	vpcId := d.Get("vpc_id").(string)
 	regionName := d.Get("region_name").(string)
-	s3ServiceId := getServiceEnableRegion(service, vpcId, regionName).S3ServiceId
-	resp, err := service.ListAccessKeys(vpcId, s3ServiceId)
+	s3ServiceDetail := getServiceEnableRegion(service, vpcId, regionName)
+	if s3ServiceDetail.S3ServiceId == "" {
+		return diag.FromErr(fmt.Errorf(regionError, regionName))
+	}
+	resp, err := service.ListAccessKeys(vpcId, s3ServiceDetail.S3ServiceId)
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	// The secret is only ever returned by the create call, so it is carried over
+	// from state rather than read back.
 	secretAccessKey := d.Get("secret_access_key").(string)
 	accessKeyId := d.Get("access_key_id").(string)
+	found := false
 	for _, accessKey := range resp.Credentials {
 		for _, key := range accessKey.Credentials {
 			if key.AccessKey == accessKeyId {
-				if err := d.Set("access_key_id", key.AccessKey); err != nil {
-					d.SetId("")
-					return diag.FromErr(err)
-				}
-				if err := d.Set("secret_access_key", secretAccessKey); err != nil {
-					d.SetId("")
-					return diag.FromErr(err)
-				}
+				found = true
 				break
 			}
 		}
+		if found {
+			break
+		}
+	}
+	// A key deleted outside Terraform has to drop out of state, otherwise nothing
+	// ever reconciles it and the eventual destroy fails against a key that is gone.
+	if !found {
+		d.SetId("")
+		return nil
+	}
+	if err := d.Set("access_key_id", accessKeyId); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("secret_access_key", secretAccessKey); err != nil {
+		return diag.FromErr(err)
 	}
 	return nil
 }

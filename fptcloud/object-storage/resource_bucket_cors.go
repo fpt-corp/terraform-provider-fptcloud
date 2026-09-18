@@ -146,9 +146,16 @@ func resourceBucketCorsRead(_ context.Context, d *schema.ResourceData, m interfa
 	page := 1
 	pageSize := 999999
 
-	bucketCorsDetails, _ := service.GetBucketCors(vpcId, s3ServiceDetail.S3ServiceId, bucketName, page, pageSize)
-	if !bucketCorsDetails.Status {
-		return diag.FromErr(fmt.Errorf("failed to fetch life cycle rules for bucket %s", bucketName))
+	// GetBucketCors returns a nil response together with the error whenever the
+	// request or the decode fails, so the error has to be checked before the
+	// response is touched. Discarding it here crashed the plugin on any API
+	// hiccup during refresh.
+	bucketCorsDetails, err := service.GetBucketCors(vpcId, s3ServiceDetail.S3ServiceId, bucketName, page, pageSize)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if bucketCorsDetails == nil || !bucketCorsDetails.Status {
+		return diag.FromErr(fmt.Errorf("failed to fetch CORS rules for bucket %s", bucketName))
 	}
 	ruleID, err := corsRuleID(d)
 	if err != nil {

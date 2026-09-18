@@ -184,6 +184,28 @@ var ApiPath = struct {
 	DetailSubUser          func(vpcId, s3ServiceId, subUserId string) string
 	CreateSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
 	DeleteSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
+	// IAM user
+	CreateIamUser          func(vpcId, s3ServiceId string) string
+	GetIamUser             func(vpcId, s3ServiceId, userName string) string
+	ListIamUsers           func(vpcId, s3ServiceId string, page, pageSize int) string
+	DeleteIamUser          func(vpcId, s3ServiceId, userName string) string
+	ListIamUserAccessKeys  func(vpcId, s3ServiceId, userName string) string
+	CreateIamUserAccessKey func(vpcId, s3ServiceId, userName string) string
+	DeleteIamUserAccessKey func(vpcId, s3ServiceId, userName, accessKeyId string) string
+	GetIamUserPolicy       func(vpcId, s3ServiceId, userName string) string
+	PutIamUserPolicy       func(vpcId, s3ServiceId, userName string) string
+	DeleteIamUserPolicy    func(vpcId, s3ServiceId, userName string) string
+
+	// IAM role
+	CreateIamRole             func(vpcId, s3ServiceId string) string
+	GetIamRole                func(vpcId, s3ServiceId, roleName string) string
+	ListIamRoles              func(vpcId, s3ServiceId string, page, pageSize int) string
+	UpdateIamRoleTrustedUsers func(vpcId, s3ServiceId, roleName string) string
+	DeleteIamRole             func(vpcId, s3ServiceId, roleName string) string
+	GetIamRolePolicy          func(vpcId, s3ServiceId, roleName string) string
+	PutIamRolePolicy          func(vpcId, s3ServiceId, roleName string) string
+	DeleteIamRolePolicy       func(vpcId, s3ServiceId, roleName string) string
+
 	// Access Key
 	ListAccessKeys  func(vpcId, s3ServiceId string) string
 	CreateAccessKey func(vpcId, s3ServiceId string) string
@@ -938,6 +960,64 @@ var ApiPath = struct {
 	},
 	DeleteSubUserAccessKey: func(vpcId, s3ServiceId, subUserId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/credentials/delete", vpcId, s3ServiceId, subUserId)
+	},
+
+	// IAM user
+	CreateIamUser: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/create", vpcId, s3ServiceId)
+	},
+	GetIamUser: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/detail", vpcId, s3ServiceId, userName)
+	},
+	ListIamUsers: func(vpcId, s3ServiceId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/list?page=%d&page_size=%d", vpcId, s3ServiceId, page, pageSize)
+	},
+	DeleteIamUser: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/delete", vpcId, s3ServiceId, userName)
+	},
+	ListIamUserAccessKeys: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/access-keys/list", vpcId, s3ServiceId, userName)
+	},
+	CreateIamUserAccessKey: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/access-keys/create", vpcId, s3ServiceId, userName)
+	},
+	DeleteIamUserAccessKey: func(vpcId, s3ServiceId, userName, accessKeyId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/access-keys/%s/delete", vpcId, s3ServiceId, userName, accessKeyId)
+	},
+	GetIamUserPolicy: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/policy", vpcId, s3ServiceId, userName)
+	},
+	PutIamUserPolicy: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/policy", vpcId, s3ServiceId, userName)
+	},
+	DeleteIamUserPolicy: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/policy", vpcId, s3ServiceId, userName)
+	},
+
+	// IAM role
+	CreateIamRole: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/create", vpcId, s3ServiceId)
+	},
+	GetIamRole: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/detail", vpcId, s3ServiceId, roleName)
+	},
+	ListIamRoles: func(vpcId, s3ServiceId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/list?page=%d&page_size=%d", vpcId, s3ServiceId, page, pageSize)
+	},
+	UpdateIamRoleTrustedUsers: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/trusted-users", vpcId, s3ServiceId, roleName)
+	},
+	DeleteIamRole: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/delete", vpcId, s3ServiceId, roleName)
+	},
+	GetIamRolePolicy: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/policy", vpcId, s3ServiceId, roleName)
+	},
+	PutIamRolePolicy: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/policy", vpcId, s3ServiceId, roleName)
+	},
+	DeleteIamRolePolicy: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/policy", vpcId, s3ServiceId, roleName)
 	},
 
 	// Access Key

@@ -1,3 +1,21 @@
+## [0.3.72] - 2026-09-18
+
+### Resource
+
+- Feat: manage IAM users on Ceph-backed object storage with `fptcloud_object_storage_iam_user`: create, read and delete. Access keys and the inline policy are separate resources, so either can be rotated or rewritten without recreating the user
+- Feat: `fptcloud_object_storage_iam_user_access_key` mints and revokes an IAM user's access keys - up to 2 per user - and returns the secret only once, at create
+- Feat: `fptcloud_object_storage_iam_user_policy` manages the single inline policy attached to an IAM user; every resource it names must be a bucket the account owns
+- Feat: `fptcloud_object_storage_iam_role` manages IAM roles and `trusted_users`, the IAM users allowed to assume the role
+- Feat: `fptcloud_object_storage_iam_role_policy` manages the single inline policy attached to an IAM role - what the role may do once assumed, distinct from who may assume it
+
+### Datasource
+
+- Feat: `fptcloud_object_storage_iam_user` lists IAM users; `fptcloud_object_storage_iam_user_detail` reads one by name
+- Feat: `fptcloud_object_storage_iam_user_access_key` lists an IAM user's access keys - never their secrets
+- Feat: `fptcloud_object_storage_iam_user_policy` reads an IAM user's inline policy
+- Feat: `fptcloud_object_storage_iam_role` lists IAM roles; `fptcloud_object_storage_iam_role_detail` reads one by name
+- Feat: `fptcloud_object_storage_iam_role_policy` reads an IAM role's inline policy
+
 ## [0.3.71] - 2026-09-17
 
 ### Resource

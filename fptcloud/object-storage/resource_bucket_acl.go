@@ -111,7 +111,7 @@ func resourceBucketAclRead(ctx context.Context, d *schema.ResourceData, m interf
 		return diag.FromErr(fmt.Errorf(regionError, regionName))
 	}
 	r := service.GetBucketAcl(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
-	if !r.Status {
+	if r == nil || !r.Status {
 		return diag.Errorf("failed to get bucket ACL for bucket %s", bucketName)
 	}
 	if err := d.Set("canned_acl", r.CannedACL); err != nil {

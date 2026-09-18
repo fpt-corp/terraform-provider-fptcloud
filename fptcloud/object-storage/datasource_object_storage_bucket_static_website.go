@@ -52,7 +52,7 @@ func dataSourceBucketStaticWebsite(ctx context.Context, d *schema.ResourceData, 
 	}
 
 	staticWebsiteResponse := service.GetBucketWebsite(vpcId, s3ServiceDetail.S3ServiceId, bucketName)
-	if !staticWebsiteResponse.Status {
+	if staticWebsiteResponse == nil || !staticWebsiteResponse.Status {
 		return diag.Errorf("failed to get bucket static website config for bucket %s", bucketName)
 	}
 	if staticWebsiteResponse.Config.IndexDocument.Suffix == "" && staticWebsiteResponse.Config.ErrorDocument.Key == "" {
