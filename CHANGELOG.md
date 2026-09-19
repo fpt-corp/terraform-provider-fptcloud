@@ -1,3 +1,13 @@
+## [0.3.73] - 2026-09-19
+
+### Resource
+
+- Feat: tag a `fptcloud_managed_kubernetes_engine_v1` cluster with the new `tags` attribute, and a worker pool with `pool_tags`. Cluster tags propagate to every pool, so `pool_tags` only lists that pool's own extras
+
+### Datasource
+
+- Feat: `fptcloud_managed_kubernetes_engine_v1` reports the cluster's `tags` and each pool's `pool_tags`
+
 ## [0.3.72] - 2026-09-18
 
 ### Resource

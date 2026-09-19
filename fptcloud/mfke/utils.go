@@ -188,6 +188,16 @@ func TopFields() map[string]schema.Attribute {
 		}
 	}
 
+	// tags is a Set, not a List: the API returns a cluster's tags in its own
+	// order, so an ordered type would report a spurious diff — or an
+	// inconsistent-result error — whenever that order differs from the config.
+	topLevelAttributes["tags"] = schema.SetAttribute{
+		Optional:    true,
+		Computed:    true,
+		ElementType: types.StringType,
+		Description: descriptions["tags"],
+	}
+
 	// Special handling for is_running - not computed, with default value
 	topLevelAttributes["is_running"] = schema.BoolAttribute{
 		Optional:    true,
@@ -254,7 +264,7 @@ func PoolFields() map[string]schema.Attribute {
 	// Optional bool fields
 	optionalBools := []string{"worker_base", "is_enable_auto_repair"}
 	// Optional list fields
-	optionalLists := []string{"tags"}
+	optionalLists := []string{}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
@@ -303,6 +313,22 @@ func PoolFields() map[string]schema.Attribute {
 			ElementType: types.StringType,
 			Description: descriptions[attribute],
 		}
+	}
+
+	// tags is a Set because the API returns a pool's tags in its own order, so
+	// an ordered type would reject that order as inconsistent with the plan.
+	//
+	// It is Optional but NOT Computed, unlike most attributes here. Cluster
+	// tags propagate down to every pool, so the API always reports them as part
+	// of the pool's set — but this attribute holds only the pool's OWN extra
+	// tags. Marking it Computed would make Terraform require the planned value
+	// to equal either the config or the prior state, which rules out the
+	// provider reconciling the two; leaving it Optional lets the read subtract
+	// the inherited tags and keep what the user actually declared.
+	poolLevelAttributes["pool_tags"] = schema.SetAttribute{
+		Optional:    true,
+		ElementType: types.StringType,
+		Description: descriptions["pool_tags"],
 	}
 
 	// kv is a Set (not a List): entries are unordered key/value pairs, so
@@ -457,7 +483,7 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 			GpuSharingClient:       item.GpuSharingClient.ValueString(),
 			GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
 			DriverInstallationType: item.DriverInstallationType.ValueString(),
-			Tags:                   listToTagsString(item.Tags),
+			Tags:                   mergeClusterAndPoolTagIds(from.Tags, item.PoolTags),
 			IsCreate:               true,
 			IsScale:                false,
 			IsOthers:               false,
@@ -597,13 +623,15 @@ func MapTerraformToJson(r *resourceManagedKubernetesEngine, ctx context.Context,
 		to.ClusterAutoscaler = clusterAutoscaler
 	}
 
+	to.Tags = listToTagIds(from.Tags)
+
 	to.TypeCreate = "create"
 
 	return nil
 }
 
 // remapPools
-func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string, clusterNetworkID string, clusterNetworkName string) *managedKubernetesEnginePoolJson {
+func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEnginePool, name string, clusterNetworkID string, clusterNetworkName string, clusterTags types.Set) *managedKubernetesEnginePoolJson {
 
 	var workerPoolID *string
 	if name == "" || name == "worker-new" || item.WorkerPoolID.IsNull() || item.WorkerPoolID.IsUnknown() {
@@ -686,7 +714,7 @@ func (r *resourceManagedKubernetesEngine) remapPools(item *managedKubernetesEngi
 		VGpuID:                 item.VGpuID.ValueString(),
 		DriverInstallationType: item.DriverInstallationType.ValueString(),
 		GpuDriverVersion:       item.GpuDriverVersion.ValueString(),
-		Tags:                   listToTagsString(item.Tags),
+		Tags:                   mergeClusterAndPoolTagIds(clusterTags, item.PoolTags),
 		GpuSharingClient:       item.GpuSharingClient.ValueString(),
 		ContainerRuntime:       item.ContainerRuntime.ValueString(),
 		Kv:                     kvs,
@@ -788,9 +816,28 @@ func (r *resourceManagedKubernetesEngine) Diff(ctx context.Context, from *manage
 		}
 	}
 
-	// Worker pool changes
-	if r.DiffPool(ctx, from, to) {
+	// Worker pool changes. configure-worker rewrites the tags of every pool it
+	// is given, and the platform derives the cluster's own tag set from those,
+	// so a pool update can drop cluster tags it wasn't told about.
+	//
+	// Note updateWorkerPools refreshes `from` from the API as its first step,
+	// so from.Tags is not the prior configuration afterwards — compare the tag
+	// sets before calling it.
+	tagsChanged := !to.Tags.Equal(from.Tags)
+
+	poolsChanged := r.DiffPool(ctx, from, to)
+	if poolsChanged {
 		if err := r.updateWorkerPools(ctx, from, to); err != nil {
+			return err
+		}
+	}
+
+	// Cluster tags go last: the tagging endpoint is authoritative and
+	// propagates down to every pool, so applying it after a pool update
+	// restores anything configure-worker clobbered. Run it whenever the tags
+	// changed, and also after any pool update, for that reason.
+	if tagsChanged || poolsChanged {
+		if err := r.updateClusterTags(ctx, to, from); err != nil {
 			return err
 		}
 	}
@@ -870,7 +917,7 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 			f.ScaleMax != t.ScaleMax ||
 			f.WorkerBase != t.WorkerBase ||
 			f.IsEnableAutoRepair != t.IsEnableAutoRepair ||
-			!f.Tags.Equal(t.Tags) ||
+			!f.PoolTags.Equal(t.PoolTags) ||
 			f.MaxClient != t.MaxClient ||
 			f.GpuSharingClient.ValueString() != t.GpuSharingClient.ValueString() ||
 			!reflect.DeepEqual(userDefinedKvMap, userDefinedTvMap) ||
@@ -934,6 +981,9 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 		state.AutoUpgradeTimezone = types.StringNull()
 		state.AutoUpgradeExpression = types.ListNull(types.StringType)
 	}
+
+	// tags
+	state.Tags = tagSpecsToList(data.Tags)
 
 	// id
 	state.Id = types.StringValue(data.Metadata.Name)
@@ -1100,8 +1150,8 @@ func (r *resourceManagedKubernetesEngine) InternalRead(ctx context.Context, id s
 			IsEnableAutoRepair: types.BoolValue(autoRepair),
 			// container_runtime
 			ContainerRuntime: types.StringValue(worker.Cri.Name),
-			// tags
-			Tags: tagsStringToList(worker.Tags()),
+			// tags — the pool's own tags, with the inherited cluster ones removed
+			PoolTags: poolOwnTags(worker.Tags, data.Tags, declaredPoolTags(state, worker.Name)),
 			// vgpu_id
 			VGpuID: types.StringValue(worker.ProviderConfig.VGpuID),
 			// driver_installation_type
@@ -1287,37 +1337,142 @@ func errorCallingApi(s string) string {
 	return fmt.Sprintf("Error calling path: %s", s)
 }
 
-// Helper function to convert types.List to string with \n separator
-func listToTagsString(tagsList types.List) string {
+// listToTagIds converts a types.List of tag IDs into the string slice the API
+// expects. It always returns a non-nil slice so an emptied-out list serialises
+// as [] rather than null, which the API reads as "clear all tags".
+func listToTagIds(tagsList types.Set) []string {
+	tags := []string{}
 	if tagsList.IsNull() || tagsList.IsUnknown() {
-		return ""
+		return tags
 	}
 
-	var tags []string
 	for _, element := range tagsList.Elements() {
 		if stringVal, ok := element.(types.String); ok {
-			tags = append(tags, stringVal.ValueString())
+			if v := strings.TrimSpace(stringVal.ValueString()); v != "" {
+				tags = append(tags, v)
+			}
 		}
 	}
 
-	return strings.Join(tags, "\n")
+	return tags
 }
 
-// Helper function to convert string with \n separator to types.List
-func tagsStringToList(tagsString string) types.List {
-	if tagsString == "" {
-		return types.ListValueMust(types.StringType, []attr.Value{})
+// Cluster tags propagate down to every worker pool: the API stores a pool's
+// tags as cluster ∪ pool, both on create and on configure-worker, and removing
+// a tag from the cluster removes it from the pools too. The propagation is one
+// way — a pool tag never reaches the cluster.
+//
+// A pool's `tags` therefore holds the EFFECTIVE set, inherited tags included,
+// which is exactly what the API reports back. Modelling it as "extra tags only"
+// and subtracting the cluster's tags on read cannot work: the subtraction has
+// to know what the user declared, but on refresh and update the provider reads
+// into prior state, which is itself the result of the previous subtraction. The
+// value never settles, and Terraform rejects a post-apply value that differs
+// from the plan.
+//
+// The practical consequence is that a cluster tag must also be listed in every
+// pool's `tags`, since propagation puts it there. mergeClusterAndPoolTagIds
+// still unions the two when writing, so the API call stays correct either way —
+// but leaving it out of the pool makes plan and state disagree as soon as the
+// API propagates it down.
+
+// poolOwnTags strips the tags a pool inherited from the cluster, leaving the
+// ones set on the pool itself — which is what `tags` in a pools block means.
+//
+// poolTags and clusterTags both come from the same API response, so this never
+// feeds on its own previous output: subtracting twice yields the same answer.
+//
+// declared is what the configuration asked for on this pool. A tag listed there
+// is kept even when the cluster carries it too, because the user spelled it
+// out: dropping it would make the value after apply differ from the plan, which
+// Terraform rejects. The effective set on the pool is identical either way,
+// since the cluster propagates that tag down regardless.
+func poolOwnTags(poolTags []TagSpec, clusterTags []TagSpec, declared types.Set) types.Set {
+	inherited := make(map[string]struct{}, len(clusterTags))
+	for _, tag := range clusterTags {
+		inherited[tag.Id] = struct{}{}
 	}
 
-	tags := strings.Split(tagsString, "\n")
-	var elements []attr.Value
+	for _, id := range listToTagIds(declared) {
+		delete(inherited, id)
+	}
+
+	own := make([]string, 0, len(poolTags))
+	for _, tag := range poolTags {
+		if _, ok := inherited[tag.Id]; ok {
+			continue
+		}
+		own = append(own, tag.Id)
+	}
+
+	// pool_tags is Optional but not Computed, so null and [] are distinct
+	// values Terraform compares against the plan. A pool that declared nothing
+	// must read back as null, not as an empty set.
+	if len(own) == 0 && declared.IsNull() {
+		return types.SetNull(types.StringType)
+	}
+
+	return tagIdsToList(own)
+}
+
+// declaredPoolTags returns the tags the caller's model already holds for the
+// named pool — the plan on create and update, prior state on a refresh — or a
+// null set when that pool is not there yet, as on import.
+func declaredPoolTags(state *managedKubernetesEngine, poolName string) types.Set {
+	if state == nil {
+		return types.SetNull(types.StringType)
+	}
+
+	for _, pool := range state.Pools {
+		if pool != nil && pool.WorkerPoolID.ValueString() == poolName {
+			return pool.PoolTags
+		}
+	}
+
+	return types.SetNull(types.StringType)
+}
+
+// mergeClusterAndPoolTagIds builds the combined set the API expects for a pool,
+// keeping the cluster's tags first and dropping duplicates.
+func mergeClusterAndPoolTagIds(clusterTags types.Set, poolTags types.Set) []string {
+	merged := listToTagIds(clusterTags)
+	seen := make(map[string]struct{}, len(merged))
+	for _, id := range merged {
+		seen[id] = struct{}{}
+	}
+
+	for _, id := range listToTagIds(poolTags) {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		merged = append(merged, id)
+	}
+
+	return merged
+}
+
+// tagSpecsToList converts the tag objects the API returns into a types.Set of
+// their IDs, which is what Terraform tracks.
+func tagSpecsToList(tags []TagSpec) types.Set {
+	ids := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		ids = append(ids, tag.Id)
+	}
+
+	return tagIdsToList(ids)
+}
+
+// tagIdsToList converts tag IDs read back from the API into a types.Set.
+func tagIdsToList(tags []string) types.Set {
+	elements := []attr.Value{}
 	for _, tag := range tags {
 		if strings.TrimSpace(tag) != "" {
 			elements = append(elements, types.StringValue(strings.TrimSpace(tag)))
 		}
 	}
 
-	return types.ListValueMust(types.StringType, elements)
+	return types.SetValueMust(types.StringType, elements)
 }
 
 func (w *managedKubernetesEngineDataWorker) AutoRepair() bool {
@@ -1327,10 +1482,6 @@ func (w *managedKubernetesEngineDataWorker) AutoRepair() bool {
 	}
 
 	return autoRepair
-}
-
-func (w *managedKubernetesEngineDataWorker) Tags() string {
-	return w.Annotations["tagging.fke.fptcloud.com/worker-tags"]
 }
 
 // MaxClient reads the maxClient value from the addons configuration
@@ -1432,6 +1583,35 @@ func (r *resourceManagedKubernetesEngine) updateIsRunning(ctx context.Context, t
 	if diagErr := r.CheckForError(resp); diagErr != nil {
 		return diagErr
 	}
+	return nil
+}
+
+// updateClusterTags replaces the cluster's tag set with the one in the plan.
+// The endpoint takes the full set on every call, so an empty list clears all
+// tags. Unlike the other cluster endpoints this one has no v2 variant.
+func (r *resourceManagedKubernetesEngine) updateClusterTags(ctx context.Context, to *managedKubernetesEngine, from *managedKubernetesEngine) *diag2.ErrorDiagnostic {
+	vpcId := from.VpcId.ValueString()
+	clusterId := from.Id.ValueString()
+	platform, err := r.tenancyClient.GetVpcPlatform(ctx, vpcId)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(platformVpcErrorPrefix+vpcId, err.Error())
+		return &d
+	}
+
+	platform = strings.ToLower(platform)
+	path := commons.ApiPath.ManagedFKETags(vpcId, platform, clusterId)
+
+	body := managedKubernetesEngineTagsRequest{Tags: listToTagIds(to.Tags)}
+
+	resp, err := r.mfkeClient.sendPatch(ctx, path, platform, body)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic(errorCallingApi(path), err.Error())
+		return &d
+	}
+	if diagErr := r.CheckForError(resp); diagErr != nil {
+		return diagErr
+	}
+
 	return nil
 }
 
@@ -1761,7 +1941,7 @@ func (r *resourceManagedKubernetesEngine) updateWorkerPools(ctx context.Context,
 	// Prepare pools data
 	pools := []*managedKubernetesEnginePoolJson{}
 	for _, pool := range to.Pools {
-		item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName)
+		item := r.remapPools(pool, pool.WorkerPoolID.ValueString(), from.NetworkID.ValueString(), clusterNetworkName, to.Tags)
 		pools = append(pools, item)
 	}
 

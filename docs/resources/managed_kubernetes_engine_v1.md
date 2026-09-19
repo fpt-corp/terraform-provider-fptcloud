@@ -32,6 +32,62 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example" {
 }
 ```
 
+### Tagging a Cluster
+
+Tags are referenced by ID. Look them up by key with the `fptcloud_tagging` data
+source rather than hardcoding IDs, which differ per tenant:
+
+```hcl
+data "fptcloud_tagging" "environment" {
+  key = "environment"
+}
+
+data "fptcloud_tagging" "team" {
+  key = "team"
+}
+
+data "fptcloud_tagging" "gpu_node" {
+  key = "gpu-node"
+}
+
+resource "fptcloud_managed_kubernetes_engine_v1" "example" {
+  vpc_id       = "your-vpc-id"
+  cluster_name = "example-cluster"
+  network_id   = "your-network-id"
+
+  # Cluster tags. These propagate down to every worker pool automatically.
+  tags = [
+    data.fptcloud_tagging.environment.tags[0].id,
+    data.fptcloud_tagging.team.tags[0].id,
+  ]
+
+  pools {
+    name             = "worker-pool-1"
+    storage_profile  = "your-storage-profile"
+    worker_type      = "your-worker-type"
+    worker_disk_size = 40
+    scale_min        = 1
+    scale_max        = 3
+
+    # Extra tags for this pool. The cluster's tags need not be repeated here;
+    # The effective set on this pool ends up as environment + team + gpu-node.
+    pool_tags = [data.fptcloud_tagging.gpu_node.tags[0].id]
+  }
+
+  pools {
+    name             = "worker-pool-2"
+    storage_profile  = "your-storage-profile"
+    worker_type      = "your-worker-type"
+    worker_disk_size = 40
+    scale_min        = 1
+    scale_max        = 1
+
+    # No pool_tags: this pool carries the cluster's tags and nothing else.
+  }
+}
+
+```
+
 ### GPU Worker Pool
 
 ```hcl
@@ -245,6 +301,9 @@ resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
   edge_gateway_name   = "my-edge-gateway"
   internal_subnet_lb  = "192.168.1.0/24" # VMW takes a CIDR; on OSP this is a subnet ID
 
+  # Tags applied to the cluster itself, by tag ID.
+  tags = ["e8d4391a-96ce-49ff-8a24-2eeacf13bb9d"]
+
   # Automatic Kubernetes version upgrade: every Sunday at 02:00 local time.
   is_enable_auto_upgrade  = true
   auto_upgrade_expression = ["0 2 * * 0"]  # Every Sunday at 2 AM
@@ -295,7 +354,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
     network_name     = data.fptcloud_subnet.subnet.name
     container_runtime = "containerd"
     is_enable_auto_repair = true
-    tags = ["tag_ID1", "tag_ID2"]
+    pool_tags = ["tag_ID1", "tag_ID2"]
 
     # KV labels for base pool
     kv = [
@@ -416,6 +475,21 @@ resource "fptcloud_managed_kubernetes_engine_v1" "osp_cluster" {
 }
 ```
 
+#### Tagging
+* `tags` - (Optional) Set of tag IDs applied to the cluster. Resolve them by key with the `fptcloud_tagging` data source instead of hardcoding IDs — see [Tagging a Cluster](#tagging-a-cluster) above. The set is authoritative: applying a shorter one removes the tags left out, and an empty set (or omitting the argument) clears every tag. Tags can be changed in place without recreating the cluster.
+
+Cluster tags propagate down to every worker pool, and only downwards: adding a tag here adds it to all pools, removing it here removes it from them, and a tag set on a pool never reaches the cluster.
+
+A pool's `pool_tags` normally lists just that pool's *own* extra tags. The provider adds the cluster's tags to each pool when talking to the API and strips them back out when reading, so `pool_tags` stays exactly what you wrote even though the API reports the inherited ones as part of that pool.
+
+Listing an inherited tag in `pool_tags` anyway is allowed: it is kept in state as written, and the pool's effective tags are the same either way, since the cluster propagates that tag down regardless. It only becomes visible if you later remove the tag from `tags` — the pool loses it too, because propagation is what put it there, and the next plan shows it being removed from `pool_tags` as well.
+##### When import cluster with tags
+On import there is no configuration to compare against, so a pool tag that the cluster also carries is read as inherited and left out of `pool_tags`. To import with a clean plan, either omit `pool_tags` on each pool or list only the tags the cluster does not carry — counter-intuitively, spelling out the inherited ones makes the import worse, since the first plan then asks to add them all back. That plan is harmless: applying it is a no-op on the platform and the state settles immediately.
+
+Removing a tag from `tags` removes it from every pool as well, since propagation is what put it there. To tag one pool independently of the cluster, leave that tag out of `tags` and list it only in that pool.
+
+Both `tags` and a pool's `pool_tags` are sets: order is not significant, and reordering them in the configuration produces no diff.
+
 #### Auto Upgrade Configuration
 * `is_enable_auto_upgrade` - (Optional) Allows the M-FKE service to perform automatic Kubernetes version upgrades during the configured maintenance schedules. Default: `false`. When set to `false`, remove both `auto_upgrade_expression` and `auto_upgrade_timezone` from the resource configuration.
 * `auto_upgrade_expression` - (Optional) List of five-field cron expressions (`minute hour day-of-month month day-of-week`) defining when M-FKE may perform an automatic upgrade. Configure at least one expression only when auto-upgrade is enabled. Do not configure this argument when `is_enable_auto_upgrade` is `false`.
@@ -484,7 +558,7 @@ The `pools` block supports the following arguments. At least one pool is require
 * `network_id` - (Optional) Subnet ID. Uses cluster's `network_id` if not specified
 * `container_runtime` - (Optional) Container runtime. Default: `"containerd"`
 * `is_enable_auto_repair` - (Optional) Enable automatic node repair. Default: `true`
-* `tags` - (Optional) List of tag IDs for the worker pool
+* `pool_tags` - (Optional) Set of tag IDs set on this worker pool alone, on top of the ones inherited from the cluster's `tags`. Inherited tags need not be listed here, though listing one is harmless. Resolve IDs with the `fptcloud_tagging` data source; see [Tagging a Cluster](#tagging-a-cluster) for an example and `tags` above for how propagation works.
 
 **GPU Configuration (Optional):**
 * `vgpu_id` - (Optional) Virtual GPU ID for GPU-enabled worker nodes

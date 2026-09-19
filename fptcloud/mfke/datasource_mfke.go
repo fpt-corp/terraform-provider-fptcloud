@@ -144,6 +144,7 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 	data := response.Data
 
 	state.Id = types.StringValue(data.Metadata.Name)
+	state.Tags = tagSpecsToList(data.Tags)
 	state.VpcId = types.StringValue(vpcId)
 	// keep clusterName
 	//state.NetworkID
@@ -209,7 +210,8 @@ func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id
 			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
 			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
 			WorkerBase:             types.BoolValue(w.IsWorkerBase()),
-			Tags:                   tagsStringToList(w.Tags()),
+			// Read-only view: report the effective set, inherited tags included.
+			PoolTags: tagSpecsToList(w.Tags),
 		}
 
 		// For GPU pools, read values from addons configuration
@@ -336,6 +338,14 @@ func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attrib
 			Description: descriptions[attribute],
 		}
 	}
+	// tags mirrors the resource: a Set, because the API returns tags in its
+	// own order.
+	topLevelAttributes["tags"] = schema.SetAttribute{
+		Optional:    true,
+		ElementType: types.StringType,
+		Description: descriptions["pool_tags"],
+	}
+
 	for _, attribute := range optionalLists {
 		topLevelAttributes[attribute] = schema.ListAttribute{
 			Optional:    true,
@@ -403,7 +413,7 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 	// Optional bool fields
 	optionalBools := []string{"is_enable_auto_repair"}
 	// Optional list fields
-	optionalLists := []string{"tags"}
+	optionalLists := []string{}
 
 	for _, attribute := range requiredStrings {
 		poolLevelAttributes[attribute] = schema.StringAttribute{
@@ -449,6 +459,12 @@ func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attri
 		}
 	}
 	// kv: list of map[string]string
+	poolLevelAttributes["pool_tags"] = schema.SetAttribute{
+		Optional:    true,
+		ElementType: types.StringType,
+		Description: descriptions["tags"],
+	}
+
 	poolLevelAttributes["kv"] = schema.ListAttribute{
 		Optional:    true,
 		ElementType: types.MapType{ElemType: types.StringType},
