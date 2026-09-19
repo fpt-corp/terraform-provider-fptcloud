@@ -106,6 +106,7 @@ var ApiPath = struct {
 	ManagedFKECheckQuotaResource        func(vpcId string, platform string) string
 	ManagedFKEStoragePolicy             func(vpcId string) string
 	ManagedFKEKubeconfig                func(vpcId string, platform string, clusterId string) string
+	ManagedFKETags                      func(vpcId string, platform string, clusterId string) string
 
 	// Managed GPU Cluster (Bare Metal Kubernetes, m-fke/<platform>/hpc)
 	ManagedGpuClusterList                      func(vpcId string, page int, pageSize int, infraType string) string
@@ -580,6 +581,12 @@ var ApiPath = struct {
 		)
 	},
 
+	ManagedFKETags: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/shoots/%s/tags",
+			vpcId, platform, clusterId,
+		)
+	},
 	ManagedFKEConfigWorker: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/configure-worker-cluster/shoots/%s/0",

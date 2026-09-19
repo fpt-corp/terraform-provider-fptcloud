@@ -26,6 +26,9 @@ func SetDefaults(state *managedKubernetesEngine) {
 	if state.AutoUpgradeExpression.IsNull() || state.AutoUpgradeExpression.IsUnknown() {
 		state.AutoUpgradeExpression, _ = types.ListValue(types.StringType, []attr.Value{})
 	}
+	if state.Tags.IsNull() || state.Tags.IsUnknown() {
+		state.Tags = types.SetValueMust(types.StringType, []attr.Value{})
+	}
 	if state.AutoUpgradeTimezone.IsNull() || state.AutoUpgradeTimezone.IsUnknown() {
 		state.AutoUpgradeTimezone = types.StringValue("Asia/Saigon")
 	}
@@ -309,13 +312,10 @@ func SetDefaultsUpdate(plan, state *managedKubernetesEngine) {
 				plan.Pools[i].NetworkName = types.StringValue("")
 			}
 		}
-		if plan.Pools[i].Tags.IsNull() || plan.Pools[i].Tags.IsUnknown() {
-			if i < len(state.Pools) && state.Pools[i] != nil {
-				plan.Pools[i].Tags = state.Pools[i].Tags
-			} else {
-				plan.Pools[i].Tags = types.ListValueMust(types.StringType, []attr.Value{})
-			}
-		}
+		// pool_tags is deliberately left alone: it is Optional but not Computed,
+		// so null means "the user declared nothing" and must stay null all the
+		// way through to state. Defaulting it to the prior value or to an empty
+		// set would make the applied value differ from the plan.
 
 		// Note: kv is a Set, so plan.Pools[i].Kv doesn't need any reordering
 		// here - Terraform compares Set values regardless of element order.
