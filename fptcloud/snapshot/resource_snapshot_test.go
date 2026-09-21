@@ -150,16 +150,25 @@ func TestResourceSnapshot_IsRegisteredOnTheProvider(t *testing.T) {
 }
 
 func TestAccFptCloudSnapshot_basic(t *testing.T) {
+	// CI runs the whole suite under TF_ACC=1 without credentials, so skip
+	// before resource.Test reaches TestPreCheck, which fails instead of skipping.
+	for _, name := range []string{
+		"FPTCLOUD_TOKEN",
+		"FPTCLOUD_TENANT_NAME",
+		"FPTCLOUD_REGION",
+		"VPC_ID",
+		"INSTANCE_ID",
+	} {
+		if os.Getenv(name) == "" {
+			t.Skipf("%s must be set to run this acceptance test", name)
+		}
+	}
+
 	vpcId := os.Getenv("VPC_ID")
 	instanceId := os.Getenv("INSTANCE_ID")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck: func() {
-			test_helper.TestPreCheck(t)
-			if vpcId == "" || instanceId == "" {
-				t.Skip("VPC_ID and INSTANCE_ID must be set for this acceptance test")
-			}
-		},
+		PreCheck:          func() { test_helper.TestPreCheck(t) },
 		ProviderFactories: test_helper.TestProviderFactories,
 		Steps: []resource.TestStep{
 			{
