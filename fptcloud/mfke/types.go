@@ -34,6 +34,7 @@ type managedKubernetesEngine struct {
 	EdgeGatewayName       types.String `tfsdk:"edge_gateway_name"`
 	IsRunning             types.Bool   `tfsdk:"is_running"`
 	HibernationSchedules  types.List   `tfsdk:"hibernation_schedules"`
+	Tags                  types.Set    `tfsdk:"tags"`
 }
 
 type ClusterAutoscaler struct {
@@ -70,7 +71,7 @@ type managedKubernetesEnginePool struct {
 	ScaleMax               types.Int64  `tfsdk:"scale_max"`
 	NetworkID              types.String `tfsdk:"network_id"`
 	NetworkName            types.String `tfsdk:"network_name"`
-	Tags                   types.List   `tfsdk:"tags"`
+	PoolTags               types.Set    `tfsdk:"pool_tags"`
 	Kv                     types.Set    `tfsdk:"kv"`
 	Taints                 types.Set    `tfsdk:"taints"`
 	VGpuID                 types.String `tfsdk:"vgpu_id"`
@@ -116,6 +117,13 @@ type managedKubernetesEngineJson struct {
 	AutoUpgradeTimezone   string                             `json:"auto_upgrade_timezone,omitempty"`
 	ClusterAutoscaler     interface{}                        `json:"cluster_autoscaler,omitempty"`
 	TypeCreate            string                             `json:"type_create,omitempty"`
+	Tags                  []string                           `json:"tags"`
+}
+
+// managedKubernetesEngineTagsRequest is the body of the cluster tagging
+// endpoint, which replaces the whole tag set on every call.
+type managedKubernetesEngineTagsRequest struct {
+	Tags []string `json:"tags"`
 }
 
 type ClusterEndpointAccessJson struct {
@@ -141,11 +149,11 @@ type managedKubernetesEnginePoolJson struct {
 	VGpuID                 string `json:"vGpuId"`
 	DriverInstallationType string `json:"driverInstallationType"`
 	GpuDriverVersion       string `json:"gpuDriverVersion"`
-	Tags                   string `json:"tags"`
 	GpuSharingClient       string `json:"gpuSharingClient"`
 	ContainerRuntime       string `json:"container_runtime"`
 
 	// slice fields
+	Tags   []string                 `json:"tags"`
 	Kv     []map[string]string      `json:"kv"`
 	Taints []map[string]interface{} `json:"taints"`
 
@@ -193,6 +201,16 @@ type managedKubernetesEngineData struct {
 	Status   managedKubernetesEngineDataStatus   `json:"status"`
 	Metadata managedKubernetesEngineDataMetadata `json:"metadata"`
 	Spec     managedKubernetesEngineDataSpec     `json:"spec"`
+	Tags     []TagSpec                           `json:"tags"`
+}
+
+// TagSpec is a tag as returned by the API. Tags are written by ID but read
+// back in full, so only Id round-trips into Terraform state.
+type TagSpec struct {
+	Id    string `json:"id"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+	Color string `json:"color"`
 }
 
 type managedKubernetesEngineDataStatus struct {
@@ -302,6 +320,7 @@ type HibernateSpec struct {
 
 type managedKubernetesEngineDataWorker struct {
 	Annotations map[string]string `json:"annotations"`
+	Tags        []TagSpec         `json:"tags"`
 	Cri         struct {
 		Name string `json:"name"`
 	} `json:"cri"`

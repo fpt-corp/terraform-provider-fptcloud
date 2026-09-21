@@ -1,0 +1,59 @@
+package fptcloud_mgpu_cluster
+
+var descriptions = map[string]string{
+	"vpc_id":          "VPC ID",
+	"cluster_name":    "Cluster name",
+	"k8s_version":     "Kubernetes version",
+	"purpose":         "Cluster purpose",
+	"pod_network":     "Pod network (subnet ID)",
+	"pod_prefix":      "Pod network (prefix)",
+	"service_network": "Service network (subnet ID)",
+	"service_prefix":  "Service prefix (prefix)",
+
+	"k8s_max_pod":  "Max pods per node",
+	"network_type": "Network type for the cluster (calico or cilium)",
+
+	"name":              "Pool name",
+	"hpc_flavor_id":     "HPC bare metal flavor ID for the pool",
+	"hpc_flavor_name":   "HPC bare metal flavor name for the pool (optional)",
+	"hpc_number_server": "Number of bare metal servers in the pool",
+	"network_name":      "Subnet name",
+	"network_id":        "Subnet ID",
+	"edge_gateway_id":   "Edge gateway ID, in the format of urn:vcloud:gateway:<uuid>",
+	// New/optional fields
+	"tags":                "List of tag IDs for the worker pool (optional)",
+	"kv":                  "Label for the pool (optional)",
+	"max_client":          "Maximum number of clients sharing one GPU: 0 when sharing_client_type is NONE, 2-48 for MPS or TIMESLICING",
+	"gpu_driver":          "GPU driver selection for the pool: installation_type and version, checked against the live gpu-drivers catalog (optional)",
+	"installation_type":   "GPU driver installation type: MANAGED, PRE_INSTALL, or USER_INSTALL",
+	"version":             "GPU driver version offered for installation_type; must be left empty when installation_type = USER_INSTALL",
+	"gpu_sharing":         "How the pool's GPUs are divided up: MIG partitioning and client sharing (optional)",
+	"mig_strategy":        "MIG strategy: NONE, SINGLE, or MIXED",
+	"mig_profile":         "MIG profile the GPUs are partitioned into (e.g. all-1g.35gb); required when mig_strategy is SINGLE or MIXED",
+	"sharing_client_type": "GPU sharing strategy: NONE, MPS, or TIMESLICING",
+	"gpu_type":            "GPU type for the pool: A100, A30, H100, or H200 (optional)",
+	"internal_subnet_lb":  "Subnet used for the internal load balancer: subnet ID on OSP, subnet CIDR on VMW (optional)",
+	"edge_gateway_name":   "Edge gateway name (optional)",
+	"allowCidr":           "Allowed CIDR blocks for cluster endpoint access (optional)",
+	"cluster_autoscaler":  "Cluster autoscaler configuration block (optional)",
+	// Bare-metal-only top-level fields
+	"network_node_prefix": "Node network prefix length (optional)",
+	"ssh_key_id":          "SSH key ID to install on the nodes — e.g. from the fptcloud_ssh data source. ssh_name and ssh_public_key are resolved from this automatically",
+	// software operators
+	"gpu_software":         "Operators installed on the cluster, one entry per operator: which type, at which version",
+	"software_type":        "Software to install: gpu_operator, network_operator, slurm_operator, or vgpu_scheduler",
+	"software_version":     "Version of the selected software",
+	"cluster_mig_strategy": "MIG strategy (single or mixed); only for software_type gpu_operator",
+	// cluster_autoscaler subfields
+	"is_enable_auto_scaling":           "Enable cluster autoscaling (optional)",
+	"scale_down_delay_after_add":       "Delay after adding a node before scale down (seconds, optional)",
+	"scale_down_delay_after_delete":    "Delay after deleting a node before scale down (seconds, optional)",
+	"scale_down_delay_after_failure":   "Delay after scale down failure (seconds, optional)",
+	"scale_down_unneeded_time":         "Time a node should be unneeded before scale down (seconds, optional)",
+	"scale_down_utilization_threshold": "Utilization threshold for scale down (optional)",
+	"scan_interval":                    "Interval between autoscaler scans (seconds, must be 1-3600, optional)",
+	"expander":                         "Autoscaler expander strategy (optional)",
+	// cluster_endpoint_access subfields
+	"cluster_endpoint_access_type":       "Type of cluster endpoint access (public, private, or mixed)",
+	"cluster_endpoint_access_allow_cidr": "Allowed CIDR blocks for cluster endpoint access",
+}

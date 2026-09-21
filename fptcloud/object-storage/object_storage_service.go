@@ -8,7 +8,11 @@ import (
 )
 
 const (
-	regionError = "region %s is not enabled"
+	// CheckServiceEnable reports an API failure as an empty service list, which is
+	// indistinguishable here from a region that genuinely is not enabled. The
+	// message therefore names both causes, and the real API error is in the
+	// provider log (TF_LOG=DEBUG).
+	regionError = "region %s is not enabled, or the object storage service list could not be read - check credentials and connectivity, and see the provider log for the API error"
 )
 
 // ObjectStorageService defines the interface for object storage operations
@@ -19,6 +23,28 @@ type ObjectStorageService interface {
 	ListBuckets(vpcId, s3ServiceId string, page, pageSize int) ListBucketResponse
 	CreateBucket(req BucketRequest, vpcId, s3ServiceId string) CommonResponse
 	DeleteBucket(vpcId, s3ServiceId, bucketName string) CommonResponse
+
+	// IAM user
+	CreateIamUser(vpcId, s3ServiceId, userName string) *CreateIamUserResponse
+	GetIamUser(vpcId, s3ServiceId, userName string) *IamUserDetail
+	ListIamUsers(vpcId, s3ServiceId string, page, pageSize int) (IamUserListResponse, error)
+	DeleteIamUser(vpcId, s3ServiceId, userName string) error
+	ListIamUserAccessKeys(vpcId, s3ServiceId, userName string) (IamUserAccessKeyListResponse, error)
+	CreateIamUserAccessKey(vpcId, s3ServiceId, userName string) *CreateIamUserAccessKeyResponse
+	DeleteIamUserAccessKey(vpcId, s3ServiceId, userName, accessKeyId string) CommonResponse
+	GetIamUserPolicy(vpcId, s3ServiceId, userName string) *IamPolicyResponse
+	PutIamUserPolicy(vpcId, s3ServiceId, userName, policy string) CommonResponse
+	DeleteIamUserPolicy(vpcId, s3ServiceId, userName string) CommonResponse
+
+	// IAM role
+	CreateIamRole(vpcId, s3ServiceId, roleName string, trustedUsers []string) *CreateIamRoleResponse
+	GetIamRole(vpcId, s3ServiceId, roleName string) *IamRole
+	ListIamRoles(vpcId, s3ServiceId string, page, pageSize int) (IamRoleListResponse, error)
+	UpdateIamRoleTrustedUsers(vpcId, s3ServiceId, roleName string, trustedUsers []string) *IamRoleTrustedUsersResponse
+	DeleteIamRole(vpcId, s3ServiceId, roleName string) error
+	GetIamRolePolicy(vpcId, s3ServiceId, roleName string) *IamPolicyResponse
+	PutIamRolePolicy(vpcId, s3ServiceId, roleName, policy string) CommonResponse
+	DeleteIamRolePolicy(vpcId, s3ServiceId, roleName string) CommonResponse
 
 	// Access key
 	ListAccessKeys(vpcId, s3ServiceId string) (AccessKey, error)
@@ -69,6 +95,33 @@ type ObjectStorageServiceImpl struct {
 // NewObjectStorageService creates a new instance of ObjectStorageService
 func NewObjectStorageService(client *common.Client) ObjectStorageService {
 	return &ObjectStorageServiceImpl{client: client}
+}
+
+// decodeCommonResponse interprets the body of a call that did not fail at the
+// HTTP layer. The API reports some logical failures as {"status": false} under a
+// 2xx, so assuming success from the status code alone records state for work the
+// backend refused to do.
+//
+// Status is a pointer because an absent field must not be read as an explicit
+// false: endpoints that answer with no body, or with a body that carries no
+// status, have genuinely succeeded.
+func decodeCommonResponse(resp []byte, successMessage string) CommonResponse {
+	var body struct {
+		Status  *bool  `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(resp, &body); err != nil {
+		// Not the usual envelope; the call itself succeeded, so take it as success.
+		return CommonResponse{Status: true, Message: successMessage}
+	}
+	if body.Status != nil && !*body.Status {
+		message := body.Message
+		if message == "" {
+			message = "the API reported a failure without a message"
+		}
+		return CommonResponse{Status: false, Message: message}
+	}
+	return CommonResponse{Status: true, Message: successMessage}
 }
 
 func (s *ObjectStorageServiceImpl) CheckServiceEnable(vpcId string) S3ServiceEnableResponse {
@@ -188,30 +241,32 @@ func (s *ObjectStorageServiceImpl) DeleteBucket(vpcId, s3ServiceId, bucketName s
 	apiPath := common.ApiPath.DeleteBucket(vpcId, s3ServiceId)
 	payload := map[string]string{"name": bucketName}
 
-	if _, err := s.client.SendDeleteRequestWithBody(apiPath, payload); err != nil {
-
-		return CommonResponse{Status: false}
+	resp, err := s.client.SendDeleteRequestWithBody(apiPath, payload)
+	if err != nil {
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true, Message: "Bucket deleted successfully"}
+	return decodeCommonResponse(resp, "Bucket deleted successfully")
 }
 
 func (s *ObjectStorageServiceImpl) DeleteAccessKey(vpcId, s3ServiceId, accessKeyId string) CommonResponse {
 	apiPath := common.ApiPath.DeleteAccessKey(vpcId, s3ServiceId)
 	body := map[string]string{"accessKey": accessKeyId}
 
-	if _, err := s.client.SendDeleteRequestWithBody(apiPath, body); err != nil {
+	resp, err := s.client.SendDeleteRequestWithBody(apiPath, body)
+	if err != nil {
 		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true, Message: "Access key deleted successfully"}
+	return decodeCommonResponse(resp, "Access key deleted successfully")
 }
 
 // Implement bucket policy methods
 func (s *ObjectStorageServiceImpl) PutBucketPolicy(vpcId, s3ServiceId, bucketName string, policy interface{}) CommonResponse {
 	apiPath := common.ApiPath.PutBucketPolicy(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendPutRequest(apiPath, policy); err != nil {
-		return CommonResponse{Status: false}
+	resp, err := s.client.SendPutRequest(apiPath, policy)
+	if err != nil {
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true}
+	return decodeCommonResponse(resp, "Bucket policy updated successfully")
 }
 
 func (s *ObjectStorageServiceImpl) GetBucketPolicy(vpcId, s3ServiceId, bucketName string) *BucketPolicyResponse {
@@ -231,20 +286,22 @@ func (s *ObjectStorageServiceImpl) GetBucketPolicy(vpcId, s3ServiceId, bucketNam
 // Implement CORS methods
 func (s *ObjectStorageServiceImpl) CreateBucketCors(vpcId, s3ServiceId, bucketName string, cors map[string]interface{}) CommonResponse {
 	apiPath := common.ApiPath.CreateBucketCors(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendPostRequest(apiPath, cors); err != nil {
+	resp, err := s.client.SendPostRequest(apiPath, cors)
+	if err != nil {
 		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true, Message: "Bucket CORS configuration updated successfully"}
+	return decodeCommonResponse(resp, "Bucket CORS configuration updated successfully")
 }
 
 func (s *ObjectStorageServiceImpl) UpdateBucketCors(vpcId, s3ServiceId, bucketName string, cors []map[string]interface{}) CommonResponse {
 	apiPath := common.ApiPath.PutBucketCORS(vpcId, s3ServiceId, bucketName)
 	// Backend expects { "CORSRules": [ ... ] }
 	payload := map[string]interface{}{"CORSRules": cors}
-	if _, err := s.client.SendPutRequest(apiPath, payload); err != nil {
+	resp, err := s.client.SendPutRequest(apiPath, payload)
+	if err != nil {
 		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true, Message: "Bucket CORS configuration updated successfully"}
+	return decodeCommonResponse(resp, "Bucket CORS configuration updated successfully")
 }
 
 func (s *ObjectStorageServiceImpl) GetBucketCors(vpcId, s3ServiceId, bucketName string, page, pageSize int) (*BucketCorsResponse, error) {
@@ -264,8 +321,12 @@ func (s *ObjectStorageServiceImpl) GetBucketCors(vpcId, s3ServiceId, bucketName 
 // Implement versioning methods
 func (s *ObjectStorageServiceImpl) PutBucketVersioning(vpcId, s3ServiceId, bucketName string, versioning BucketVersioningRequest) error {
 	apiPath := common.ApiPath.PutBucketVersioning(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendPutRequest(apiPath, versioning); err != nil {
+	resp, err := s.client.SendPutRequest(apiPath, versioning)
+	if err != nil {
 		return fmt.Errorf("failed to put bucket versioning: %v", err)
+	}
+	if r := decodeCommonResponse(resp, ""); !r.Status {
+		return fmt.Errorf("failed to put bucket versioning: %s", r.Message)
 	}
 	return nil
 }
@@ -286,17 +347,19 @@ func (s *ObjectStorageServiceImpl) GetBucketVersioning(vpcId, s3ServiceId, bucke
 
 func (s *ObjectStorageServiceImpl) PutBucketWebsite(vpcId, s3ServiceId, bucketName string, website BucketWebsiteRequest) CommonResponse {
 	apiPath := common.ApiPath.PutBucketWebsite(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendPutRequest(apiPath, website); err != nil {
-		return CommonResponse{Status: false}
+	resp, err := s.client.SendPutRequest(apiPath, website)
+	if err != nil {
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true}
+	return decodeCommonResponse(resp, "Bucket website configuration updated successfully")
 }
 func (s *ObjectStorageServiceImpl) DeleteBucketStaticWebsite(vpcId, s3ServiceId, bucketName string) CommonResponse {
 	apiPath := common.ApiPath.DeleteBucketStaticWebsite(vpcId, s3ServiceId, bucketName)
-	if _, err := s.client.SendDeleteRequest(apiPath); err != nil {
-		return CommonResponse{Status: false}
+	resp, err := s.client.SendDeleteRequest(apiPath)
+	if err != nil {
+		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true}
+	return decodeCommonResponse(resp, "Bucket website configuration deleted successfully")
 }
 func (s *ObjectStorageServiceImpl) GetBucketWebsite(vpcId, s3ServiceId, bucketName string) *BucketWebsiteResponse {
 	apiPath := common.ApiPath.GetBucketWebsite(vpcId, s3ServiceId, bucketName)
@@ -342,8 +405,12 @@ func (s *ObjectStorageServiceImpl) GetBucketAcl(vpcId, s3ServiceId, bucketName s
 
 func (s *ObjectStorageServiceImpl) DeleteSubUser(vpcId, s3ServiceId, subUserId string) error {
 	apiPath := common.ApiPath.DeleteSubUser(vpcId, s3ServiceId, subUserId)
-	if _, err := s.client.SendDeleteRequest(apiPath); err != nil {
+	resp, err := s.client.SendDeleteRequest(apiPath)
+	if err != nil {
 		return fmt.Errorf("failed to delete sub-user: %v", err)
+	}
+	if r := decodeCommonResponse(resp, ""); !r.Status {
+		return fmt.Errorf("failed to delete sub-user: %s", r.Message)
 	}
 	return nil
 }
@@ -407,10 +474,11 @@ func (s *ObjectStorageServiceImpl) CreateSubUserAccessKey(vpcId, s3ServiceId, su
 func (s *ObjectStorageServiceImpl) DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId, accessKeyId string) CommonResponse {
 	apiPath := common.ApiPath.DeleteSubUserAccessKey(vpcId, s3ServiceId, subUserId)
 	payload := map[string]string{"accessKey": accessKeyId}
-	if _, err := s.client.SendDeleteRequestWithBody(apiPath, payload); err != nil {
+	resp, err := s.client.SendDeleteRequestWithBody(apiPath, payload)
+	if err != nil {
 		return CommonResponse{Status: false, Message: err.Error()}
 	}
-	return CommonResponse{Status: true, Message: "Access key deleted successfully"}
+	return decodeCommonResponse(resp, "Access key deleted successfully")
 }
 
 func (s *ObjectStorageServiceImpl) DetailSubUser(vpcId, s3ServiceId, subUserId string) *DetailSubUser {

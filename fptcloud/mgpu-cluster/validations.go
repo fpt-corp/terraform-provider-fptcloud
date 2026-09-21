@@ -1,0 +1,1053 @@
+package fptcloud_mgpu_cluster
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"sort"
+	"strconv"
+	"strings"
+
+	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+)
+
+// allowedDriverInstallationTypes are the gpu_driver.installation_type values
+// the gpu-drivers catalog endpoint accepts.
+var allowedDriverInstallationTypes = []string{"MANAGED", "PRE_INSTALL", "USER_INSTALL"}
+
+const driverInstallationTypeUserInstall = "USER_INSTALL"
+
+// validateGpuDriver checks the gpu_driver block: installation_type against the
+// fixed set the API supports, then version against the live catalog for that
+// installation type (GET .../gpu-drivers). USER_INSTALL offers no version to
+// pick, so version must be left empty in that case. The block itself is
+// optional — when absent, nothing is validated or sent to the API.
+func validateGpuDriver(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion, poolName string, pool *managedGpuClusterPool) *diag2.ErrorDiagnostic {
+	if pool.GpuDriver.IsNull() || pool.GpuDriver.IsUnknown() {
+		return nil
+	}
+	driverInstallationType, gpuDriverVersion := gpuDriverFields(pool.GpuDriver)
+	if driverInstallationType == "" {
+		return nil
+	}
+
+	isValidType := false
+	for _, allowed := range allowedDriverInstallationTypes {
+		if driverInstallationType == allowed {
+			isValidType = true
+			break
+		}
+	}
+	if !isValidType {
+		d := diag2.NewErrorDiagnostic("Invalid gpu_driver.installation_type", fmt.Sprintf("gpu_driver.installation_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedDriverInstallationTypes, ", "), poolName, driverInstallationType))
+		return &d
+	}
+
+	drivers, err := client.fetchGpuDrivers(ctx, vpcId, platform, driverInstallationType, k8sVersion)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error fetching GPU drivers", err.Error())
+		return &d
+	}
+
+	if driverInstallationType == driverInstallationTypeUserInstall {
+		if gpuDriverVersion != "" {
+			d := diag2.NewErrorDiagnostic("Invalid gpu_driver.version", fmt.Sprintf("gpu_driver.version must be left empty for pool '%s' when gpu_driver.installation_type = '%s' (the user installs their own driver)", poolName, driverInstallationTypeUserInstall))
+			return &d
+		}
+		return nil
+	}
+
+	if gpuDriverVersion == "" {
+		d := diag2.NewErrorDiagnostic("Missing gpu_driver.version", fmt.Sprintf("gpu_driver.version is required for pool '%s' when gpu_driver.installation_type = '%s'", poolName, driverInstallationType))
+		return &d
+	}
+
+	for _, entry := range drivers {
+		if entry.Value == gpuDriverVersion {
+			return nil
+		}
+	}
+
+	valid := make([]string, 0, len(drivers))
+	for _, entry := range drivers {
+		if entry.Value != "" {
+			valid = append(valid, entry.Value)
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid gpu_driver.version", fmt.Sprintf("gpu_driver.version '%s' is not offered for gpu_driver.installation_type '%s' on pool '%s'. Available: %s", gpuDriverVersion, driverInstallationType, poolName, strings.Join(valid, ", ")))
+	return &d
+}
+
+// allowedGpuTypes are the GPU models a bare-metal pool can report.
+var allowedGpuTypes = []string{"A100", "A30", "H100", "H200"}
+
+// allowedMigStrategies are the values the mig block's strategy accepts.
+var allowedMigStrategies = []string{"NONE", "SINGLE", "MIXED"}
+
+// allowedSharingClientTypes are the values the gpu_sharing block's client_type
+// accepts.
+var allowedSharingClientTypes = []string{"NONE", "MPS", "TIMESLICING"}
+
+// maxClient bounds when GPU sharing is actually enabled. With sharing off the
+// only valid value is 0.
+const maxClientMin, maxClientMax = 2, 48
+
+// validateGpuType checks gpu_type against the models the platform offers. The
+// field is optional; an unset value is not validated.
+func validateGpuType(poolName string, gpuType types.String) *diag2.ErrorDiagnostic {
+	if gpuType.IsNull() || gpuType.IsUnknown() || gpuType.ValueString() == "" {
+		return nil
+	}
+	for _, allowed := range allowedGpuTypes {
+		if gpuType.ValueString() == allowed {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic(
+		"Invalid gpu_type",
+		fmt.Sprintf("gpu_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedGpuTypes, ", "), poolName, gpuType.ValueString()),
+	)
+	return &d
+}
+
+// validateGpuSharing checks the gpu_sharing block, which covers both MIG
+// partitioning and client sharing. Each half constrains its own pair: a
+// mig_strategy of NONE forbids a profile while SINGLE/MIXED require one, and a
+// sharing_client_type of NONE pins max_client to 0 while the others need 2-48.
+//
+// USER_INSTALL pools install their own driver, so the platform manages neither
+// MIG nor sharing for them and the whole block must be left unset.
+func validateGpuSharing(poolName string, driverInstallationType string, gpuSharing types.Object) *diag2.ErrorDiagnostic {
+	if gpuSharing.IsNull() || gpuSharing.IsUnknown() {
+		return nil
+	}
+
+	if driverInstallationType == driverInstallationTypeUserInstall {
+		d := diag2.NewErrorDiagnostic(
+			"Unexpected gpu_sharing",
+			fmt.Sprintf("gpu_sharing may not be set for pool '%s' when gpu_driver.installation_type = %s (the user installs their own driver, so the platform manages neither MIG nor GPU sharing)", poolName, driverInstallationTypeUserInstall),
+		)
+		return &d
+	}
+
+	migStrategy, migProfile, clientType, maxClient := gpuSharingFields(gpuSharing)
+
+	if d := validateGpuSharingMig(poolName, migStrategy, migProfile); d != nil {
+		return d
+	}
+	return validateGpuSharingClients(poolName, clientType, maxClient)
+}
+
+// validateGpuSharingMig checks the MIG half of gpu_sharing. Both fields are
+// optional together: a block that only configures client sharing leaves them
+// unset.
+func validateGpuSharingMig(poolName, migStrategy, migProfile string) *diag2.ErrorDiagnostic {
+	if migStrategy == "" {
+		if migProfile != "" {
+			d := diag2.NewErrorDiagnostic(
+				"Missing gpu_sharing.mig_strategy",
+				fmt.Sprintf("gpu_sharing.mig_strategy is required for pool '%s' when mig_profile is set", poolName),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	validStrategy := false
+	for _, allowed := range allowedMigStrategies {
+		if migStrategy == allowed {
+			validStrategy = true
+			break
+		}
+	}
+	if !validStrategy {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid gpu_sharing.mig_strategy",
+			fmt.Sprintf("gpu_sharing.mig_strategy must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedMigStrategies, ", "), poolName, migStrategy),
+		)
+		return &d
+	}
+
+	if migStrategy == gpuValueNone {
+		if migProfile != "" {
+			d := diag2.NewErrorDiagnostic(
+				"Unexpected gpu_sharing.mig_profile",
+				fmt.Sprintf("gpu_sharing.mig_profile must be left empty for pool '%s' when mig_strategy is %s", poolName, gpuValueNone),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	if migProfile == "" {
+		d := diag2.NewErrorDiagnostic(
+			"Missing gpu_sharing.mig_profile",
+			fmt.Sprintf("gpu_sharing.mig_profile is required for pool '%s' when mig_strategy is %s", poolName, migStrategy),
+		)
+		return &d
+	}
+
+	return nil
+}
+
+// validateGpuSharingClients checks the client-sharing half of gpu_sharing.
+func validateGpuSharingClients(poolName, clientType string, maxClient int64) *diag2.ErrorDiagnostic {
+	if clientType == "" {
+		if maxClient != 0 {
+			d := diag2.NewErrorDiagnostic(
+				"Missing gpu_sharing.sharing_client_type",
+				fmt.Sprintf("gpu_sharing.sharing_client_type is required for pool '%s' when max_client is set", poolName),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	validType := false
+	for _, allowed := range allowedSharingClientTypes {
+		if clientType == allowed {
+			validType = true
+			break
+		}
+	}
+	if !validType {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid gpu_sharing.sharing_client_type",
+			fmt.Sprintf("gpu_sharing.sharing_client_type must be one of: %s for pool '%s', got: '%s'", strings.Join(allowedSharingClientTypes, ", "), poolName, clientType),
+		)
+		return &d
+	}
+
+	if clientType == gpuValueNone {
+		if maxClient != 0 {
+			d := diag2.NewErrorDiagnostic(
+				"Invalid gpu_sharing.max_client",
+				fmt.Sprintf("gpu_sharing.max_client must be 0 for pool '%s' when sharing_client_type is %s, got: %d", poolName, gpuValueNone, maxClient),
+			)
+			return &d
+		}
+		return nil
+	}
+
+	if maxClient < maxClientMin || maxClient > maxClientMax {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid gpu_sharing.max_client",
+			fmt.Sprintf("gpu_sharing.max_client must be between %d and %d for pool '%s' when sharing_client_type is %s, got: %d", maxClientMin, maxClientMax, poolName, clientType, maxClient),
+		)
+		return &d
+	}
+
+	return nil
+}
+
+// validatePoolGpu runs the GPU checks that span more than one block: the
+// driver catalog lookup, then gpu_sharing, which depends on which driver
+// installation type the pool picked.
+func validatePoolGpu(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion, poolName string, pool *managedGpuClusterPool) *diag2.ErrorDiagnostic {
+	if d := validateGpuDriver(ctx, client, vpcId, platform, k8sVersion, poolName, pool); d != nil {
+		return d
+	}
+	if d := validateGpuType(poolName, pool.GpuType); d != nil {
+		return d
+	}
+
+	driverInstallationType, _ := gpuDriverFields(pool.GpuDriver)
+	return validateGpuSharing(poolName, driverInstallationType, pool.GpuSharing)
+}
+
+func validatePool(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform, k8sVersion string, pools []*managedGpuClusterPool) *diag2.ErrorDiagnostic {
+	if len(pools) == 0 {
+		d := diag2.NewErrorDiagnostic("Invalid configuration", "At least a worker pool must be configured")
+		return &d
+	}
+
+	groupNames := map[string]bool{}
+	for _, pool := range pools {
+		name := pool.WorkerPoolID.ValueString()
+		if name == "worker-new" {
+			d := diag2.NewErrorDiagnostic("Invalid worker group name", "Worker group name \"worker-new\" is reserved")
+			return &d
+		}
+
+		if _, ok := groupNames[name]; ok {
+			d := diag2.NewErrorDiagnostic("Duplicate worker group name", "Worker group name "+name+" is used twice")
+			return &d
+		}
+
+		groupNames[name] = true
+
+		// Validate hpc_number_server >= 1
+		if pool.HpcNumberServer.ValueInt64() < 1 {
+			d := diag2.NewErrorDiagnostic("Invalid hpc_number_server", "hpc_number_server must be greater than or equal to 1 for pool '"+name+"'")
+			return &d
+		}
+
+		// Validate: if worker_base = true and has taints: only allowed when >= 2 pools, and only taint allowed is CriticalAddonsOnly=true:NoSchedule
+		if pool.WorkerBase.ValueBool() && !pool.Taints.IsNull() && !pool.Taints.IsUnknown() && len(pool.Taints.Elements()) > 0 {
+			if len(pools) < 2 {
+				d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker base pool '"+name+"' may only have taints when there are 2 or more worker pools")
+				return &d
+			}
+			if len(pool.Taints.Elements()) != 1 {
+				d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker pool '"+name+"' has worker_base = true; base worker pools may only have exactly one taint: CriticalAddonsOnly=true:NoSchedule")
+				return &d
+			}
+			taintElement := pool.Taints.Elements()[0]
+			if taintObj, ok := taintElement.(types.Object); ok {
+				taintAttrs := taintObj.Attributes()
+				key := taintAttrs["key"].(types.String)
+				value := taintAttrs["value"].(types.String)
+				effect := taintAttrs["effect"].(types.String)
+				k, v, e := key.ValueString(), value.ValueString(), effect.ValueString()
+				if k != "CriticalAddonsOnly" || (v != "true" && v != "True") || e != "NoSchedule" {
+					d := diag2.NewErrorDiagnostic("Invalid taints configuration", "Worker pool '"+name+"' has worker_base = true; the only allowed taint is key=CriticalAddonsOnly, value=true, effect=NoSchedule")
+					return &d
+				}
+			}
+		}
+
+		// Validate taint effect values
+		if !pool.Taints.IsNull() && !pool.Taints.IsUnknown() {
+			for _, taintElement := range pool.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					effect := taintAttrs["effect"].(types.String)
+
+					if !effect.IsNull() && !effect.IsUnknown() {
+						effectStr := effect.ValueString()
+						allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
+						isValid := false
+						for _, allowed := range allowedEffects {
+							if effectStr == allowed {
+								isValid = true
+								break
+							}
+						}
+						if !isValid {
+							d := diag2.NewErrorDiagnostic("Invalid taint effect", "Taint effect '"+effectStr+"' in pool '"+name+"' is not allowed. Must be one of: "+strings.Join(allowedEffects, ", "))
+							return &d
+						}
+					}
+				}
+			}
+		}
+
+		// Validate the pool's GPU configuration: driver (against the live
+		// gpu-drivers catalog), gpu_type, sharing and MIG.
+		if d := validatePoolGpu(ctx, client, vpcId, platform, k8sVersion, name, pool); d != nil {
+			return d
+		}
+	}
+
+	// Skip worker_base validation during create - it will be set automatically
+	// The first pool will automatically have worker_base = true
+
+	return nil
+}
+
+// clusterNameMinLen and clusterNameMaxLen bound the name the user supplies,
+// before the 8-character random suffix is appended. The console enforces the
+// same range (SRS mục 8). Overshooting it produces a shoot name Gardener
+// accepts but cannot mint an admin token for, which surfaces much later as an
+// opaque "Invalid Admin Token" from the GPU-software install.
+const clusterNameMinLen, clusterNameMaxLen = 3, 20
+
+// validateClusterName checks the length of the user-supplied cluster name. A
+// name that already carries a random suffix is measured without it, so
+// re-applying a config whose name came back suffixed still validates.
+func validateClusterName(clusterName string) *diag2.ErrorDiagnostic {
+	name := clusterName
+	if hasRandomSuffix(name) {
+		name = name[:len(name)-9] // strip "-XXXXXXXX"
+	}
+
+	if len(name) < clusterNameMinLen || len(name) > clusterNameMaxLen {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid cluster_name",
+			fmt.Sprintf("cluster_name must be between %d and %d characters, got %d (%q). A random 8-character suffix is appended on top of this, and a longer name produces a cluster the GPU-software step cannot authenticate against.",
+				clusterNameMinLen, clusterNameMaxLen, len(name), name),
+		)
+		return &d
+	}
+
+	return nil
+}
+
+// allowedK8sVersions lists every Kubernetes version the platform can provision.
+var allowedK8sVersions = []string{"1.36.2", "1.35.6", "1.34.6", "1.33.12", "1.32.5", "1.31.4", "1.30.8", "1.29.8"}
+
+func validateK8sVersion(version string) *diag2.ErrorDiagnostic {
+	for _, v := range allowedK8sVersions {
+		if version == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid Kubernetes version", "k8s_version must be one of: "+strings.Join(allowedK8sVersions, ", "))
+	return &d
+}
+
+// v2MinK8sMajor and v2MinK8sMinor are the minimum Kubernetes version at which
+// clusters must be managed through the hpc v2 API family (create, get,
+// delete, hibernate, ...) instead of the legacy v1 API.
+const v2MinK8sMajor, v2MinK8sMinor = 1, 33
+
+// requiresV2API reports whether calls for this k8s_version must target the v2
+// API family rather than the legacy v1 one. Bare metal only runs on OSP, so
+// the version alone decides.
+func requiresV2API(k8sVersion string) bool {
+	parts := strings.SplitN(k8sVersion, ".", 3)
+	if len(parts) < 2 {
+		return false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false
+	}
+	return major > v2MinK8sMajor || (major == v2MinK8sMajor && minor >= v2MinK8sMinor)
+}
+
+// Call this from validateNetwork (or validatePool if more appropriate)
+func validateNetwork(state *managedGpuCluster, platform string) *diag2.ErrorDiagnostic {
+	// Use network_id as input; network_name is no longer used
+	if strings.ToLower(platform) == "osp" {
+		if state.NetworkID.ValueString() == "" {
+			d := diag2.NewErrorDiagnostic(
+				"Global network ID must be specified",
+				"Network ID must be specified globally and each worker group's network ID must match",
+			)
+			return &d
+		}
+
+		network := state.NetworkID.ValueString()
+		for _, pool := range state.Pools {
+			fmt.Println("pool.NetworkID.ValueString(): " + pool.NetworkID.ValueString())
+			fmt.Printf("state.Pools: %v\n", state.Pools)
+			if pool.NetworkID.ValueString() != network {
+				d := diag2.NewErrorDiagnostic(
+					fmt.Sprintf("Worker network ID mismatch (%s and %s)", network, pool.NetworkID.ValueString()),
+					fmt.Sprintf("Network ID of worker group \"%s\" must match global one", pool.WorkerPoolID.ValueString()),
+				)
+				return &d
+			}
+		}
+
+		if state.EdgeGatewayId.ValueString() != "" {
+			d := diag2.NewErrorDiagnostic("Edge gateway specification is not supported", "Edge gateway ID must be left empty")
+			return &d
+		}
+	}
+	// else {
+	// if state.NetworkID.ValueString() != "" {
+	// d := diag2.NewErrorDiagnostic(
+	// "Global network ID is not supported",
+	// "Network ID must be specified per worker group, not globally",
+	// )
+	// return &d
+	// }
+	// }
+
+	return nil
+}
+
+func validateNetworkType(networkType string) *diag2.ErrorDiagnostic {
+	allowed := []string{"calico", "cilium"}
+	for _, v := range allowed {
+		if networkType == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid network_type", "network_type must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+func validatePoolNames(pool []*managedGpuClusterPool) ([]string, error) {
+	var poolNames []string
+
+	if len(pool) != 0 {
+		existingPool := map[string]*managedGpuClusterPool{}
+		for _, pool := range pool {
+			name := pool.WorkerPoolID.ValueString()
+			if _, ok := existingPool[name]; ok {
+				return nil, fmt.Errorf("pool %s already exists", name)
+			}
+
+			existingPool[name] = pool
+			poolNames = append(poolNames, name)
+		}
+	}
+
+	return poolNames, nil
+}
+
+func validatePurpose(purpose string) *diag2.ErrorDiagnostic {
+	allowed := []string{"public", "private", "firewall"}
+	for _, v := range allowed {
+		if purpose == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid purpose", "purpose must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+func validatePurposeUpdate(planPurpose, statePurpose types.String) diag2.Diagnostic {
+	if planPurpose.IsNull() || planPurpose.IsUnknown() || planPurpose.ValueString() == "" {
+		return nil
+	}
+	if planPurpose.ValueString() != statePurpose.ValueString() {
+		return diag2.NewErrorDiagnostic("Purpose cannot be changed", "The 'purpose' field is immutable and cannot be updated.")
+	}
+	return nil
+}
+
+func validateExpander(expander string) *diag2.ErrorDiagnostic {
+	allowed := []string{"random", "least-waste", "most-pods", "priority"}
+	for _, v := range allowed {
+		if expander == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid expander", "expander must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+// softwareTypeGpuOperator is the one software type that also takes a MIG strategy.
+const softwareTypeGpuOperator = "gpu_operator"
+
+// operatorTypeNames lists a catalog's operator types in a stable order, for
+// error messages.
+func operatorTypeNames(catalog map[string][]string) []string {
+	names := make([]string, 0, len(catalog))
+	for name := range catalog {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// validateClusterMigStrategy checks the GPU operator MIG strategy.
+func validateClusterMigStrategy(strategy string) *diag2.ErrorDiagnostic {
+	allowed := []string{"single", "mixed"}
+	for _, v := range allowed {
+		if strategy == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid cluster_mig_strategy", "cluster_mig_strategy must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+// validateSoftware checks the operators to install against the live
+// operator-versions catalog: each type must be one it offers, its version must
+// be one that type offers, and cluster_mig_strategy is required for
+// gpu_operator and rejected for the others. No type may appear twice — the API
+// keys them by type. The set itself is optional; when omitted, no operator is
+// installed.
+func validateSoftware(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, software types.Set) *diag2.ErrorDiagnostic {
+	if software.IsNull() || software.IsUnknown() || len(software.Elements()) == 0 {
+		return nil
+	}
+
+	catalog, err := client.fetchOperatorVersions(ctx, vpcId, platform)
+	if err != nil {
+		d := diag2.NewErrorDiagnostic("Error fetching operator versions", err.Error())
+		return &d
+	}
+
+	seen := map[string]bool{}
+	for _, element := range software.Elements() {
+		entry, ok := element.(types.Object)
+		if !ok {
+			d := diag2.NewErrorDiagnostic("Invalid gpu_software entry", "each gpu_software entry must be an object with software_type, software_version and cluster_mig_strategy")
+			return &d
+		}
+
+		softwareType := objectString(entry.Attributes(), "software_type")
+		if seen[softwareType] {
+			d := diag2.NewErrorDiagnostic("Duplicate software_type", fmt.Sprintf("software_type %q is listed more than once; each operator can only be installed at one version", softwareType))
+			return &d
+		}
+		seen[softwareType] = true
+
+		if d := validateSoftwareEntry(entry, catalog); d != nil {
+			return d
+		}
+	}
+
+	return nil
+}
+
+// validateSoftwareEntry checks one operator entry against the catalog.
+func validateSoftwareEntry(entry types.Object, catalog map[string][]string) *diag2.ErrorDiagnostic {
+	attrs := entry.Attributes()
+	softwareTypes := operatorTypeNames(catalog)
+
+	softwareType, ok := attrs["software_type"].(types.String)
+	if !ok || softwareType.IsNull() || softwareType.IsUnknown() || softwareType.ValueString() == "" {
+		d := diag2.NewErrorDiagnostic("Missing software_type", "gpu_software.software_type is required and must be one of: "+strings.Join(softwareTypes, ", "))
+		return &d
+	}
+
+	versions, known := catalog[softwareType.ValueString()]
+	if !known {
+		d := diag2.NewErrorDiagnostic("Invalid software_type", "software_type must be one of: "+strings.Join(softwareTypes, ", "))
+		return &d
+	}
+
+	version, ok := attrs["software_version"].(types.String)
+	if !ok || version.IsNull() || version.IsUnknown() || version.ValueString() == "" {
+		d := diag2.NewErrorDiagnostic("Missing software_version", "gpu_software.software_version is required")
+		return &d
+	}
+	versionOk := false
+	for _, v := range versions {
+		if version.ValueString() == v {
+			versionOk = true
+			break
+		}
+	}
+	if !versionOk {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid software_version",
+			"software_version for "+softwareType.ValueString()+" must be one of: "+strings.Join(versions, ", "),
+		)
+		return &d
+	}
+
+	strategy, hasStrategy := attrs["cluster_mig_strategy"].(types.String)
+	strategySet := hasStrategy && !strategy.IsNull() && !strategy.IsUnknown() && strategy.ValueString() != ""
+
+	if softwareType.ValueString() == softwareTypeGpuOperator {
+		if !strategySet {
+			d := diag2.NewErrorDiagnostic("Missing cluster_mig_strategy", "gpu_software.cluster_mig_strategy is required when software_type is "+softwareTypeGpuOperator)
+			return &d
+		}
+		return validateClusterMigStrategy(strategy.ValueString())
+	}
+
+	if strategySet {
+		d := diag2.NewErrorDiagnostic(
+			"Unexpected cluster_mig_strategy",
+			"gpu_software.cluster_mig_strategy may only be set when software_type is "+softwareTypeGpuOperator,
+		)
+		return &d
+	}
+	return nil
+}
+
+func validateIsEnableAutoScaling(isEnable bool) *diag2.ErrorDiagnostic {
+	if !isEnable {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid is_enable_auto_scaling value",
+			"is_enable_auto_scaling must be true. Auto scaling cannot be disabled.",
+		)
+		return &d
+	}
+	return nil
+}
+
+func validateScanInterval(scanInterval int64) *diag2.ErrorDiagnostic {
+	if scanInterval < 1 || scanInterval > 3600 {
+		d := diag2.NewErrorDiagnostic(
+			"Invalid scan_interval value",
+			fmt.Sprintf("scan_interval must be in range from 1 to 3600 seconds, got: %d", scanInterval),
+		)
+		return &d
+	}
+	return nil
+}
+
+func validateClusterEndpointAccess(accessType string) *diag2.ErrorDiagnostic {
+	allowed := []string{"public", "private", "mixed"}
+	for _, v := range allowed {
+		if accessType == v {
+			return nil
+		}
+	}
+	d := diag2.NewErrorDiagnostic("Invalid clusterEndpointAccess type", "clusterEndpointAccess.type must be one of: "+strings.Join(allowed, ", "))
+	return &d
+}
+
+func ValidateCreate(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, state *managedGpuCluster, response *resource.CreateResponse) bool {
+	// Validate cluster_name length
+	if diag := validateClusterName(state.ClusterName.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Validate k8s_version
+	if diag := validateK8sVersion(state.K8SVersion.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Validate purpose
+	if diag := validatePurpose(state.Purpose.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Validate software operators
+	if diag := validateSoftware(ctx, client, vpcId, platform, state.Software); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Validate network_type
+	if diag := validateNetworkType(state.NetworkType.ValueString()); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Validate cluster_endpoint_access
+	if !state.ClusterEndpointAccess.IsNull() && !state.ClusterEndpointAccess.IsUnknown() {
+		accessAttrs := state.ClusterEndpointAccess.Attributes()
+
+		accessTypeAttr, ok := accessAttrs["type"].(types.String)
+		if !ok || accessTypeAttr.IsNull() || accessTypeAttr.IsUnknown() {
+			response.Diagnostics.AddError("Invalid cluster_endpoint_access.type", "Missing or invalid type field in cluster_endpoint_access")
+			return false
+		}
+
+		if diag := validateClusterEndpointAccess(accessTypeAttr.ValueString()); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+
+		allowCidrAttr, ok := accessAttrs["allow_cidr"].(types.List)
+		if !ok || allowCidrAttr.IsNull() || allowCidrAttr.IsUnknown() {
+			response.Diagnostics.AddError("Invalid cluster_endpoint_access.allow_cidr", "Missing or invalid allow_cidr field in cluster_endpoint_access")
+			return false
+		}
+
+		if diag := validateAllowCidr(allowCidrAttr); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+	}
+	// Validate cluster_autoscaler expander, is_enable_auto_scaling, and scan_interval
+	if !state.ClusterAutoscaler.IsNull() && !state.ClusterAutoscaler.IsUnknown() {
+		autoscalerAttrs := state.ClusterAutoscaler.Attributes()
+		expander := autoscalerAttrs["expander"].(types.String).ValueString()
+		if diag := validateExpander(expander); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+
+		// Validate is_enable_auto_scaling must be true
+		isEnableAutoScaling := autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool()
+		if diag := validateIsEnableAutoScaling(isEnableAutoScaling); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+
+		// Validate scan_interval range
+		scanInterval := autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64()
+		if diag := validateScanInterval(scanInterval); diag != nil {
+			response.Diagnostics.Append(diag)
+			return false
+		}
+	}
+	// Validate pool
+	if err := validatePool(ctx, client, vpcId, platform, state.K8SVersion.ValueString(), state.Pools); err != nil {
+		response.Diagnostics.Append(err)
+		return false
+	}
+	return true
+}
+
+func validateNetworkTypeUpdate(planNetworkType, stateNetworkType types.String) diag2.Diagnostic {
+	if planNetworkType.IsNull() || planNetworkType.IsUnknown() || planNetworkType.ValueString() == "" {
+		return nil
+	}
+	if planNetworkType.ValueString() != stateNetworkType.ValueString() {
+		return diag2.NewErrorDiagnostic("Network type cannot be changed", "The 'network_type' field is immutable and cannot be updated.")
+	}
+	return nil
+}
+
+func validateClusterAutoscalerUpdate(plan *managedGpuCluster) diag2.Diagnostic {
+	if !plan.ClusterAutoscaler.IsNull() && !plan.ClusterAutoscaler.IsUnknown() {
+		autoscalerAttrs := plan.ClusterAutoscaler.Attributes()
+		expander := autoscalerAttrs["expander"].(types.String).ValueString()
+		if diag := validateExpander(expander); diag != nil {
+			return diag
+		}
+
+		// Validate is_enable_auto_scaling must be true
+		isEnableAutoScaling := autoscalerAttrs["is_enable_auto_scaling"].(types.Bool).ValueBool()
+		if diag := validateIsEnableAutoScaling(isEnableAutoScaling); diag != nil {
+			return diag
+		}
+
+		// Validate scan_interval range
+		scanInterval := autoscalerAttrs["scan_interval"].(types.Int64).ValueInt64()
+		if diag := validateScanInterval(scanInterval); diag != nil {
+			return diag
+		}
+	}
+	return nil
+}
+
+func validateAllowCidr(allowCidr types.List) diag2.Diagnostic {
+	if allowCidr.IsNull() || allowCidr.IsUnknown() {
+		return nil
+	}
+
+	for _, v := range allowCidr.Elements() {
+		str, ok := v.(types.String)
+		if !ok || str.IsNull() || str.IsUnknown() {
+			continue // hoặc có thể báo lỗi nếu cần thiết
+		}
+		_, _, err := net.ParseCIDR(str.ValueString())
+		if err != nil {
+			return diag2.NewErrorDiagnostic(
+				"Invalid CIDR format in allow_cidr",
+				fmt.Sprintf("'%s' is not a valid CIDR string: %v", str.ValueString(), err),
+			)
+		}
+	}
+
+	return nil
+}
+
+func validateClusterEndpointAccessUpdate(plan, state *managedGpuCluster) diag2.Diagnostic {
+	if plan == nil || state == nil {
+		return nil
+	}
+
+	// Kiểm tra null/unknown của object
+	if plan.ClusterEndpointAccess.IsNull() || plan.ClusterEndpointAccess.IsUnknown() ||
+		state.ClusterEndpointAccess.IsNull() || state.ClusterEndpointAccess.IsUnknown() {
+		return nil
+	}
+
+	planAttrs := plan.ClusterEndpointAccess.Attributes()
+	stateAttrs := state.ClusterEndpointAccess.Attributes()
+
+	planType, planOk := planAttrs["type"].(types.String)
+	stateType, stateOk := stateAttrs["type"].(types.String)
+
+	// Bỏ qua nếu không lấy được field type
+	if !planOk || planType.IsNull() || planType.IsUnknown() ||
+		!stateOk || stateType.IsNull() || stateType.IsUnknown() {
+		return nil
+	}
+
+	planTypeVal := planType.ValueString()
+	stateTypeVal := stateType.ValueString()
+
+	if stateTypeVal == "public" && planTypeVal != "public" {
+		return diag2.NewErrorDiagnostic(
+			"Invalid cluster_endpoint_access.type transition",
+			"Cannot change cluster_endpoint_access.type from 'public' to 'private' or 'mixed' after creation.",
+		)
+	}
+	if (stateTypeVal == "private" || stateTypeVal == "mixed") && planTypeVal == "public" {
+		return diag2.NewErrorDiagnostic(
+			"Invalid cluster_endpoint_access.type transition",
+			"Cannot change cluster_endpoint_access.type from 'private' or 'mixed' to 'public' after creation.",
+		)
+	}
+
+	// Validate allow_cidr
+	if allowCidrAttr, ok := planAttrs["allow_cidr"].(types.List); ok && !allowCidrAttr.IsNull() && !allowCidrAttr.IsUnknown() {
+		if diag := validateAllowCidr(allowCidrAttr); diag != nil {
+			return diag
+		}
+	}
+
+	return nil
+}
+
+func validateImmutableStringField(fieldName string, plan, state types.String) diag2.Diagnostic {
+	if !plan.IsNull() && !plan.IsUnknown() && plan.ValueString() != "" &&
+		!state.IsNull() && !state.IsUnknown() && state.ValueString() != "" &&
+		plan.ValueString() != state.ValueString() {
+		return diag2.NewErrorDiagnostic(
+			fmt.Sprintf("%s cannot be changed", fieldName),
+			fmt.Sprintf("The '%s' field is immutable and cannot be updated.", fieldName),
+		)
+	}
+	return nil
+}
+
+func validateImmutableInt64Field(fieldName string, plan, state types.Int64) diag2.Diagnostic {
+	if !plan.IsNull() && !plan.IsUnknown() &&
+		!state.IsNull() && !state.IsUnknown() &&
+		plan.ValueInt64() != state.ValueInt64() {
+		return diag2.NewErrorDiagnostic(
+			fmt.Sprintf("%s cannot be changed", fieldName),
+			fmt.Sprintf("The '%s' field is immutable and cannot be updated.", fieldName),
+		)
+	}
+	return nil
+}
+
+func validateImmutablePoolStringField(planPools, statePools []*managedGpuClusterPool) diag2.Diagnostic {
+	// if len(planPools) != len(statePools) {
+	// return diag2.NewErrorDiagnostic(
+	// "Pool count mismatch",
+	// "The number of pools in plan and state do not match.",
+	// )
+	// }
+	for i := range planPools {
+		if i >= len(statePools) {
+			// New pool, nothing to check
+			continue
+		}
+		planVal := planPools[i].ContainerRuntime
+		stateVal := statePools[i].ContainerRuntime
+		if !planVal.IsNull() && !planVal.IsUnknown() && planVal.ValueString() != "" &&
+			!stateVal.IsNull() && !stateVal.IsUnknown() && stateVal.ValueString() != "" &&
+			planVal.ValueString() != stateVal.ValueString() {
+			return diag2.NewErrorDiagnostic(
+				"container_runtime cannot be changed in worker pool",
+				"The 'container_runtime' field in worker pool is immutable and cannot be updated.",
+			)
+		}
+	}
+	return nil
+}
+
+func ValidateUpdate(ctx context.Context, client *MgpuClusterApiClient, vpcId, platform string, state, plan *managedGpuCluster, response *resource.UpdateResponse) bool {
+	// Deny changing purpose
+	if diag := validatePurposeUpdate(plan.Purpose, state.Purpose); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Deny changing network_type
+	if diag := validateNetworkTypeUpdate(plan.NetworkType, state.NetworkType); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Validate expander in cluster_autoscaler
+	if diag := validateClusterAutoscalerUpdate(plan); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Validate clusterEndpointAccess.type and allow_cidr
+	if diag := validateClusterEndpointAccessUpdate(plan, state); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Deny changing PodNetwork, PodPrefix, ServiceNetwork, ServicePrefix, K8SMaxPod.
+	//
+	// network_type and the CIDR fields also carry RequiresReplace in the
+	// schema, so Terraform recreates the cluster before Update is ever
+	// reached. These checks stay as a backstop in case a plan modifier is
+	// dropped, and because k8s_max_pod has no modifier of its own.
+	if diag := validateImmutableStringField("pod_network", plan.PodNetwork, state.PodNetwork); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	if diag := validateImmutableStringField("pod_prefix", plan.PodPrefix, state.PodPrefix); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	if diag := validateImmutableStringField("service_network", plan.ServiceNetwork, state.ServiceNetwork); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	if diag := validateImmutableStringField("service_prefix", plan.ServicePrefix, state.ServicePrefix); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	if diag := validateImmutableInt64Field("k8s_max_pod", plan.K8SMaxPod, state.K8SMaxPod); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Deny changing container_runtime in worker pool
+	if diag := validateImmutablePoolStringField(plan.Pools, state.Pools); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+	// Operators can be added, changed and removed after the cluster exists,
+	// so the same catalog check has to run on update as on create.
+	if diag := validateSoftware(ctx, client, vpcId, platform, plan.Software); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+
+	// Validate taints configuration for worker pools during update
+	for _, pool := range plan.Pools {
+		// Validate hpc_number_server >= 1
+		if pool.HpcNumberServer.ValueInt64() < 1 {
+			response.Diagnostics.AddError(
+				"Invalid hpc_number_server",
+				fmt.Sprintf("hpc_number_server must be greater than or equal to 1 for pool '%s'", pool.WorkerPoolID.ValueString()),
+			)
+			return false
+		}
+
+		// Validate: if worker_base = true and has taints: only allowed when >= 2 pools, and only taint allowed is CriticalAddonsOnly=true:NoSchedule
+		if pool.WorkerBase.ValueBool() && !pool.Taints.IsNull() && !pool.Taints.IsUnknown() && len(pool.Taints.Elements()) > 0 {
+			if len(plan.Pools) < 2 {
+				response.Diagnostics.AddError(
+					"Invalid taints configuration",
+					fmt.Sprintf("Worker base pool '%s' may only have taints when there are 2 or more worker pools", pool.WorkerPoolID.ValueString()),
+				)
+				return false
+			}
+			if len(pool.Taints.Elements()) != 1 {
+				response.Diagnostics.AddError(
+					"Invalid taints configuration",
+					fmt.Sprintf("Worker pool '%s' has worker_base = true; base worker pools may only have exactly one taint: CriticalAddonsOnly=true:NoSchedule", pool.WorkerPoolID.ValueString()),
+				)
+				return false
+			}
+			taintElement := pool.Taints.Elements()[0]
+			if taintObj, ok := taintElement.(types.Object); ok {
+				taintAttrs := taintObj.Attributes()
+				key := taintAttrs["key"].(types.String)
+				value := taintAttrs["value"].(types.String)
+				effect := taintAttrs["effect"].(types.String)
+				k, v, e := key.ValueString(), value.ValueString(), effect.ValueString()
+				if k != "CriticalAddonsOnly" || (v != "true" && v != "True") || e != "NoSchedule" {
+					response.Diagnostics.AddError(
+						"Invalid taints configuration",
+						fmt.Sprintf("Worker pool '%s' has worker_base = true; the only allowed taint is key=CriticalAddonsOnly, value=true, effect=NoSchedule", pool.WorkerPoolID.ValueString()),
+					)
+					return false
+				}
+			}
+		}
+		// Validate taint effect values
+		if !pool.Taints.IsNull() && !pool.Taints.IsUnknown() {
+			for _, taintElement := range pool.Taints.Elements() {
+				if taintObj, ok := taintElement.(types.Object); ok {
+					taintAttrs := taintObj.Attributes()
+					effect := taintAttrs["effect"].(types.String)
+
+					if !effect.IsNull() && !effect.IsUnknown() {
+						effectStr := effect.ValueString()
+						allowedEffects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
+						isValid := false
+						for _, allowed := range allowedEffects {
+							if effectStr == allowed {
+								isValid = true
+								break
+							}
+						}
+						if !isValid {
+							response.Diagnostics.AddError(
+								"Invalid taint effect",
+								fmt.Sprintf("Taint effect '%s' in pool '%s' is not allowed. Must be one of: %s", effectStr, pool.WorkerPoolID.ValueString(), strings.Join(allowedEffects, ", ")),
+							)
+							return false
+						}
+					}
+				}
+			}
+		}
+
+		if d := validatePoolGpu(ctx, client, vpcId, platform, plan.K8SVersion.ValueString(), pool.WorkerPoolID.ValueString(), pool); d != nil {
+			response.Diagnostics.Append(d)
+			return false
+		}
+	}
+
+	// Add other update-time validations here as needed
+	return true
+}

@@ -238,13 +238,17 @@ func (r *resourceManagedKubernetesEngine) Update(ctx context.Context, request re
 		return
 	}
 
-	_, err := r.InternalRead(ctx, state.Id.ValueString(), &state)
+	// Refresh into the plan, not into prior state: what this writes back has to
+	// match what was planned, and the plan is also what tells InternalRead which
+	// pool tags the user spelled out.
+	plan.Id = state.Id
+	_, err := r.InternalRead(ctx, state.Id.ValueString(), &plan)
 	if err != nil {
 		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error refreshing state", err.Error()))
 		return
 	}
 
-	diags = response.State.Set(ctx, &state)
+	diags = response.State.Set(ctx, &plan)
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
 		return

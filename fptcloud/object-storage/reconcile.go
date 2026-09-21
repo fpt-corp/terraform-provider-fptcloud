@@ -204,3 +204,69 @@ func equalJSON(a, b string) bool {
 	}
 	return reflect.DeepEqual(left, right)
 }
+
+// reconcileIamUser adopts a user purely on its name. An IAM user has no
+// configurable attribute beyond that name - the API creates it bare, with no
+// key and no policy - so a user of that name being present is the whole of what
+// the configuration asks for, and there is nothing that could conflict.
+func reconcileIamUser(service ObjectStorageService, vpcId, s3ServiceId, userName string) createOutcome {
+	detail := service.GetIamUser(vpcId, s3ServiceId, userName)
+	if detail == nil || detail.UserName != userName {
+		return createFailed
+	}
+	return createAdopted
+}
+
+// reconcileIamRole adopts a role only when its trust policy already lists
+// exactly the trusted users the configuration asks for. A role of that name
+// trusting a different set is somebody else's: adopting it would hand its
+// principals to this configuration, and the next apply would rewrite the trust
+// policy underneath them.
+//
+// Order is not compared - the trust policy is a set of principals, and the
+// backend returns it in its own order.
+func reconcileIamRole(service ObjectStorageService, vpcId, s3ServiceId, roleName string, wantTrustedUsers []string) createOutcome {
+	role := service.GetIamRole(vpcId, s3ServiceId, roleName)
+	if role == nil || role.RoleName != roleName {
+		return createFailed
+	}
+	if !equalStringSets(role.TrustedUsers, wantTrustedUsers) {
+		return createConflict
+	}
+	return createAdopted
+}
+
+// reconcileIamPolicy compares the stored document with the configured one
+// semantically, so formatting differences do not read as a conflict. It serves
+// both the user and the role policy resources, which are the same operation on
+// a different identity.
+func reconcileIamPolicy(stored *IamPolicyResponse, want string) createOutcome {
+	if stored == nil || !stored.HasPolicy || len(stored.Policy) == 0 {
+		return createFailed
+	}
+	if equalJSON(string(stored.Policy), want) {
+		return createAdopted
+	}
+	return createConflict
+}
+
+// equalStringSets compares two lists ignoring order and duplicates.
+func equalStringSets(a, b []string) bool {
+	seen := make(map[string]struct{}, len(a))
+	for _, v := range a {
+		seen[v] = struct{}{}
+	}
+	other := make(map[string]struct{}, len(b))
+	for _, v := range b {
+		other[v] = struct{}{}
+	}
+	if len(seen) != len(other) {
+		return false
+	}
+	for v := range seen {
+		if _, ok := other[v]; !ok {
+			return false
+		}
+	}
+	return true
+}

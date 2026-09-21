@@ -1,3 +1,91 @@
+## [0.3.73] - 2026-09-19
+
+### Resource
+
+- Feat: tag a `fptcloud_managed_kubernetes_engine_v1` cluster with the new `tags` attribute, and a worker pool with `pool_tags`. Cluster tags propagate to every pool, so `pool_tags` only lists that pool's own extras
+
+### Datasource
+
+- Feat: `fptcloud_managed_kubernetes_engine_v1` reports the cluster's `tags` and each pool's `pool_tags`
+
+## [0.3.72] - 2026-09-18
+
+### Resource
+
+- Feat: manage IAM users on Ceph-backed object storage with `fptcloud_object_storage_iam_user`: create, read and delete. Access keys and the inline policy are separate resources, so either can be rotated or rewritten without recreating the user
+- Feat: `fptcloud_object_storage_iam_user_access_key` mints and revokes an IAM user's access keys - up to 2 per user - and returns the secret only once, at create
+- Feat: `fptcloud_object_storage_iam_user_policy` manages the single inline policy attached to an IAM user; every resource it names must be a bucket the account owns
+- Feat: `fptcloud_object_storage_iam_role` manages IAM roles and `trusted_users`, the IAM users allowed to assume the role
+- Feat: `fptcloud_object_storage_iam_role_policy` manages the single inline policy attached to an IAM role - what the role may do once assumed, distinct from who may assume it
+
+### Datasource
+
+- Feat: `fptcloud_object_storage_iam_user` lists IAM users; `fptcloud_object_storage_iam_user_detail` reads one by name
+- Feat: `fptcloud_object_storage_iam_user_access_key` lists an IAM user's access keys - never their secrets
+- Feat: `fptcloud_object_storage_iam_user_policy` reads an IAM user's inline policy
+- Feat: `fptcloud_object_storage_iam_role` lists IAM roles; `fptcloud_object_storage_iam_role_detail` reads one by name
+- Feat: `fptcloud_object_storage_iam_role_policy` reads an IAM role's inline policy
+
+## [0.3.71] - 2026-09-17
+
+### Resource
+
+- Fix: `fptcloud_storage` with `type = "EXTERNAL"` no longer times out on create. The provider now calls the console's async create endpoint, which answers with the storage id right away, and waits for the storage to become `ENABLED` (and, when `instance_id` is set, to be attached to that instance). Before, the API held the request until the whole Celery create finished. `LOCAL` storages still use the previous endpoint
+- Fix: the async endpoint does not take `tag_ids`, so the provider applies them itself once an `EXTERNAL` storage is `ENABLED`
+- Feat: if the create request of an `EXTERNAL` storage times out (client timeout, HTTP 502 or 504), the apply no longer fails. The provider looks the storage up by name until a new one appears, for up to `timeouts.create` (default `15m`), and fails only if none does
+
+## [0.3.70] - 2026-09-17
+
+### Resource
+
+- Feat: restore an instance from a backup restore point with `fptcloud_backup_veeam_restore`, the same operation as "Restore Instance" in the portal, including quick rollback and power-on-after-restore. This overwrites the running instance
+- Feat: restore into a **new** instance with `fptcloud_backup_veeam_restore_clone`, the same operation as "Restore keep" in the portal: the restore point is brought back under a new name and the original instance keeps running
+- Feat: run a backup as a new instance straight from the backup with `fptcloud_backup_veeam_instant_recovery`, the same operation as "Instant Recovery" in the portal. Only the portal's "Restore to the new instance" mode is offered: the API has an in-place mode as well, but the portal hides the option that selects it. Note that an open session blocks the backup job of the instance it was mounted from, so the new data source below is worth a look when a job stops running
+- All three are actions rather than pieces of infrastructure: every argument forces a new run, there is no in-place update and no import, and `terraform destroy` calls no API - it warns about what was left behind and stops tracking. A restore cannot be undone, the instance a restore keep created is not deleted, and an instant recovery session is left running (keeping the mounted instance or stopping the session is done in the portal)
+- An apply returns as soon as the platform has accepted the request. It does not wait for the restore to finish, and it does not report the outcome either: there is no dependable signal for either. A restore point's status is set to `PENDING` when the request is accepted and never cleared, so waiting for a `SUCCESS` would wait forever; and the one place the outcome is recorded - the portal's History tab - is a list with no id per entry, so an entry could only be matched to an apply by guessing. Progress and outcome are read in the portal
+
+### Datasource
+
+- Feat: `fptcloud_backup_veeam_restore_points` lists the restore points of one protected instance, newest first, with the date, size and type the portal's restore dialog shows
+- Feat: `fptcloud_backup_veeam_instant_recovery_sessions` lists the Instant Recovery sessions open in a VPC, including ones started from the portal - the place to look when a backup job stops running
+
+## [0.3.69] - 2026-09-11
+
+### Resource
+
+- Feat: manage Backup Veeam jobs with `fptcloud_backup_veeam_job`: create, update, list and delete, with several instances per job and daily, monthly or hourly schedules. Adding or removing an instance updates the job in place and keeps its restore points
+
+### Datasource
+
+- Feat: `fptcloud_backup_veeam_job` reads one backup job in full - its schedule, retention, instances and notification methods - by id or by name. The plural data source returns none of those
+- Feat: `fptcloud_backup_veeam_instances` lists the instances that can still be assigned to a backup job
+- Feat: `fptcloud_backup_veeam_jobs` lists the backup jobs in a VPC
+- Feat: `fptcloud_alert_notification_methods` lists notification channels, used to fill `notification_method_ids` on a backup job
+
+## [0.3.68] - 2026-09-11
+
+### Resource
+
+- Feat: new `fptcloud_managed_gpu_cluster` resource for Managed GPU (bare metal) Kubernetes clusters on OSP
+
+### Datasource
+
+- Feat: new `fptcloud_hpc_subnet` datasource listing the HPC bare-metal subnet catalog for a VPC, with the same filter shape as `fptcloud_subnet`. This is a separate catalog: the two do not share ids
+- Feat: new `fptcloud_managed_gpu_cluster` datasource returning a cluster's pools, networking and GPU configuration, including the operators and per-pool GPU settings that only the GPU-software backend reports
+
+## [0.3.67] - 2026-09-10
+
+### Resource
+
+- Feat: support GPU instances on `fptcloud_instance` — new `gpu_plan` (`hold`/`detach` billing plan), `gpu_name` (optional verification input, also reflects the actual GPU attached), `vm_type` (`cpu`/`gpu`) and `is_nvme` attributes ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Feat: changing `flavor_name` to/from a GPU flavor attaches/detaches the GPU as part of the in-place resize, the instance is not replaced; `gpu_plan` is sent along with that same resize request instead of racing a separate follow-up call ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Fix: `gpu_name` no longer carries its previous Computed value into a resize away from a GPU flavor, which made the server reject the request with "gpu_name is only applicable to GPU flavors" ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+- Fix: refresh state after update even when a later step in the same apply fails, so changes that did succeed (e.g. a flavor resize before a billing plan failure) aren't left stale ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+
+### Datasource
+
+- Feat: expose `gpu_id`, `gpu_name` and `is_nvme` on `fptcloud_flavor`; GPU flavors not supported in the VPC's default zone are no longer returned ([#107](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/107))
+
 ## [0.3.66] - 2026-09-07
 
 ### Resource

@@ -1,12 +1,16 @@
 package commons
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 const ObjectStorageApiPrefix = "/v1/vmware/vpc"
 
 var ApiPath = struct {
 	SSH                        string
 	Storage                    func(vpcId string) string
+	CreateStorageAsync         func(vpcId string) string
 	StorageUpdateAttached      func(vpcId string, storageId string) string
 	UpdateStorageTags          func(vpcId string, storageId string) string
 	StoragePolicy              func(vpcId string) string
@@ -29,6 +33,7 @@ var ApiPath = struct {
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
 	Snapshot                   func(vpcId string) string
 	SnapshotDetail             func(vpcId string, snapshotId string) string
+	ChangeBillingTypeInstance  func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
 	VMGroupPolicies            func(vpcId string) string
@@ -103,6 +108,43 @@ var ApiPath = struct {
 	ManagedFKECheckQuotaResource        func(vpcId string, platform string) string
 	ManagedFKEStoragePolicy             func(vpcId string) string
 	ManagedFKEKubeconfig                func(vpcId string, platform string, clusterId string) string
+	ManagedFKETags                      func(vpcId string, platform string, clusterId string) string
+
+	// Managed GPU Cluster (Bare Metal Kubernetes, m-fke/<platform>/hpc)
+	ManagedGpuClusterList                      func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedGpuClusterListV2                    func(vpcId string, page int, pageSize int, infraType string) string
+	ManagedGpuClusterGet                       func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterGetV2                     func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterDelete                    func(vpcId string, platform string, clusterName string) string
+	ManagedGpuClusterDeleteV2                  func(vpcId string, platform string, clusterName string) string
+	ManagedGpuClusterCreate                    func(vpcId string, platform string) string
+	ManagedGpuClusterCreateV2                  func(vpcId string, platform string) string
+	ManagedGpuClusterConfigWorker              func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterConfigWorkerV2            func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateEndpointCIDR        func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateEndpointCIDRV2      func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateClusterAutoscaler   func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterUpdateClusterAutoscalerV2 func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterConfigInternalSubnetLb    func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterConfigInternalSubnetLbV2  func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterCheckEnableServiceAccount func(vpcId string, platform string) string
+	ManagedGpuClusterCheckQuotaResource        func(vpcId string, platform string) string
+	ManagedGpuClusterStoragePolicy             func(vpcId string) string
+	ManagedGpuClusterKubeconfig                func(vpcId string, platform string, clusterId string) string
+	ManagedGpuClusterK8sVersions               func(vpcId string, platform string) string
+	ManagedGpuClusterK8sVersionsV2             func(vpcId string, platform string) string
+	ManagedGpuClusterGpuDrivers                func(vpcId string, driverType string, zone string, k8sVersion string) string
+	ManagedGpuClusterHpcSubnets                func(vpcId string, page int, pageSize int) string
+	ManagedGpuClusterGpuSoftwareInstall        func(vpcId string, clusterName string) string
+	ManagedGpuClusterGpuSoftwareInstallV2      func(vpcId string, clusterName string) string
+	ManagedGpuClusterGpuSoftwareGet            func(vpcId string, clusterName string, tenantId string, region string) string
+	ManagedGpuClusterGpuSoftwareGetV2          func(vpcId string, clusterName string, tenantId string, region string) string
+	ManagedGpuClusterGpuSoftwareDelete         func(vpcId string, clusterName string, tenantId string) string
+	ManagedGpuClusterGpuSoftwareDeleteV2       func(vpcId string, clusterName string, tenantId string) string
+	ManagedGpuClusterGpuSoftwareActivate       func(vpcId string, clusterName string) string
+	ManagedGpuClusterGpuSoftwareActivateV2     func(vpcId string, clusterName string) string
+	ManagedGpuClusterMigProfiles               func(vpcId string, gpuType string, migMode string) string
+	ManagedGpuClusterOperatorVersions          func(vpcId string) string
 
 	// GPU
 	GetGPUInfo func(vpcId string) string
@@ -145,6 +187,28 @@ var ApiPath = struct {
 	DetailSubUser          func(vpcId, s3ServiceId, subUserId string) string
 	CreateSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
 	DeleteSubUserAccessKey func(vpcId, s3ServiceId, subUserId string) string
+	// IAM user
+	CreateIamUser          func(vpcId, s3ServiceId string) string
+	GetIamUser             func(vpcId, s3ServiceId, userName string) string
+	ListIamUsers           func(vpcId, s3ServiceId string, page, pageSize int) string
+	DeleteIamUser          func(vpcId, s3ServiceId, userName string) string
+	ListIamUserAccessKeys  func(vpcId, s3ServiceId, userName string) string
+	CreateIamUserAccessKey func(vpcId, s3ServiceId, userName string) string
+	DeleteIamUserAccessKey func(vpcId, s3ServiceId, userName, accessKeyId string) string
+	GetIamUserPolicy       func(vpcId, s3ServiceId, userName string) string
+	PutIamUserPolicy       func(vpcId, s3ServiceId, userName string) string
+	DeleteIamUserPolicy    func(vpcId, s3ServiceId, userName string) string
+
+	// IAM role
+	CreateIamRole             func(vpcId, s3ServiceId string) string
+	GetIamRole                func(vpcId, s3ServiceId, roleName string) string
+	ListIamRoles              func(vpcId, s3ServiceId string, page, pageSize int) string
+	UpdateIamRoleTrustedUsers func(vpcId, s3ServiceId, roleName string) string
+	DeleteIamRole             func(vpcId, s3ServiceId, roleName string) string
+	GetIamRolePolicy          func(vpcId, s3ServiceId, roleName string) string
+	PutIamRolePolicy          func(vpcId, s3ServiceId, roleName string) string
+	DeleteIamRolePolicy       func(vpcId, s3ServiceId, roleName string) string
+
 	// Access Key
 	ListAccessKeys  func(vpcId, s3ServiceId string) string
 	CreateAccessKey func(vpcId, s3ServiceId string) string
@@ -203,10 +267,37 @@ var ApiPath = struct {
 	CreateTag func(tenantId string) string
 	UpdateTag func(tenantId, tagId string) string
 	DeleteTag func(tenantId, tagId string) string
+
+	// Backup Veeam
+	BackupVeeamCreateJob func(vpcId string) string
+	BackupVeeamUpdateJob func(vpcId string, jobId string) string
+	BackupVeeamJobDetail func(vpcId string, jobId string) string
+	BackupVeeamListJobs  func(vpcId string, page int, pageSize int, name string, status string) string
+	BackupVeeamDeleteJob func(vpcId string, jobId string) string
+	BackupVeeamInstances func(vpcId string, notBackup bool, jobId string, status string) string
+
+	// Backup Veeam - restore
+	BackupVeeamRestoreGroups func(vpcId string, page int, pageSize int) string
+	BackupVeeamRestorePoints func(vpcId string, jobId string, vmId string) string
+	BackupVeeamRestore       func(vpcId string, restorePointId string) string
+	BackupVeeamRestoreClone  func(vpcId string, restorePointId string) string
+
+	// Backup Veeam - instant recovery
+	BackupVeeamInstantRecoveryClone func(vpcId string, restorePointId string) string
+	BackupVeeamMounts               func(vpcId string) string
+
+	// Alert (used for the notification methods of a backup job)
+	AlertNotificationMethods func(vpcId string, level string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage", vpcId)
+	},
+	// The portal console's create endpoint: it queues the create and answers
+	// with the new id at once, where Storage (POST) blocks until the Celery
+	// task finishes and times out on slow creates.
+	CreateStorageAsync: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/create-storage", vpcId)
 	},
 	StorageUpdateAttached: func(vpcId string, storageId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage/%s/update-attached", vpcId, storageId)
@@ -270,6 +361,9 @@ var ApiPath = struct {
 	},
 	SnapshotDetail: func(vpcId string, snapshotId string) string {
 		return fmt.Sprintf("/v2/vmware/vpc/%s/instance-snapshots/%s", vpcId, snapshotId)
+	},
+	ChangeBillingTypeInstance: func(vpcId string, instanceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/billing-type", vpcId, instanceId)
 	},
 	GetFlavorByName: func(vpcId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/flavor/find-by-name", vpcId)
@@ -495,6 +589,12 @@ var ApiPath = struct {
 		)
 	},
 
+	ManagedFKETags: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/shoots/%s/tags",
+			vpcId, platform, clusterId,
+		)
+	},
 	ManagedFKEConfigWorker: func(vpcId string, platform string, clusterId string) string {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/configure-worker-cluster/shoots/%s/0",
@@ -571,6 +671,212 @@ var ApiPath = struct {
 		return fmt.Sprintf(
 			"/v1/xplat/fke/vpc/%s/m-fke/%s/get-kubeconfig/%s?direct=1",
 			vpcId, platform, clusterId,
+		)
+	},
+
+	// Managed GPU Cluster (Bare Metal Kubernetes). Same shape as the Managed FKE
+	// endpoints above, but served under the /hpc sub-path of the platform segment.
+	ManagedGpuClusterList: func(vpcId string, page int, pageSize int, infraType string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
+	},
+	ManagedGpuClusterListV2: func(vpcId string, page int, pageSize int, infraType string) string {
+		return fmt.Sprintf("/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get-shoot-cluster/shoots?page=%d&page_size=%d", vpcId, infraType, page, pageSize)
+	},
+	ManagedGpuClusterDelete: func(vpcId string, platform string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/delete-shoot-cluster/shoots/%s",
+			vpcId, platform, clusterName,
+		)
+	},
+	ManagedGpuClusterDeleteV2: func(vpcId string, platform string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/delete-shoot-cluster/shoots/%s",
+			vpcId, platform, clusterName,
+		)
+	},
+	ManagedGpuClusterCreate: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/create-cluster",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterCreateV2: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/create-cluster",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterGet: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get-shoot-specific/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterGetV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get-shoot-specific/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigWorker: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/configure-worker-cluster/shoots/%s/0",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigWorkerV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/configure-worker-cluster/shoots/%s/0",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateEndpointCIDR: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/edit-private-cluster-ip/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateEndpointCIDRV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/edit-private-cluster-ip/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateClusterAutoscaler: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/config-cluster-auto-scaling/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterUpdateClusterAutoscalerV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/config-cluster-auto-scaling/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigInternalSubnetLb: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/config-internal-subnet-lb/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterConfigInternalSubnetLbV2: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/config-internal-subnet-lb/shoots/%s",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterCheckEnableServiceAccount: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/check-enable-service-account",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterCheckQuotaResource: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/check-quota-resources",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterStoragePolicy: func(vpcId string) string {
+		return fmt.Sprintf(
+			"/v1/internal/vpc/%s/find_storage_policy",
+			vpcId,
+		)
+	},
+	ManagedGpuClusterKubeconfig: func(vpcId string, platform string, clusterId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get-kubeconfig/%s?direct=1",
+			vpcId, platform, clusterId,
+		)
+	},
+	ManagedGpuClusterK8sVersions: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/get_k8s_versions",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterK8sVersionsV2: func(vpcId string, platform string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke/vpc/%s/m-fke/%s/hpc/v2/get_k8s_versions",
+			vpcId, platform,
+		)
+	},
+	ManagedGpuClusterGpuDrivers: func(vpcId string, driverType string, zone string, k8sVersion string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-drivers?driver_type=%s&zone=%s&kubernetes_version=%s",
+			vpcId, url.QueryEscape(driverType), url.QueryEscape(zone), url.QueryEscape(k8sVersion),
+		)
+	},
+	ManagedGpuClusterHpcSubnets: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf(
+			"/v2/vmware/vpc/%s/hpc/subnets?page=%d&pageSize=%d",
+			vpcId, page, pageSize,
+		)
+	},
+	// GPU software (the second backend a bare-metal cluster lives in): installed
+	// right after create-cluster, read/updated alongside worker-pool changes,
+	// and deleted after the cluster itself. Note the path has no /m-fke segment.
+	// Each endpoint comes in a v1 and a v2 form, matching whichever API family
+	// the cluster itself was created with.
+	ManagedGpuClusterGpuSoftwareInstall: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterGpuSoftwareInstallV2: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterGpuSoftwareGet: func(vpcId string, clusterName string, tenantId string, region string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s&region=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId), url.QueryEscape(region),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareGetV2: func(vpcId string, clusterName string, tenantId string, region string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s&region=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId), url.QueryEscape(region),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareDelete: func(vpcId string, clusterName string, tenantId string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareDeleteV2: func(vpcId string, clusterName string, tenantId string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s?tenant_id=%s",
+			vpcId, clusterName, url.QueryEscape(tenantId),
+		)
+	},
+	ManagedGpuClusterGpuSoftwareActivate: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v1/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s/activate",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterGpuSoftwareActivateV2: func(vpcId string, clusterName string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/gpu-clusters/%s/activate",
+			vpcId, clusterName,
+		)
+	},
+	ManagedGpuClusterMigProfiles: func(vpcId string, gpuType string, migMode string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/mig-profiles?gpu_type=%s&mig_mode=%s",
+			vpcId, url.QueryEscape(gpuType), url.QueryEscape(migMode),
+		)
+	},
+	ManagedGpuClusterOperatorVersions: func(vpcId string) string {
+		return fmt.Sprintf(
+			"/v2/xplat/fke-gpu/common/vpc/%s/operator-versions",
+			vpcId,
 		)
 	},
 
@@ -669,6 +975,64 @@ var ApiPath = struct {
 	},
 	DeleteSubUserAccessKey: func(vpcId, s3ServiceId, subUserId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/sub-users/%s/credentials/delete", vpcId, s3ServiceId, subUserId)
+	},
+
+	// IAM user
+	CreateIamUser: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/create", vpcId, s3ServiceId)
+	},
+	GetIamUser: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/detail", vpcId, s3ServiceId, userName)
+	},
+	ListIamUsers: func(vpcId, s3ServiceId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/list?page=%d&page_size=%d", vpcId, s3ServiceId, page, pageSize)
+	},
+	DeleteIamUser: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/delete", vpcId, s3ServiceId, userName)
+	},
+	ListIamUserAccessKeys: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/access-keys/list", vpcId, s3ServiceId, userName)
+	},
+	CreateIamUserAccessKey: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/access-keys/create", vpcId, s3ServiceId, userName)
+	},
+	DeleteIamUserAccessKey: func(vpcId, s3ServiceId, userName, accessKeyId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/access-keys/%s/delete", vpcId, s3ServiceId, userName, accessKeyId)
+	},
+	GetIamUserPolicy: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/policy", vpcId, s3ServiceId, userName)
+	},
+	PutIamUserPolicy: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/policy", vpcId, s3ServiceId, userName)
+	},
+	DeleteIamUserPolicy: func(vpcId, s3ServiceId, userName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-users/%s/policy", vpcId, s3ServiceId, userName)
+	},
+
+	// IAM role
+	CreateIamRole: func(vpcId, s3ServiceId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/create", vpcId, s3ServiceId)
+	},
+	GetIamRole: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/detail", vpcId, s3ServiceId, roleName)
+	},
+	ListIamRoles: func(vpcId, s3ServiceId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/list?page=%d&page_size=%d", vpcId, s3ServiceId, page, pageSize)
+	},
+	UpdateIamRoleTrustedUsers: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/trusted-users", vpcId, s3ServiceId, roleName)
+	},
+	DeleteIamRole: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/delete", vpcId, s3ServiceId, roleName)
+	},
+	GetIamRolePolicy: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/policy", vpcId, s3ServiceId, roleName)
+	},
+	PutIamRolePolicy: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/policy", vpcId, s3ServiceId, roleName)
+	},
+	DeleteIamRolePolicy: func(vpcId, s3ServiceId, roleName string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/s3/%s/iam-roles/%s/policy", vpcId, s3ServiceId, roleName)
 	},
 
 	// Access Key
@@ -812,5 +1176,88 @@ var ApiPath = struct {
 	},
 	DeleteTag: func(tenantId, tagId string) string {
 		return fmt.Sprintf("/v2/org/%s/tag/%s/delete", tenantId, tagId)
+	},
+
+	// Backup Veeam
+	// Three API quirks, reproduced verbatim:
+	//   - detail uses "backup/job/" SINGULAR, every other path uses "backup/jobs/"
+	//   - delete puts the job id AT THE END, not in the middle
+	//   - update uses POST, not PUT
+	BackupVeeamCreateJob: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs/create", vpcId)
+	},
+	BackupVeeamUpdateJob: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs/%s/update", vpcId, jobId)
+	},
+	BackupVeeamJobDetail: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/job/%s/detail", vpcId, jobId)
+	},
+	BackupVeeamListJobs: func(vpcId string, page int, pageSize int, name string, status string) string {
+		path := fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs?page=%d&page_size=%d", vpcId, page, pageSize)
+		if name != "" {
+			path += "&name=" + url.QueryEscape(name)
+		}
+		if status != "" {
+			path += "&status=" + url.QueryEscape(status)
+		}
+		return path
+	},
+	BackupVeeamDeleteJob: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/jobs/delete/%s", vpcId, jobId)
+	},
+	BackupVeeamInstances: func(vpcId string, notBackup bool, jobId string, status string) string {
+		path := fmt.Sprintf("/v1/vmware/vpc/%s/backup/instances?page=1&page_size=9999", vpcId)
+		if notBackup {
+			path += "&not_backup=true"
+		}
+		if jobId != "" {
+			path += "&job_id=" + url.QueryEscape(jobId)
+		}
+		if status != "" {
+			path += "&status=" + url.QueryEscape(status)
+		}
+		return path
+	},
+
+	BackupVeeamRestoreGroups: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	BackupVeeamRestorePoints: func(vpcId string, jobId string, vmId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/%s/%s/restorepoints", vpcId, jobId, vmId)
+	},
+	// The path segment is the RESTORE POINT id, the same value the request body
+	// carries as restore_vm_point_id. The backend ignores the segment entirely
+	// and reads only the body; the portal sends the id in both places, so this
+	// does the same rather than inventing a third convention.
+	BackupVeeamRestore: func(vpcId string, restorePointId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores/%s/restore", vpcId, restorePointId)
+	},
+	BackupVeeamRestoreClone: func(vpcId string, restorePointId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores/%s/restore/clone", vpcId, restorePointId)
+	},
+
+	// Instant recovery. The path segment is again the RESTORE POINT id and is
+	// again ignored by the backend in favour of the body - same convention as
+	// the two restore paths above. Note the inconsistency the backend itself
+	// has: this one uses "restores/instant-recovery-clone", while the endpoints
+	// that act on a live session use "vm-instant-recovery".
+	//
+	// There is a sibling endpoint, "restores/instant-recovery/{point}", that
+	// mounts the backup in the instance's original location. It is not here on
+	// purpose: the portal hides the option that would call it, so no customer
+	// session has ever used that path.
+	BackupVeeamInstantRecoveryClone: func(vpcId string, restorePointId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/restores/instant-recovery-clone/%s", vpcId, restorePointId)
+	},
+	BackupVeeamMounts: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/backup/vm-instant-recovery", vpcId)
+	},
+
+	// Alert
+	AlertNotificationMethods: func(vpcId string, level string) string {
+		if level == "" {
+			level = "VPC"
+		}
+		return fmt.Sprintf("/v1/vmware/vpc/%s/alert/alarm-notification/list?level=%s", vpcId, url.QueryEscape(level))
 	},
 }

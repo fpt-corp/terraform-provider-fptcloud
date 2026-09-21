@@ -86,12 +86,29 @@ func resourceReadUserDetail(ctx context.Context, d *schema.ResourceData, m inter
 	subUserId := d.Get("user_id").(string)
 
 	subUser := objectStorageService.DetailSubUser(vpcId, s3ServiceDetail.S3ServiceId, subUserId)
-	if subUser.UserID == "" {
-		return diag.Errorf("sub-user with ID %s not found", subUserId)
+	// The key cannot outlive its owner, so a missing sub-user means the key is gone
+	// too. Both cases are drift: clear the ID and let Terraform plan a recreate.
+	if subUser == nil || subUser.UserID == "" {
+		d.SetId("")
+		return nil
 	}
 	if err := d.Set("user_id", subUser.UserID); err != nil {
 		return diag.FromErr(err)
 	}
+
+	// This resource owns one access key, so it is gone once its own key is absent
+	// from the sub-user's key list. Without this the resource stays in state
+	// forever and no refresh can reconcile it.
+	accessKey := d.Get("access_key").(string)
+	if accessKey == "" {
+		return nil
+	}
+	for _, key := range subUser.AccessKeys {
+		if key == accessKey {
+			return nil
+		}
+	}
+	d.SetId("")
 	return nil
 }
 func resourceSubUserAccessKeyDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
