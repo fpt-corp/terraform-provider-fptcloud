@@ -128,6 +128,7 @@ func Provider() *schema.Provider {
 			"fptcloud_tagging":                                fptcloud_tagging.DataSourceTagging(),
 			"fptcloud_backup_veeam_job":                       fptcloud_backup_veeam.DataSourceBackupVeeamJob(),
 			"fptcloud_backup_veeam_restore_points":            fptcloud_backup_veeam.DataSourceBackupVeeamRestorePoints(),
+			"fptcloud_backup_veeam_restore_groups":            fptcloud_backup_veeam.DataSourceBackupVeeamRestoreGroups(),
 			"fptcloud_backup_veeam_instant_recovery_sessions": fptcloud_backup_veeam.DataSourceBackupVeeamInstantRecoverySessions(),
 			"fptcloud_backup_veeam_jobs":                      fptcloud_backup_veeam.DataSourceBackupVeeamJobs(),
 			"fptcloud_backup_veeam_instances":                 fptcloud_backup_veeam.DataSourceBackupVeeamInstances(),

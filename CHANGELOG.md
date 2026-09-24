@@ -1,3 +1,9 @@
+## [0.3.75] - 2026-09-24
+
+### Datasource
+
+- Feat: `fptcloud_backup_veeam_restore_groups` lists the instances that have restore points in a VPC, one entry per instance and backup job - the portal's Restore tab. Each entry carries the `vm_id` and `backup_job_id` that `fptcloud_backup_veeam_restore_points` needs, so the backup jobs no longer have to be read first
+
 ## [0.3.74] - 2026-09-24
 
 ### Resource

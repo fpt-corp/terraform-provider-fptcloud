@@ -137,6 +137,7 @@ type RestoreGroupItem struct {
 	RestoreAt         string  `json:"restore_at"`
 	RestorePointCount int     `json:"restore_point_count"`
 	TotalBackupSize   float64 `json:"total_backup_size"`
+	IsDeleted         bool    `json:"is_deleted"`
 }
 
 type RestoreGroupListResponse struct {
