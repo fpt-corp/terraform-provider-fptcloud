@@ -1,3 +1,9 @@
+## [0.3.74] - 2026-09-24
+
+### Resource
+
+- Feat: take an instance snapshot with `fptcloud_snapshot`: create, read, delete and import. Every volume attached to the instance is captured at one point in time, crash-consistent - the guest filesystem is not quiesced. Optional `name`, `include_ram` and `tag_ids`; left unset, the platform names the snapshot
+
 ## [0.3.73] - 2026-09-19
 
 ### Resource
