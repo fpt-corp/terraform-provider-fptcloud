@@ -31,6 +31,8 @@ var ApiPath = struct {
 	InstanceStoragesInfra      func(vpcId string, instanceId string) string
 	ResizeInstanceRootDisk     func(vpcId string, instanceId string) string
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
+	Snapshot                   func(vpcId string) string
+	SnapshotDetail             func(vpcId string, snapshotId string) string
 	ChangeBillingTypeInstance  func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
@@ -353,6 +355,12 @@ var ApiPath = struct {
 	},
 	UpdateInstanceTags: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/instance/%s/tags", vpcId, instanceId)
+	},
+	Snapshot: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/instance-snapshots", vpcId)
+	},
+	SnapshotDetail: func(vpcId string, snapshotId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/instance-snapshots/%s", vpcId, snapshotId)
 	},
 	ChangeBillingTypeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/billing-type", vpcId, instanceId)
