@@ -61,13 +61,16 @@ var ApiPath = struct {
 	Subnet          func(vpcId string) string
 	EdgeGatewayList func(vpcId string) string
 
-	DatabaseGet       func(databaseId string) string
-	DatabaseCreate    func() string
-	DatabaseDelete    func(databaseId string) string
-	DatabaseStop      func() string
-	DatabaseStart     func() string
-	DatabaseApplyTags func() string
-	DatabaseFlavor    func(vpcId string, isOSP string) string
+	DatabaseGet             func(databaseId string) string
+	DatabaseCreate          func() string
+	DatabaseDelete          func(databaseId string) string
+	DatabaseStop            func() string
+	DatabaseStart           func() string
+	DatabaseApplyTags       func() string
+	DatabaseResizeInstance  func() string
+	DatabaseStoragePolicies func(vpcId string) string
+	DatabaseChangeIops      func() string
+	DatabaseFlavor          func(vpcId string, isOSP string) string
 
 	VpcSyncInstances  func(vpcId string) string
 	VpcSyncStorages   func(vpcId string) string
@@ -458,6 +461,15 @@ var ApiPath = struct {
 	},
 	DatabaseApplyTags: func() string {
 		return "/v1/xplat/database/management/tagging/cluster/apply-tag"
+	},
+	DatabaseResizeInstance: func() string {
+		return "/v1/xplat/database/configure_management/cluster/resize_instance"
+	},
+	DatabaseChangeIops: func() string {
+		return "/v1/xplat/database/configure_management/change_iops"
+	},
+	DatabaseStoragePolicies: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storage-policies", vpcId)
 	},
 	DatabaseFlavor: func(vpcId string, isOSP string) string {
 		return fmt.Sprintf("/v1/xplat/database/configure_management/get_list_flavor_v2?vpc_id=%s&is_ops=%s", vpcId, isOSP)

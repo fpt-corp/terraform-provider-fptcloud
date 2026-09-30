@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
@@ -27,6 +29,7 @@ var (
 	_ resource.Resource                = &resourceDatabase{}
 	_ resource.ResourceWithConfigure   = &resourceDatabase{}
 	_ resource.ResourceWithImportState = &resourceDatabase{}
+	_ resource.ResourceWithModifyPlan  = &resourceDatabase{}
 
 	forceNewPlanModifiersString = []planmodifier.String{
 		stringplanmodifier.RequiresReplace(),
@@ -38,7 +41,8 @@ var (
 )
 
 const (
-	errorCallingApi = "Error calling API"
+	errorCallingApi    = "Error calling API"
+	mixedChangeMessage = "cannot change compute/disk (node_cpu, node_ram, data_disk_size, flavor, flavor_id) and storage_profile in the same apply; apply them separately"
 )
 
 type resourceDatabase struct {
@@ -321,6 +325,11 @@ func (r *resourceDatabase) Update(ctx context.Context, request resource.UpdateRe
 		return
 	}
 
+	if err := r.updateResources(ctx, &plan, &state); err != nil {
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error updating database resources", err.Error()))
+		return
+	}
+
 	// Only handle tag_ids update
 	if !plan.TagIds.IsNull() && !plan.TagIds.IsUnknown() {
 		tagIds := strings.TrimSpace(plan.TagIds.ValueString())
@@ -383,8 +392,9 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 		Description: "Provides a Fpt database cluster which can be used to store data.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed:    true,
-				Description: "The Id of the database cluster.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Description:   "The Id of the database cluster.",
 			},
 			"vpc_id": schema.StringAttribute{
 				Required:      true,
@@ -437,9 +447,8 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description:   "The number of worker nodes in the database cluster.",
 			},
 			"node_cpu": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The number of CPUs in each node of the database cluster.",
+				Required:    true,
+				Description: "The number of CPUs in each node of the database cluster.",
 			},
 			"node_core": schema.Int64Attribute{
 				Required:      true,
@@ -447,14 +456,12 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description:   "The number of cores in each node of the database cluster.",
 			},
 			"node_ram": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The amount of RAM in each node of the database cluster.",
+				Required:    true,
+				Description: "The amount of RAM in each node of the database cluster.",
 			},
 			"data_disk_size": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The size of the data disk in each node of the database cluster.",
+				Required:    true,
+				Description: "The size of the data disk in each node of the database cluster.",
 			},
 			"cluster_name": schema.StringAttribute{
 				Required:      true,
@@ -482,9 +489,8 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description: "The admin password of the database cluster.",
 			},
 			"storage_profile": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The storage profile of the database cluster.",
+				Required:    true,
+				Description: "The storage profile of the database cluster.",
 			},
 			"edge_id": schema.StringAttribute{
 				Required:      true,
@@ -497,9 +503,8 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description:   "The edition of the database cluster.",
 			},
 			"flavor_id": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The flavor_id of the database cluster.",
+				Required:    true,
+				Description: "The flavor_id of the database cluster.",
 			},
 			"is_ops": schema.StringAttribute{
 				Required:      true,
@@ -507,9 +512,8 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description:   "Whether the database is OpenStack or VMware",
 			},
 			"flavor": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The flavor of the database cluster.",
+				Required:    true,
+				Description: "The flavor of the database cluster.",
 			},
 			"number_of_node": schema.Int64Attribute{
 				Required:      true,
@@ -1043,4 +1047,213 @@ type databaseCreateResponseData struct {
 	Zone           string `json:"zone"`
 	CreatedAt      string `json:"created_at"`
 	UpdatedAt      string `json:"updated_at"`
+}
+
+// updateResources resizes compute/disk and changes the storage policy of an
+// existing cluster in place, mirroring the portal's "resize_instance" and
+// "change_iops" calls.
+func (r *resourceDatabase) updateResources(ctx context.Context, plan, state *databaseResourceModel) error {
+	computeChanged := !plan.NodeCpu.Equal(state.NodeCpu) ||
+		!plan.NodeRam.Equal(state.NodeRam) ||
+		!plan.DataDiskSize.Equal(state.DataDiskSize) ||
+		!plan.FlavorId.Equal(state.FlavorId) ||
+		!plan.Flavor.Equal(state.Flavor)
+	policyChanged := !plan.StorageProfile.Equal(state.StorageProfile)
+	if !computeChanged && !policyChanged {
+		return nil
+	}
+	if computeChanged && policyChanged {
+		return errors.New(mixedChangeMessage)
+	}
+
+	clusterId := state.Id.ValueString()
+
+	if computeChanged {
+		// The resize request needs cluster details the portal takes from the loaded cluster.
+		a, err := r.dataBaseClient.sendGet(common.ApiPath.DatabaseGet(clusterId))
+		if err != nil {
+			return fmt.Errorf("failed reading cluster %s: %v", clusterId, err)
+		}
+		var d databaseReadResponse
+		if err := json.Unmarshal(a, &d); err != nil {
+			return fmt.Errorf("failed parsing cluster %s: %v", clusterId, err)
+		}
+		cluster := d.Data.Cluster
+
+		// The portal sends the current policy along with the resize; it is not being changed here,
+		// so a failed lookup must not block the resize.
+		storageProfileId, err := r.resolveStoragePolicyId(state.VpcId.ValueString(), state.StorageProfile.ValueString())
+		if err != nil {
+			tflog.Warn(ctx, "Could not resolve current storage policy id, resizing without it: "+err.Error())
+			storageProfileId = ""
+		}
+		body := map[string]interface{}{
+			"vpc_id":             cluster.VpcId,
+			"vcd_url":            cluster.VcdUrl,
+			"vpc_name":           state.VdcName.ValueString(),
+			"network_id":         cluster.NetworkId,
+			"vm_network":         cluster.VmNetwork,
+			"cluster_id":         clusterId,
+			"cluster_name":       cluster.ClusterName,
+			"version":            cluster.Version,
+			"type_db":            cluster.TypeDb,
+			"port_db":            cluster.PortDb,
+			"flavor_id":          plan.FlavorId.ValueString(),
+			"flavor":             plan.Flavor.ValueString(),
+			"is_cluster":         cluster.IsCluster,
+			"storage_profile":    state.StorageProfile.ValueString(),
+			"storage_profile_id": storageProfileId,
+			"new_disk":           plan.DataDiskSize.ValueInt64(),
+			"new_cpu":            plan.NodeCpu.ValueInt64(),
+			"new_ram":            plan.NodeRam.ValueInt64(),
+			"current_disk":       state.DataDiskSize.ValueInt64(),
+			"current_cpu":        state.NodeCpu.ValueInt64(),
+			"current_ram":        state.NodeRam.ValueInt64(),
+			"node_type":          "data_node",
+		}
+		if err := r.postUpdate(ctx, common.ApiPath.DatabaseResizeInstance(), body); err != nil {
+			return err
+		}
+		if err := r.waitForCluster(ctx, clusterId, func(c databaseData) bool {
+			return int64(c.NodeCpu) == plan.NodeCpu.ValueInt64() &&
+				int64(c.NodeRam) == plan.NodeRam.ValueInt64() &&
+				int64(c.DataDiskSize) == plan.DataDiskSize.ValueInt64()
+		}); err != nil {
+			return err
+		}
+	}
+
+	if policyChanged {
+		policyId, err := r.resolveStoragePolicyId(plan.VpcId.ValueString(), plan.StorageProfile.ValueString())
+		if err != nil {
+			return err
+		}
+		body := map[string]interface{}{
+			"cluster_id":          clusterId,
+			"storage_profile_id":  policyId,
+			"storage_policy_name": plan.StorageProfile.ValueString(),
+		}
+		if err := r.postUpdate(ctx, common.ApiPath.DatabaseChangeIops(), body); err != nil {
+			return err
+		}
+		if err := r.waitForCluster(ctx, clusterId, func(c databaseData) bool {
+			return c.StorageProfile == plan.StorageProfile.ValueString()
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *resourceDatabase) postUpdate(ctx context.Context, path string, body map[string]interface{}) error {
+	tflog.Info(ctx, "Calling path "+path)
+	answer, err := r.dataBaseClient.sendPostForAnswer(path, body)
+	if err != nil {
+		return fmt.Errorf("failed calling path %s: status_code=%d, body=%s: %v",
+			path, answer.StatusCode, truncateBody(answer.Body), err)
+	}
+	if diagErr := r.checkForError(answer.Body); diagErr != nil {
+		return fmt.Errorf("%s: %s", diagErr.Summary(), diagErr.Detail())
+	}
+	return nil
+}
+
+// resolveStoragePolicyId finds the uuid of a storage policy by its name.
+func (r *resourceDatabase) resolveStoragePolicyId(vpcId, name string) (string, error) {
+	path := common.ApiPath.DatabaseStoragePolicies(vpcId)
+	a, err := r.dataBaseClient.sendGet(path)
+	if err != nil {
+		return "", fmt.Errorf("failed calling path %s: %v", path, err)
+	}
+	type policy struct {
+		Id   string `json:"id"`
+		Name string `json:"name"`
+	}
+	var policies []policy
+	var asList []policy
+	if err := json.Unmarshal(a, &asList); err == nil {
+		policies = asList
+	} else {
+		// The list may sit under "data" or another key; use the first array of objects found.
+		var top map[string]json.RawMessage
+		if err := json.Unmarshal(a, &top); err != nil {
+			return "", fmt.Errorf("failed parsing storage policies: %v, body=%s", err, truncateBody(a))
+		}
+		for _, raw := range top {
+			var l []policy
+			if json.Unmarshal(raw, &l) == nil && len(l) > 0 {
+				policies = l
+				break
+			}
+		}
+	}
+	names := make([]string, 0, len(policies))
+	for _, p := range policies {
+		if strings.EqualFold(strings.TrimSpace(p.Name), strings.TrimSpace(name)) {
+			return p.Id, nil
+		}
+		names = append(names, p.Name)
+	}
+	sort.Strings(names)
+	return "", fmt.Errorf("storage policy %q not found in VPC %s. Supported policies: %s", name, vpcId, strings.Join(names, ", "))
+}
+
+// waitForCluster polls the cluster until it is settled (running or stopped)
+// and applied reports that the requested change is visible, or fails on
+// "failed" status or timeout.
+func (r *resourceDatabase) waitForCluster(ctx context.Context, clusterId string, applied func(databaseData) bool) error {
+	start := time.Now()
+	for time.Since(start) < timeout {
+		time.Sleep(10 * time.Second)
+		a, err := r.dataBaseClient.sendGet(common.ApiPath.DatabaseGet(clusterId))
+		if err != nil {
+			tflog.Warn(ctx, "Error polling cluster, retrying: "+err.Error())
+			continue
+		}
+		var d databaseReadResponse
+		if err := json.Unmarshal(a, &d); err != nil {
+			continue
+		}
+		c := d.Data.Cluster
+		tflog.Info(ctx, fmt.Sprintf("Waiting for cluster %s update: status=%s", clusterId, c.Status))
+		if c.Status == "failed" {
+			return fmt.Errorf("cluster %s entered failed status while updating", clusterId)
+		}
+		if (c.Status == "running" || c.Status == "stopped") && applied(c) {
+			return nil
+		}
+	}
+	return fmt.Errorf("timed out waiting for cluster %s update to finish", clusterId)
+}
+
+// ModifyPlan rejects, at plan time, an update that changes both compute/disk and the storage policy.
+func (r *resourceDatabase) ModifyPlan(ctx context.Context, request resource.ModifyPlanRequest, response *resource.ModifyPlanResponse) {
+	if request.State.Raw.IsNull() || request.Plan.Raw.IsNull() {
+		return
+	}
+	var plan, state databaseResourceModel
+	response.Diagnostics.Append(request.Plan.Get(ctx, &plan)...)
+	response.Diagnostics.Append(request.State.Get(ctx, &state)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	computeChanged := !plan.NodeCpu.Equal(state.NodeCpu) ||
+		!plan.NodeRam.Equal(state.NodeRam) ||
+		!plan.DataDiskSize.Equal(state.DataDiskSize) ||
+		!plan.FlavorId.Equal(state.FlavorId) ||
+		!plan.Flavor.Equal(state.Flavor)
+	policyChanged := !plan.StorageProfile.Equal(state.StorageProfile)
+	if computeChanged && policyChanged {
+		response.Diagnostics.AddError("Unsupported combined change", mixedChangeMessage)
+		return
+	}
+
+	// Fail at plan time when the requested storage policy does not exist in the VPC.
+	if policyChanged && r.dataBaseClient != nil &&
+		!plan.StorageProfile.IsUnknown() && !plan.VpcId.IsUnknown() {
+		if _, err := r.resolveStoragePolicyId(plan.VpcId.ValueString(), plan.StorageProfile.ValueString()); err != nil {
+			response.Diagnostics.AddAttributeError(path.Root("storage_profile"), "Invalid storage policy", err.Error())
+		}
+	}
 }
