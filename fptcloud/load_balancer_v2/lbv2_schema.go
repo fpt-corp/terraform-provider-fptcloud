@@ -512,7 +512,7 @@ var resourceLoadBalancer = map[string]*schema.Schema{
 		Optional:     true,
 		Computed:     true,
 		ValidateFunc: validation.StringInSlice([]string{"internet_facing", "internal"}, false),
-		Description: "The scheme of the load balancer: `internet_facing` (default) or `internal`. Cannot be changed after creation",
+		Description:  "The scheme of the load balancer: `internet_facing` (default) or `internal`. Cannot be changed after creation",
 	},
 	"tag_ids": {
 		Type:        schema.TypeSet,
