@@ -1,6 +1,7 @@
 package fptcloud_backup_veeam
 
 import (
+	"context"
 	"testing"
 
 	common "terraform-provider-fptcloud/commons"
@@ -59,7 +60,7 @@ func TestReadRestoreGroupsMapsTheServerRows(t *testing.T) {
 	d := schema.TestResourceDataRaw(t, dataSourceBackupVeeamRestoreGroupsSchema, map[string]interface{}{
 		"vpc_id": "vpc-1",
 	})
-	diags := readBackupVeeamRestoreGroups(nil, d, client)
+	diags := readBackupVeeamRestoreGroups(context.Background(), d, client)
 	assert.False(t, diags.HasError(), "%v", diags)
 
 	assert.Equal(t, "vpc-1", d.Id())

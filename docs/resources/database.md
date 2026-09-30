@@ -119,9 +119,31 @@ resource "fptcloud_database" "postgres" {
 
 ### Trường nào sửa được, trường nào phải tạo lại
 
-| Sửa tại chỗ | Chỉ đổi trong state | Tạo lại cluster (ForceNew) |
+| Sửa tại chỗ (gọi API của cluster) | Chỉ đổi trong state | Tạo lại cluster (ForceNew) |
 |---|---|---|
-| `tag_ids` | `admin_password`, `maintenance_email`, `day_of_week_maintenance`, `time_maintenance` | Tất cả các trường còn lại |
+| `node_cpu`, `node_ram`, `data_disk_size`, `flavor`, `flavor_id` (resize)<br>`storage_profile` (đổi storage policy)<br>`tag_ids` | `admin_password`, `maintenance_email`, `day_of_week_maintenance`, `time_maintenance` | Tất cả các trường còn lại |
+
+### Đổi cấu hình (resize) và storage policy
+
+Đổi các trường trên **không** tạo lại cluster mà cập nhật cluster hiện có, giống thao tác
+trên console:
+
+- **Resize** — đổi `node_cpu`, `node_ram`, `data_disk_size`, `flavor`, `flavor_id` thì
+  provider gọi API resize instance. Nhớ đổi `flavor_id`, `flavor`, `node_cpu`, `node_ram`
+  cùng nhau cho khớp flavor mới (xem mục [Cấu hình node phải khớp với flavor](#cấu-hình-node-phải-khớp-với-flavor)).
+  Trong plan, `nodes` hiện `(known after apply)` vì `number_of_cpus`, `memory_mb`,
+  `data_disk_size` của node thay đổi theo.
+- **Đổi storage policy** — đổi `storage_profile` thì provider gọi API đổi policy. Tên phải
+  có trong danh sách storage policy của VPC; sai tên thì `terraform plan` báo lỗi kèm danh
+  sách policy được hỗ trợ.
+
+Hai loại thay đổi này **không** được làm cùng một lần apply. Nếu một lần plan vừa đổi
+CPU/RAM/disk/flavor vừa đổi `storage_profile`, `terraform plan` báo lỗi
+`Unsupported combined change`. Hãy apply lần lượt từng loại.
+
+Sau khi gọi API, provider đợi cho tới khi cluster về trạng thái `running` hoặc `stopped`
+và giá trị mới đã có trên cluster (tối đa 30 phút), rồi mới kết thúc. Nếu cluster chuyển
+sang `failed` thì apply báo lỗi.
 
 ## Example Usage
 

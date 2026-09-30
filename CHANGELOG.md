@@ -1,3 +1,13 @@
+## [0.3.77] - 2026-09-30
+
+### Resource
+
+- Feat: `fptcloud_database` resizes in place. Changing `node_cpu`, `node_ram`, `data_disk_size`, `flavor` or `flavor_id` now calls the cluster resize API instead of destroying and recreating the database, and changing `storage_profile` calls the change storage policy API. Apply waits until the cluster is `running` or `stopped` again with the new values, up to 30 minutes, and fails if the cluster ends up `failed`
+- Fix: changing compute/disk and `storage_profile` in the same apply is rejected at plan time with `Unsupported combined change`; apply them one after the other
+- Fix: a `storage_profile` that does not exist in the VPC is rejected at plan time, and the error lists the supported policy names
+- Fix: `fptcloud_database` keeps `id` in the plan on update, so a data source or output that reads `id` no longer shows every value as `known after apply`
+- Fix: `nodes` is read again after an in-place update, so `number_of_cpus`, `memory_mb` and `data_disk_size` in state match the resized cluster
+
 ## [0.3.76] - 2026-09-28
 
 ### Resource
