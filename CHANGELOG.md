@@ -2,11 +2,10 @@
 
 ### Resource
 
-- Fix: `fptcloud_storage` updates an EXTERNAL disk on an OSP VPC through the resize storage API (`POST /v1/vmware/vpc/{vpc_id}/resize-storage`) instead of the update storage API. The update storage API requires `storage_policy_id` in its body and the backend retypes the volume even when that policy is unchanged, which fails with HTTP 500 `change volume_type=... failed !!!` while the disk is attached to an instance. Size, name and storage policy changes all go through the new call, which applies each one only when it differs
-- Fix: a VMW VPC keeps the update storage API. The resize storage API accepts an attached disk with HTTP 201 `Resize storage successfully` and then silently does nothing, where the update storage API answers in about a second with `VPC specific not support edit external storage was attached to instance`
-- Fix: an update waits until the disk reports the requested size, so state matches the disk instead of keeping the value that was asked for. The wait uses the provider `timeout`
-- Fix: `DISABLED` and `ATTACHING` are accepted as transient states while a storage update settles, instead of failing with `unexpected state 'DISABLED'` on a resize that did succeed
-- Fix: the error raised when attaching or detaching a storage fails carries the API message instead of only the storage id
+- Fix: `fptcloud_storage` can change an EXTERNAL disk that is attached to an instance. `size_gb`, `name` and `storage_policy_id` are applied through the update path that the VPC supports, instead of one that is rejected while the disk is attached
+- Fix: an update waits until the disk reports its new size, so state matches the disk instead of keeping the value that was requested. The wait uses the provider `timeout`
+- Fix: a storage update no longer fails with `unexpected state 'DISABLED'` while the disk settles after a change that did succeed
+- Fix: the error raised when attaching or detaching a storage carries the message returned by the API instead of only the storage id
 
 ## [0.3.77] - 2026-09-30
 
