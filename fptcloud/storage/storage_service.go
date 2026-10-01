@@ -42,6 +42,14 @@ type UpdateStorageDTO struct {
 	StoragePolicyId string `json:"storage_policy_id"`
 }
 
+// ResizeStorageDTO storage dto model to resize storage
+type ResizeStorageDTO struct {
+	DiskId          string `json:"disk_id"`
+	Size            int    `json:"size"`
+	Name            string `json:"name"`
+	StoragePolicyId string `json:"storagePolicyId"`
+}
+
 // Storage represents a storage model
 type Storage struct {
 	ID              string   `json:"id"`
@@ -64,6 +72,7 @@ type StorageService interface {
 	CreateStorageAsync(createdModel StorageDTO) (string, error)
 	LookupStorageByName(vpcId string, name string) (StorageNameLookup, error)
 	UpdateStorage(vpcId string, storageId string, updatedModel UpdateStorageDTO) (*common.SimpleResponse, error)
+	ResizeStorage(vpcId string, resizeModel ResizeStorageDTO) (*common.SimpleResponse, error)
 	UpdateTags(vpcId string, storageId string, tagIds []string) (*common.SimpleResponse, error)
 	UpdateAttachedInstance(vpcId string, storageId string, instanceId *string) (*common.SimpleResponse, error)
 	DeleteStorage(vpcId string, storageId string) (*common.SimpleResponse, error)
@@ -290,6 +299,31 @@ func (s *StorageServiceImpl) UpdateStorage(vpcId string, storageId string, updat
 	}
 
 	return result, nil
+}
+
+// ResizeStorage resize a storage
+func (s *StorageServiceImpl) ResizeStorage(vpcId string, resizeModel ResizeStorageDTO) (*common.SimpleResponse, error) {
+	resp, err := s.client.SendPostRequest(common.ApiPath.ResizeStorage(vpcId), resizeModel)
+	if err != nil {
+		var httpErr common.HTTPError
+		if errors.As(err, &httpErr) {
+			return nil, fmt.Errorf("resize storage failed (HTTP %d): %s", httpErr.Code, apiMessage([]byte(httpErr.Reason)))
+		}
+		return nil, common.DecodeError(err)
+	}
+
+	var resizeResponse struct {
+		Status  bool   `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(resp, &resizeResponse); err != nil {
+		return nil, fmt.Errorf("resize storage returned an unreadable response: %s", string(resp))
+	}
+	if !resizeResponse.Status {
+		return nil, fmt.Errorf("resize storage failed: %s", apiMessage(resp))
+	}
+
+	return &common.SimpleResponse{Data: "Successfully", Status: "200"}, nil
 }
 
 // DeleteStorage delete a storage

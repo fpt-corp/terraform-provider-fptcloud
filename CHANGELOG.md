@@ -1,3 +1,13 @@
+## [0.3.78] - 2026-10-01
+
+### Resource
+
+- Fix: `fptcloud_storage` updates an EXTERNAL disk on an OSP VPC through the resize storage API (`POST /v1/vmware/vpc/{vpc_id}/resize-storage`) instead of the update storage API. The update storage API requires `storage_policy_id` in its body and the backend retypes the volume even when that policy is unchanged, which fails with HTTP 500 `change volume_type=... failed !!!` while the disk is attached to an instance. Size, name and storage policy changes all go through the new call, which applies each one only when it differs
+- Fix: a VMW VPC keeps the update storage API. The resize storage API accepts an attached disk with HTTP 201 `Resize storage successfully` and then silently does nothing, where the update storage API answers in about a second with `VPC specific not support edit external storage was attached to instance`
+- Fix: an update waits until the disk reports the requested size, so state matches the disk instead of keeping the value that was asked for. The wait uses the provider `timeout`
+- Fix: `DISABLED` and `ATTACHING` are accepted as transient states while a storage update settles, instead of failing with `unexpected state 'DISABLED'` on a resize that did succeed
+- Fix: the error raised when attaching or detaching a storage fails carries the API message instead of only the storage id
+
 ## [0.3.77] - 2026-09-30
 
 ### Resource
