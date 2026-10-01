@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -358,12 +360,41 @@ func resourceStorageUpdate(ctx context.Context, d *schema.ResourceData, m interf
 	hasChangeTags := d.HasChange("tag_ids")
 
 	if hasChangedSize || hasChangedName || hasChangedStoragePolicy {
-		updateStorageModel.Name = d.Get("name").(string)
-		updateStorageModel.SizeGb = d.Get("size_gb").(int)
-		updateStorageModel.StoragePolicyId = d.Get("storage_policy_id").(string)
-		_, err := storageService.UpdateStorage(vpcId, d.Id(), updateStorageModel)
-		if err != nil {
-			return diag.Errorf("[ERR] An error occurred while update storage %s", err)
+		useResizeEndpoint := false
+		if d.Get("type").(string) == External {
+			platform, err := GetVpcPlatform(ctx, apiClient, vpcId)
+			if err != nil {
+				tflog.Warn(ctx, fmt.Sprintf(
+					"could not read the platform of vpc %s (%s), using the legacy update endpoint", vpcId, err))
+			} else {
+				useResizeEndpoint = platform == PlatformOsp
+				tflog.Info(ctx, fmt.Sprintf("vpc %s runs on %s", vpcId, platform))
+			}
+		}
+
+		if useResizeEndpoint {
+			wantGb := d.Get("size_gb").(int)
+			_, err := storageService.ResizeStorage(vpcId, ResizeStorageDTO{
+				DiskId:          d.Id(),
+				Size:            wantGb,
+				Name:            d.Get("name").(string),
+				StoragePolicyId: d.Get("storage_policy_id").(string),
+			})
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while resizing storage %s: %s", d.Id(), err)
+			}
+			resizeTimeout := time.Duration(apiClient.Timeout) * time.Minute
+			if err := waitForResize(ctx, storageService, vpcId, d.Id(), wantGb, resizeTimeout); err != nil {
+				return diag.FromErr(err)
+			}
+		} else {
+			updateStorageModel.Name = d.Get("name").(string)
+			updateStorageModel.SizeGb = d.Get("size_gb").(int)
+			updateStorageModel.StoragePolicyId = d.Get("storage_policy_id").(string)
+			_, err := storageService.UpdateStorage(vpcId, d.Id(), updateStorageModel)
+			if err != nil {
+				return diag.Errorf("[ERR] An error occurred while update storage %s", err)
+			}
 		}
 	}
 
@@ -383,7 +414,7 @@ func resourceStorageUpdate(ctx context.Context, d *schema.ResourceData, m interf
 
 		_, err := storageService.UpdateAttachedInstance(vpcId, d.Id(), instanceIdStr)
 		if err != nil {
-			return diag.Errorf("[ERR] An error occurred while change attached instance from storage %s", d.Id())
+			return diag.Errorf("[ERR] An error occurred while change attached instance from storage %s: %s", d.Id(), err)
 		}
 	}
 
@@ -397,7 +428,7 @@ func resourceStorageUpdate(ctx context.Context, d *schema.ResourceData, m interf
 
 	//Waiting for status active
 	createStateConf := &retry.StateChangeConf{
-		Pending: []string{"DISABLE", "PENDING", "UPDATING"},
+		Pending: []string{"DISABLE", "DISABLED", "PENDING", "UPDATING", "ATTACHING"},
 		Target:  []string{"ENABLED"},
 		Refresh: func() (interface{}, string, error) {
 			findStorageModel := FindStorageDTO{
@@ -488,4 +519,31 @@ func waitForNewStorageByName(ctx context.Context, lookup func() (StorageNameLook
 		case <-time.After(interval):
 		}
 	}
+}
+
+func waitForResize(ctx context.Context, service StorageService, vpcId string, storageId string, wantGb int, timeout time.Duration) error {
+	conf := &retry.StateChangeConf{
+		Pending: []string{"resizing"},
+		Target:  []string{"resized"},
+		Refresh: func() (interface{}, string, error) {
+			found, err := service.FindStorage(FindStorageDTO{ID: storageId, VpcId: vpcId})
+			if err != nil {
+				return 0, "", common.DecodeError(err)
+			}
+			if found.SizeGb == wantGb {
+				return found, "resized", nil
+			}
+			return found, "resizing", nil
+		},
+		Timeout:    timeout,
+		Delay:      3 * time.Second,
+		MinTimeout: 3 * time.Second,
+	}
+
+	if _, err := conf.WaitForStateContext(ctx); err != nil {
+		return fmt.Errorf(
+			"[ERR] storage %s was still not %d GB %s after the API accepted the resize: %s",
+			storageId, wantGb, timeout, err)
+	}
+	return nil
 }

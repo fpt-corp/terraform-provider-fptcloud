@@ -1,3 +1,12 @@
+## [0.3.78] - 2026-10-01
+
+### Resource
+
+- Fix: `fptcloud_storage` can change an EXTERNAL disk that is attached to an instance. `size_gb`, `name` and `storage_policy_id` are applied through the update path that the VPC supports, instead of one that is rejected while the disk is attached
+- Fix: an update waits until the disk reports its new size, so state matches the disk instead of keeping the value that was requested. The wait uses the provider `timeout`
+- Fix: a storage update no longer fails with `unexpected state 'DISABLED'` while the disk settles after a change that did succeed
+- Fix: the error raised when attaching or detaching a storage carries the message returned by the API instead of only the storage id
+
 ## [0.3.77] - 2026-09-30
 
 ### Resource
