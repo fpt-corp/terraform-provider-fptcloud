@@ -31,6 +31,8 @@ type InstanceModel struct {
 	GpuName          *string  `json:"gpu_name,omitempty"`
 	BillingType      *string  `json:"billing_type,omitempty"`
 	IsNvme           bool     `json:"is_nvme"`
+	ImageName        *string  `json:"image_name,omitempty"`
+	StorageId        *string  `json:"storage_id,omitempty"`
 }
 
 type CreateInstanceDTO struct {

@@ -258,3 +258,87 @@ func TestResizeRootDisk_ReturnsSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Successfully", response.Data)
 }
+
+func TestFindStoragePolicyByProfile_ResolvesTheMostSpecificPolicy(t *testing.T) {
+	mockResponse := `{
+		"data": [
+			{"id": "policy-ssd", "infra_id": "infra-ssd", "name": "SSD"},
+			{"id": "policy-ssd-premium", "infra_id": "infra-ssd-premium", "name": "SSD_Premium"},
+			{"id": "policy-hdd", "infra_id": "infra-hdd", "name": "HDD"}
+		]
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vpc/vpc_id/storage-policies": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_instance.NewInstanceService(mockClient)
+
+	// the longest policy name prefixing the profile wins, in whatever order the API lists them
+	for profile, want := range map[string]string{
+		"SSD_Premium_HN1": "policy-ssd-premium",
+		"SSD_Premium":     "policy-ssd-premium",
+		"SSD_HN1":         "policy-ssd",
+		"SSD":             "policy-ssd",
+		"HDD_SGN":         "policy-hdd",
+	} {
+		storagePolicy, err := service.FindStoragePolicyByProfile("vpc_id", profile)
+		if assert.NoError(t, err, profile) {
+			assert.Equal(t, want, storagePolicy.ID, profile)
+		}
+	}
+}
+
+func TestFindStoragePolicyByProfile_NeverMatchesAnotherPolicyByPrefix(t *testing.T) {
+	mockResponse := `{"data": [{"id": "policy-ssd", "infra_id": "infra-ssd", "name": "SSD"}]}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vpc/vpc_id/storage-policies": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_instance.NewInstanceService(mockClient)
+
+	// only the policy name itself, or followed by "_<zone>", belongs to the policy
+	for _, profile := range []string{"SSDX", "SSDX_HN1", "SS", "SSD-Premium", "NVME", "", "HDD_SSD"} {
+		_, err := service.FindStoragePolicyByProfile("vpc_id", profile)
+		assert.Error(t, err, profile)
+	}
+}
+
+func TestFindStoragePolicyByProfile_RejectsEqualMatches(t *testing.T) {
+	mockResponse := `{
+		"data": [
+			{"id": "policy-1", "infra_id": "infra-1", "name": "SSD"},
+			{"id": "policy-2", "infra_id": "infra-2", "name": "SSD"}
+		]
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vpc/vpc_id/storage-policies": mockResponse,
+	})
+	defer server.Close()
+
+	_, err := fptcloud_instance.NewInstanceService(mockClient).FindStoragePolicyByProfile("vpc_id", "SSD_HN1")
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "several storage policies")
+	}
+}
+
+func TestGetInstanceByName_QueriesByNameOnly(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vpc/vpc_id/instance?name=team%2Fweb-x7k2p": `{"data": {"id": "11111111-aaaa-1111-bbbb-111111111111", "name": "team/web-x7k2p"}}`,
+	})
+	defer server.Close()
+	service := fptcloud_instance.NewInstanceService(mockClient)
+	instance, err := service.GetByName("vpc_id", "team/web-x7k2p")
+	assert.NoError(t, err)
+	assert.Equal(t, "11111111-aaaa-1111-bbbb-111111111111", instance.ID)
+}
+
+func TestGetInstanceByName_ReturnsErrorWithoutInstance(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v2/vpc/vpc_id/instance": `{"data": {}}`,
+	})
+	defer server.Close()
+	service := fptcloud_instance.NewInstanceService(mockClient)
+	instance, err := service.GetByName("vpc_id", "web")
+	assert.Error(t, err)
+	assert.Nil(t, instance)
+}

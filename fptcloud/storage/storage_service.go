@@ -60,6 +60,7 @@ type Storage struct {
 // StorageService defines the interface for storage service
 type StorageService interface {
 	FindStorage(searchModel FindStorageDTO) (*Storage, error)
+	Get(vpcId string, storageId string) (*Storage, error)
 	CreateStorage(createdModel StorageDTO) (string, error)
 	CreateStorageAsync(createdModel StorageDTO) (string, error)
 	LookupStorageByName(vpcId string, name string) (StorageNameLookup, error)
@@ -94,6 +95,21 @@ func (s *StorageServiceImpl) FindStorage(searchModel FindStorageDTO) (*Storage, 
 		return nil, common.DecodeError(err)
 	}
 	return &result, nil
+}
+
+func (s *StorageServiceImpl) Get(vpcId string, storageId string) (*Storage, error) {
+	resp, err := s.client.SendGetRequest(common.ApiPath.Storage(vpcId) + utils.ToQueryParams(FindStorageDTO{ID: storageId}))
+	if err != nil {
+		return nil, err
+	}
+	var found Storage
+	if err := json.Unmarshal(resp, &found); err != nil {
+		return nil, fmt.Errorf("unreadable storage response: %s", err)
+	}
+	if found.ID == "" {
+		return nil, fmt.Errorf("the API returned no storage for id %s", storageId)
+	}
+	return &found, nil
 }
 
 // CreateStorage create a new storage
@@ -219,6 +235,18 @@ func (s *StorageServiceImpl) resolveInfraPolicyId(vpcId string, policyId string)
 // storageNotFoundCode is what the name lookup answers (inside an HTTP 500)
 // when no storage has that name.
 const storageNotFoundCode = "1501002"
+
+var storageImportNotFoundCodes = []string{storageNotFoundCode, "120617"}
+
+func isStorageNotFound(err error) bool {
+	code := common.ApiErrorCode(err)
+	for _, notFound := range storageImportNotFoundCodes {
+		if code == notFound {
+			return true
+		}
+	}
+	return false
+}
 
 // ErrCreateRequestTimeout marks a create request whose outcome is unknown: the
 // client or the gateway gave up waiting, so the storage may or may not have

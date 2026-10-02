@@ -56,3 +56,23 @@ Do not point this resource at the root disk of an instance, it is managed by `st
 Optional:
 
 - `create` (String) Default `15m`. Only used for an `EXTERNAL` storage when the create request itself times out (client timeout, or HTTP 502/504 from the gateway). The request may still have been queued, so instead of failing the provider looks the storage up by name until a new one appears, for at most this long. Waiting for the storage to become `ENABLED` afterwards is still bounded by the provider `timeout`.
+
+## Import
+
+```shell
+terraform import fptcloud_storage.example vpc/<vpc_id>/storage/<storage_id>
+```
+
+or, with Terraform 1.5 and later, an `import` block with the same `id`. With
+`terraform plan -generate-config-out=generated.tf`, Terraform writes the resource for you
+(it never overwrites an existing file).
+
+Only an `ENABLED` disk of type `EXTERNAL` can be imported; `ROOT` and `LOCAL` disks are refused (the
+root disk belongs to its `fptcloud_instance`). The state keeps the storage id, and every attribute is
+read from the API, so a configuration matching the disk plans `No changes`.
+
+~> **Attached disks:** declare `instance_id` with the instance the disk is attached to. Without it,
+the first plan shows `- instance_id = "..." -> null` and applying it **detaches** the disk.
+
+Once imported, the disk behaves like one created by Terraform. If the API no longer finds it, the
+plan fails and the state is kept: remove it with `terraform state rm` once you know it was deleted.
