@@ -9,6 +9,7 @@ import (
 // SecurityGroupService defines the interface for security service
 type SecurityGroupService interface {
 	Find(searchModel FindSecurityGroupDTO) (*SecurityGroup, error)
+	ListAll(listModel SecurityGroupListDTO) ([]SecurityGroupListItem, error)
 	Create(createdModel CreatedSecurityGroupDTO) (string, error)
 	Delete(vpcId string, securityGroupId string) (*common.SimpleResponse, error)
 	Rename(vpcId string, securityGroupId string, newName string) (*common.SimpleResponse, error)
@@ -24,6 +25,25 @@ type SecurityGroupServiceImpl struct {
 // NewSecurityGroupService creates a new instance of security group service with the given client
 func NewSecurityGroupService(client *common.Client) SecurityGroupService {
 	return &SecurityGroupServiceImpl{client: client}
+}
+
+// ListAll returns every security group in a VPC by walking the paginated list endpoint.
+// It issues ceil(total/pageSize) requests instead of one per security group.
+func (s *SecurityGroupServiceImpl) ListAll(listModel SecurityGroupListDTO) ([]SecurityGroupListItem, error) {
+	return common.ListAllPages(listModel.PageSize, func(page int) ([]SecurityGroupListItem, int, error) {
+		resp, err := s.client.SendGetRequest(common.ApiPath.ListSecurityGroups(listModel.VpcId, page, listModel.PageSize))
+		if err != nil {
+			return nil, 0, common.DecodeError(err)
+		}
+
+		var response ListSecurityGroupsResponse
+		if err := json.Unmarshal(resp, &response); err != nil {
+			return nil, 0, common.DecodeError(err)
+		}
+		return response.Data, response.Total, nil
+	}, func(securityGroup SecurityGroupListItem) string {
+		return securityGroup.ID
+	})
 }
 
 // Find search security group by id or name

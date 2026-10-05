@@ -17,6 +17,7 @@ const (
 // InstanceService defines the interface for instance service
 type InstanceService interface {
 	Find(searchModel FindInstanceDTO) (*InstanceModel, error)
+	ListAll(listModel InstanceListDTO) ([]InstanceListModel, error)
 	Create(createdModel CreateInstanceDTO) (string, error)
 	Delete(vpcId string, instanceId string) (*common.SimpleResponse, error)
 	Rename(vpcId string, instanceId string, newName string) (*common.SimpleResponse, error)
@@ -40,6 +41,25 @@ type InstanceServiceImpl struct {
 // NewInstanceService creates a new instance service with the given client
 func NewInstanceService(client *common.Client) InstanceService {
 	return &InstanceServiceImpl{client: client}
+}
+
+// ListAll returns every instance in a VPC by walking the paginated list endpoint.
+// It issues ceil(total/pageSize) requests instead of one per instance.
+func (s *InstanceServiceImpl) ListAll(listModel InstanceListDTO) ([]InstanceListModel, error) {
+	return common.ListAllPages(listModel.PageSize, func(page int) ([]InstanceListModel, int, error) {
+		resp, err := s.client.SendGetRequest(common.ApiPath.ListVmInstances(listModel.VpcId, page, listModel.PageSize))
+		if err != nil {
+			return nil, 0, common.DecodeError(err)
+		}
+
+		var response ListInstancesResponse
+		if err := json.Unmarshal(resp, &response); err != nil {
+			return nil, 0, common.DecodeError(err)
+		}
+		return response.Data, response.Total, nil
+	}, func(instance InstanceListModel) string {
+		return stringValue(instance.ID)
+	})
 }
 
 // Find get instance by id or name

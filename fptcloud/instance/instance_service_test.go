@@ -1,6 +1,9 @@
 package fptcloud_instance_test
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"terraform-provider-fptcloud/fptcloud/instance"
 	"testing"
 
@@ -257,4 +260,135 @@ func TestResizeRootDisk_ReturnsSuccess(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.Equal(t, "Successfully", response.Data)
+}
+
+func TestListAllInstances_UsesListShape(t *testing.T) {
+	mockResponse := `{
+		"total": 2,
+		"data": [
+			{
+				"id": "11111111-aaaa-1111-bbbb-111111111111",
+				"vpc_id": "vpc_id",
+				"name": "vm-1",
+				"name_infra": "vm-1-infra",
+				"status": "POWERED_ON",
+				"guest_os": "Ubuntu",
+				"host_name": null,
+				"ip_address": "10.0.0.1",
+				"ipv6_address": null,
+				"number_of_cpus": 2,
+				"memory_mb": 2048,
+				"network_name": "net-1",
+				"platform": "VMW",
+				"created_at": "2024-01-01T00:00:00",
+				"updated_at": "2024-01-01T00:00:00",
+				"vGpuIds": [],
+				"ip_public": "1.2.3.4",
+				"enabled_allocate_ip": true,
+				"storage_size_gb": 20,
+				"billing_type": null,
+				"gpu_name": null,
+				"is_multi_storage": false,
+				"is_nvme": false,
+				"flavor": null,
+				"vm_group_id": "group-1",
+				"flavor_id": "flavor-1",
+				"vm_tags": [{"id": "tag-1", "key": "env", "value": "prod", "color": "red"}]
+			},
+			{
+				"id": "22222222-bbbb-2222-cccc-222222222222",
+				"vpc_id": "vpc_id",
+				"name": "vm-2",
+				"name_infra": "vm-2",
+				"status": "POWERED_OFF",
+				"guest_os": "Windows",
+				"host_name": null,
+				"ip_address": "10.0.0.2",
+				"ipv6_address": null,
+				"number_of_cpus": 4,
+				"memory_mb": 4096,
+				"network_name": "net-1",
+				"platform": "OSP",
+				"created_at": "2024-01-01T00:00:00",
+				"updated_at": "2024-01-01T00:00:00",
+				"vGpuIds": [],
+				"ip_public": "",
+				"enabled_allocate_ip": false,
+				"storage_size_gb": 40,
+				"billing_type": null,
+				"gpu_name": null,
+				"is_multi_storage": false,
+				"is_nvme": true,
+				"flavor": null,
+				"vm_tags": []
+			}
+		]
+	}`
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/compute/instances": mockResponse,
+	})
+	defer server.Close()
+	service := fptcloud_instance.NewInstanceService(mockClient)
+
+	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 100})
+	assert.NoError(t, err)
+	assert.Len(t, instances, 2)
+	assert.Equal(t, "11111111-aaaa-1111-bbbb-111111111111", *instances[0].ID)
+	assert.Equal(t, "1.2.3.4", *instances[0].IpPublic)
+	assert.Equal(t, 2, instances[0].CpuNumber)
+	assert.Equal(t, "group-1", *instances[0].VmGroupId)
+	assert.Equal(t, "tag-1", instances[0].VmTags[0].ID)
+	assert.True(t, instances[1].IsNvme)
+}
+
+func TestListAllInstances_EmptyList(t *testing.T) {
+	mockClient, server, _ := common.NewClientForTesting(map[string]string{
+		"/v1/vmware/vpc/vpc_id/compute/instances": `{"total": 0, "data": []}`,
+	})
+	defer server.Close()
+	service := fptcloud_instance.NewInstanceService(mockClient)
+
+	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 100})
+	assert.NoError(t, err)
+	assert.Empty(t, instances)
+}
+
+func TestListAllInstances_WalksMultiplePages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		page := req.URL.Query().Get("page")
+		if page == "1" {
+			data := "["
+			for i := 0; i < 100; i++ {
+				if i > 0 {
+					data += ","
+				}
+				data += fmt.Sprintf(`{"id":"vm-p1-%d","name":"vm-%d","flavor":null}`, i, i)
+			}
+			data += "]"
+			_, _ = rw.Write([]byte(fmt.Sprintf(`{"total":150,"data":%s}`, data)))
+			return
+		}
+		_, _ = rw.Write([]byte(`{"total":150,"data":[{"id":"vm-p2-0","name":"last","flavor":null}]}`))
+	}))
+	defer server.Close()
+	mockClient, _ := common.NewClientForTestingWithServer(server)
+	service := fptcloud_instance.NewInstanceService(mockClient)
+
+	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 100})
+	assert.NoError(t, err)
+	assert.Len(t, instances, 101)
+	assert.Equal(t, "vm-p1-0", *instances[0].ID)
+	assert.Equal(t, "vm-p2-0", *instances[100].ID)
+}
+
+func TestListAllInstances_RejectsOutOfRangePageSize(t *testing.T) {
+	service := fptcloud_instance.NewInstanceService(nil)
+
+	_, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 0})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "page_size")
+
+	_, err = service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 101})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "page_size")
 }
