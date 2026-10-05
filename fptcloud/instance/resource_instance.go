@@ -118,8 +118,8 @@ func importInstanceByName(d *schema.ResourceData, m interface{}) ([]*schema.Reso
 }
 
 func forceNewOnceKnown(key string) schema.CustomizeDiffFunc {
-	return customdiff.ForceNewIfChange(key, func(_ context.Context, old, new, _ interface{}) bool {
-		return old.(string) != "" && old.(string) != new.(string)
+	return customdiff.ForceNewIfChange(key, func(_ context.Context, before, after, _ interface{}) bool {
+		return before.(string) != "" && before.(string) != after.(string)
 	})
 }
 
