@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.3.79] - 2026-10-05
 
 ### Resource
 
@@ -13,6 +13,48 @@
 ### CI
 
 - `make testacc` now runs the import scenarios against Terraform 1.12.2 installed by the workflow, with `IMPORTTEST_REQUIRE_TERRAFORM=1` so a missing `terraform` fails the job instead of skipping them
+## [0.3.78] - 2026-10-01
+
+### Resource
+
+- Fix: `fptcloud_storage` can change an EXTERNAL disk that is attached to an instance. `size_gb`, `name` and `storage_policy_id` are applied through the update path that the VPC supports, instead of one that is rejected while the disk is attached
+- Fix: an update waits until the disk reports its new size, so state matches the disk instead of keeping the value that was requested. The wait uses the provider `timeout`
+- Fix: a storage update no longer fails with `unexpected state 'DISABLED'` while the disk settles after a change that did succeed
+- Fix: the error raised when attaching or detaching a storage carries the message returned by the API instead of only the storage id
+
+## [0.3.77] - 2026-09-30
+
+### Resource
+
+- Feat: `fptcloud_database` resizes in place. Changing `node_cpu`, `node_ram`, `data_disk_size`, `flavor` or `flavor_id` now calls the cluster resize API instead of destroying and recreating the database, and changing `storage_profile` calls the change storage policy API. Apply waits until the cluster is `running` or `stopped` again with the new values, up to 30 minutes, and fails if the cluster ends up `failed`
+- Fix: changing compute/disk and `storage_profile` in the same apply is rejected at plan time with `Unsupported combined change`; apply them one after the other
+- Fix: a `storage_profile` that does not exist in the VPC is rejected at plan time, and the error lists the supported policy names
+- Fix: `fptcloud_database` keeps `id` in the plan on update, so a data source or output that reads `id` no longer shows every value as `known after apply`
+- Fix: `nodes` is read again after an in-place update, so `number_of_cpus`, `memory_mb` and `data_disk_size` in state match the resized cluster
+
+## [0.3.76] - 2026-09-28
+
+### Resource
+
+- Feat: expose `scheme` (`internet_facing` or `internal`) on `fptcloud_load_balancer_v2_lb`, forwarded on create and read back into state ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+- Update: `scheme` is derived from the subnet `network_id` already points to when left unset; `network_id` stays required on OSP, the same as before this field existed ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+- Fix: reject changing `scheme` on an existing load balancer with a clear error at apply time, instead of silently ignoring the change and leaving the plan permanently out of sync ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+
+### Datasource
+
+- Feat: expose `scheme` on `fptcloud_load_balancer_v2_lb` and `fptcloud_load_balancer_v2_lbs` ([#113](https://github.com/fpt-corp/terraform-provider-fptcloud/pull/113))
+
+## [0.3.75] - 2026-09-24
+
+### Datasource
+
+- Feat: `fptcloud_backup_veeam_restore_groups` lists the instances that have restore points in a VPC, one entry per instance and backup job - the portal's Restore tab. Each entry carries the `vm_id` and `backup_job_id` that `fptcloud_backup_veeam_restore_points` needs, so the backup jobs no longer have to be read first
+
+## [0.3.74] - 2026-09-24
+
+### Resource
+
+- Feat: take an instance snapshot with `fptcloud_snapshot`: create, read, delete and import. Every volume attached to the instance is captured at one point in time, crash-consistent - the guest filesystem is not quiesced. Optional `name`, `include_ram` and `tag_ids`; left unset, the platform names the snapshot
 
 ## [0.3.73] - 2026-09-19
 

@@ -66,6 +66,7 @@ output "loadbalancer_internal_tags" {
 - `provisioning_status` (String) The provisioning status of the load balancer
 - `public_ip` (List of Object) The public IP address of the load balancer (see [below for nested schema](#nestedatt--public_ip))
 - `resource_tags` (List of Object) The tags from FPT Cloud's tagging system associated with the load balancer (see [below for nested schema](#nestedatt--resource_tags))
+- `scheme` (String) The scheme of the load balancer: `internet_facing` or `internal`
 - `size` (List of Object) The size of the load balancer (see [below for nested schema](#nestedatt--size))
 - `tags` (List of String) Internal marker identifying the object as LBv2 for Portal
 

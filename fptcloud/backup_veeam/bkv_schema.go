@@ -675,6 +675,60 @@ var dataSourceBackupVeeamRestorePointsSchema = map[string]*schema.Schema{
 	},
 }
 
+var dataSourceBackupVeeamRestoreGroupsSchema = map[string]*schema.Schema{
+	"vpc_id": {
+		Type:         schema.TypeString,
+		Required:     true,
+		ValidateFunc: validation.NoZeroValues,
+		Description:  "The ID of the VPC.",
+	},
+	"groups": {
+		Type:     schema.TypeList,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"vm_id": {
+					Type:     schema.TypeString,
+					Computed: true,
+					Description: "The ID of the protected instance. Empty for legacy restore points the server could not map " +
+						"to an instance; `fptcloud_backup_veeam_restore_points` cannot list those.",
+				},
+				"vm_name": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "The instance's current name.",
+				},
+				"restore_vm_name": {
+					Type:     schema.TypeString,
+					Computed: true,
+					Description: "The instance's name when it was backed up. It differs from `vm_name` once the instance " +
+						"has been renamed.",
+				},
+				"is_deleted": {
+					Type:        schema.TypeBool,
+					Computed:    true,
+					Description: "Whether the instance has been deleted. Its restore points are still listed.",
+				},
+				"backup_job_id": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "The ID of the backup job that produced the restore points.",
+				},
+				"backup_job_name": {Type: schema.TypeString, Computed: true},
+				"restore_at": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "When the most recent restore point of this group was taken.",
+				},
+				"restore_point_count": {Type: schema.TypeInt, Computed: true},
+				"total_backup_size":   {Type: schema.TypeFloat, Computed: true},
+			},
+		},
+		Description: "One entry per instance and backup job that has restore points, most recent first - the same table " +
+			"the portal's Restore tab shows. Feed `vm_id` and `backup_job_id` into `fptcloud_backup_veeam_restore_points`. `vm_id` is empty for legacy restore points the server could not map to an instance; those cannot be listed.",
+	},
+}
+
 // resourceBackupVeeamRestoreCloneSchema describes a "Restore keep": the same
 // action shape as a plain restore, but the restore point comes back as a NEW
 // instance and the original is left running.

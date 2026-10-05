@@ -11,6 +11,7 @@ var ApiPath = struct {
 	SSH                        string
 	Storage                    func(vpcId string) string
 	CreateStorageAsync         func(vpcId string) string
+	ResizeStorage              func(vpcId string) string
 	StorageUpdateAttached      func(vpcId string, storageId string) string
 	UpdateStorageTags          func(vpcId string, storageId string) string
 	StoragePolicy              func(vpcId string) string
@@ -31,6 +32,8 @@ var ApiPath = struct {
 	InstanceStoragesInfra      func(vpcId string, instanceId string) string
 	ResizeInstanceRootDisk     func(vpcId string, instanceId string) string
 	UpdateInstanceTags         func(vpcId string, instanceId string) string
+	Snapshot                   func(vpcId string) string
+	SnapshotDetail             func(vpcId string, snapshotId string) string
 	ChangeBillingTypeInstance  func(vpcId string, instanceId string) string
 	Tenant                     func(tenantName string) string
 	Vpc                        func(tenantId string) string
@@ -59,13 +62,16 @@ var ApiPath = struct {
 	Subnet          func(vpcId string) string
 	EdgeGatewayList func(vpcId string) string
 
-	DatabaseGet       func(databaseId string) string
-	DatabaseCreate    func() string
-	DatabaseDelete    func(databaseId string) string
-	DatabaseStop      func() string
-	DatabaseStart     func() string
-	DatabaseApplyTags func() string
-	DatabaseFlavor    func(vpcId string, isOSP string) string
+	DatabaseGet             func(databaseId string) string
+	DatabaseCreate          func() string
+	DatabaseDelete          func(databaseId string) string
+	DatabaseStop            func() string
+	DatabaseStart           func() string
+	DatabaseApplyTags       func() string
+	DatabaseResizeInstance  func() string
+	DatabaseStoragePolicies func(vpcId string) string
+	DatabaseChangeIops      func() string
+	DatabaseFlavor          func(vpcId string, isOSP string) string
 
 	VpcSyncInstances  func(vpcId string) string
 	VpcSyncStorages   func(vpcId string) string
@@ -297,6 +303,9 @@ var ApiPath = struct {
 	CreateStorageAsync: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/create-storage", vpcId)
 	},
+	ResizeStorage: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/resize-storage", vpcId)
+	},
 	StorageUpdateAttached: func(vpcId string, storageId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage/%s/update-attached", vpcId, storageId)
 	},
@@ -353,6 +362,12 @@ var ApiPath = struct {
 	},
 	UpdateInstanceTags: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/instance/%s/tags", vpcId, instanceId)
+	},
+	Snapshot: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/instance-snapshots", vpcId)
+	},
+	SnapshotDetail: func(vpcId string, snapshotId string) string {
+		return fmt.Sprintf("/v2/vmware/vpc/%s/instance-snapshots/%s", vpcId, snapshotId)
 	},
 	ChangeBillingTypeInstance: func(vpcId string, instanceId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instance/%s/billing-type", vpcId, instanceId)
@@ -450,6 +465,15 @@ var ApiPath = struct {
 	},
 	DatabaseApplyTags: func() string {
 		return "/v1/xplat/database/management/tagging/cluster/apply-tag"
+	},
+	DatabaseResizeInstance: func() string {
+		return "/v1/xplat/database/configure_management/cluster/resize_instance"
+	},
+	DatabaseChangeIops: func() string {
+		return "/v1/xplat/database/configure_management/change_iops"
+	},
+	DatabaseStoragePolicies: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storage-policies", vpcId)
 	},
 	DatabaseFlavor: func(vpcId string, isOSP string) string {
 		return fmt.Sprintf("/v1/xplat/database/configure_management/get_list_flavor_v2?vpc_id=%s&is_ops=%s", vpcId, isOSP)

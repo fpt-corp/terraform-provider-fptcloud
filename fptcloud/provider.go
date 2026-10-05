@@ -21,6 +21,7 @@ import (
 	fptcloud_object_storage "terraform-provider-fptcloud/fptcloud/object-storage"
 	fptcloud_security_group "terraform-provider-fptcloud/fptcloud/security-group"
 	fptcloud_security_group_rule "terraform-provider-fptcloud/fptcloud/security-group-rule"
+	fptcloud_snapshot "terraform-provider-fptcloud/fptcloud/snapshot"
 	fptcloud_ssh "terraform-provider-fptcloud/fptcloud/ssh"
 	fptcloud_storage "terraform-provider-fptcloud/fptcloud/storage"
 	fptcloud_storage_policy "terraform-provider-fptcloud/fptcloud/storage-policy"
@@ -127,6 +128,7 @@ func Provider() *schema.Provider {
 			"fptcloud_tagging":                                fptcloud_tagging.DataSourceTagging(),
 			"fptcloud_backup_veeam_job":                       fptcloud_backup_veeam.DataSourceBackupVeeamJob(),
 			"fptcloud_backup_veeam_restore_points":            fptcloud_backup_veeam.DataSourceBackupVeeamRestorePoints(),
+			"fptcloud_backup_veeam_restore_groups":            fptcloud_backup_veeam.DataSourceBackupVeeamRestoreGroups(),
 			"fptcloud_backup_veeam_instant_recovery_sessions": fptcloud_backup_veeam.DataSourceBackupVeeamInstantRecoverySessions(),
 			"fptcloud_backup_veeam_jobs":                      fptcloud_backup_veeam.DataSourceBackupVeeamJobs(),
 			"fptcloud_backup_veeam_instances":                 fptcloud_backup_veeam.DataSourceBackupVeeamInstances(),
@@ -139,6 +141,7 @@ func Provider() *schema.Provider {
 			"fptcloud_security_group_rule":                  fptcloud_security_group_rule.ResourceSecurityGroupRule(),
 			"fptcloud_instance":                             fptcloud_instance.ResourceInstance(),
 			"fptcloud_instance_group":                       fptcloud_instance_group.ResourceInstanceGroup(),
+			"fptcloud_snapshot":                             fptcloud_snapshot.ResourceSnapshot(),
 			"fptcloud_floating_ip":                          fptcloud_floating_ip.ResourceFloatingIp(),
 			"fptcloud_floating_ip_association":              fptcloud_floating_ip_association.ResourceFloatingIpAssociation(),
 			"fptcloud_subnet":                               fptcloud_subnet.ResourceSubnet(),
