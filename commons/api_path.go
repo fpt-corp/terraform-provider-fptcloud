@@ -77,6 +77,10 @@ var ApiPath = struct {
 	VpcSyncStorages   func(vpcId string) string
 	VpcSyncStoragesV2 func(vpcId string) string
 
+	ListVmInstances    func(vpcId string, page, pageSize int) string
+	ListSecurityGroups func(vpcId string, page, pageSize int) string
+	ListStorages       func(vpcId string, page, pageSize int) string
+
 	// Dedicated FKE
 	DedicatedFKEList           func(vpcId string, page, pageSize int) string
 	DedicatedFKEGet            func(vpcId string, clusterId string) string
@@ -487,6 +491,15 @@ var ApiPath = struct {
 	},
 	VpcSyncStoragesV2: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/storages/sync/v2", vpcId)
+	},
+	ListVmInstances: func(vpcId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/compute/instances?page=%d&page_size=%d&sort_field=&sort_order=asc&with_flavor=true", vpcId, page, pageSize)
+	},
+	ListSecurityGroups: func(vpcId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/security-groups?page=%d&page_size=%d&sort_field=&sort_order=asc", vpcId, page, pageSize)
+	},
+	ListStorages: func(vpcId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storages?page=%d&page_size=%d", vpcId, page, pageSize)
 	},
 
 	DedicatedFKEList: func(vpcId string, page, pageSize int) string {

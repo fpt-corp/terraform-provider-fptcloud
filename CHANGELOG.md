@@ -1,3 +1,11 @@
+## [0.3.79] - 2026-10-06
+
+### Datasource
+
+- Feat: add `fptcloud_instances` to list all instances in a VPC
+- Feat: add `fptcloud_security_groups` to list all security groups in a VPC
+- Feat: add `fptcloud_storages` to list all storages in a VPC
+
 ## [0.3.78] - 2026-10-01
 
 ### Resource

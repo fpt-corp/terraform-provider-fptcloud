@@ -65,9 +65,72 @@ type Storage struct {
 	TagIds          []string `json:"tag_ids,omitempty"`
 }
 
+// StorageListModel is one storage row as returned by the paginated /storages
+// list endpoint. Unlike the singular Storage model it reports the size in MB
+// (`size`), the attached instance as vm_id, the policy name as
+// storage_policy_name, and tags as objects instead of tag_ids.
+type StorageListModel struct {
+	ID                string           `json:"id"`
+	VpcId             string           `json:"vpc_id"`
+	Name              string           `json:"name"`
+	DisplayName       *string          `json:"display_name"`
+	Description       *string          `json:"description"`
+	SizeMb            int              `json:"size"`
+	Status            string           `json:"status"`
+	InstanceId        *string          `json:"vm_id"`
+	InstanceName      *string          `json:"vm_name"`
+	StorageType       string           `json:"storage_type"`
+	StoragePolicyId   *string          `json:"storage_policy_id"`
+	StoragePolicyName *string          `json:"storage_policy_name"`
+	DiskId            *string          `json:"disk_id"`
+	Encrypted         *StringBool      `json:"encrypted"`
+	ZoneId            *string          `json:"zone_id"`
+	CreatedAt         string           `json:"created_at"`
+	Tags              []StorageListTag `json:"tags"`
+}
+
+// StorageListTag is a tag attached to a storage as returned by the list endpoint.
+// Its `id` is the tag id, the same value the singular endpoint returns in tag_ids.
+type StorageListTag struct {
+	ID string `json:"id"`
+}
+
+// StringBool unmarshals a value that the API sometimes emits as a string
+// ("0"/"1"/"true"/"false") and sometimes as a JSON boolean. It normalises both
+// into a bool. The /storages list endpoint, for example, returns the encrypted
+// flag as the string "0"/"1".
+type StringBool bool
+
+// UnmarshalJSON implements json.Unmarshaler for StringBool.
+func (b *StringBool) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	switch strings.ToLower(s) {
+	case "1", "true":
+		*b = true
+	case "0", "false", "":
+		*b = false
+	default:
+		return fmt.Errorf("cannot unmarshal %q as a boolean", data)
+	}
+	return nil
+}
+
+// StorageListDTO holds the parameters of a paginated storage list request.
+type StorageListDTO struct {
+	VpcId    string
+	PageSize int
+}
+
+// ListStoragesResponse is the paginated list response of the /storages endpoint.
+type ListStoragesResponse struct {
+	Data  []StorageListModel `json:"data"`
+	Total int                `json:"total"`
+}
+
 // StorageService defines the interface for storage service
 type StorageService interface {
 	FindStorage(searchModel FindStorageDTO) (*Storage, error)
+	ListAll(listModel StorageListDTO) ([]StorageListModel, error)
 	CreateStorage(createdModel StorageDTO) (string, error)
 	CreateStorageAsync(createdModel StorageDTO) (string, error)
 	LookupStorageByName(vpcId string, name string) (StorageNameLookup, error)
@@ -86,6 +149,25 @@ type StorageServiceImpl struct {
 // NewStorageService creates a new instance of storage Service with the given client
 func NewStorageService(client *common.Client) StorageService {
 	return &StorageServiceImpl{client: client}
+}
+
+// ListAll returns every storage in a VPC by walking the paginated list endpoint.
+// It issues ceil(total/pageSize) requests instead of one per storage.
+func (s *StorageServiceImpl) ListAll(listModel StorageListDTO) ([]StorageListModel, error) {
+	return common.ListAllPages(listModel.PageSize, func(page int) ([]StorageListModel, int, error) {
+		resp, err := s.client.SendGetRequest(common.ApiPath.ListStorages(listModel.VpcId, page, listModel.PageSize))
+		if err != nil {
+			return nil, 0, common.DecodeError(err)
+		}
+
+		var response ListStoragesResponse
+		if err := json.Unmarshal(resp, &response); err != nil {
+			return nil, 0, common.DecodeError(err)
+		}
+		return response.Data, response.Total, nil
+	}, func(storage StorageListModel) string {
+		return storage.ID
+	})
 }
 
 // FindStorage finds a storage by either part of the ID or part of the name
