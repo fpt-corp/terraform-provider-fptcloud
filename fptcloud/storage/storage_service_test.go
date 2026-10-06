@@ -166,7 +166,7 @@ func TestListAllStorages_UsesListShape(t *testing.T) {
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)
 
-	storages, err := service.ListAll(fptcloud_storage.StorageListDTO{VpcId: "vpc_id", PageSize: 100})
+	storages, err := service.ListAll(fptcloud_storage.StorageListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
 	assert.Len(t, storages, 2)
 	assert.Equal(t, "storage-1", storages[0].ID)
@@ -185,7 +185,7 @@ func TestListAllStorages_EmptyList(t *testing.T) {
 	defer server.Close()
 	service := fptcloud_storage.NewStorageService(mockClient)
 
-	storages, err := service.ListAll(fptcloud_storage.StorageListDTO{VpcId: "vpc_id", PageSize: 100})
+	storages, err := service.ListAll(fptcloud_storage.StorageListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
 	assert.Empty(t, storages)
 }
@@ -197,7 +197,7 @@ func TestListAllStorages_RejectsOutOfRangePageSize(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "page_size")
 
-	_, err = service.ListAll(fptcloud_storage.StorageListDTO{VpcId: "vpc_id", PageSize: 101})
+	_, err = service.ListAll(fptcloud_storage.StorageListDTO{VpcId: "vpc_id", PageSize: 26})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "page_size")
 }

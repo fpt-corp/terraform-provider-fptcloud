@@ -7,7 +7,7 @@ import (
 )
 
 // dataSourceSecurityGroupsSchema describes the schema of the fptcloud_security_groups data source.
-// It requires a vpc_id and optionally a page_size (max 100); every security group in the VPC is
+// It requires a vpc_id and optionally a page_size (max 25); every security group in the VPC is
 // returned in the `security_groups` list. Item attributes keep the names used by the
 // fptcloud_security_group data source wherever the list endpoint returns the same value.
 var dataSourceSecurityGroupsSchema = map[string]*schema.Schema{
@@ -21,7 +21,7 @@ var dataSourceSecurityGroupsSchema = map[string]*schema.Schema{
 		Optional:     true,
 		Default:      common.ListPageSize,
 		ValidateFunc: validation.IntBetween(1, common.ListPageSize),
-		Description:  "The number of security groups requested per API call. Must be between `1` and `100`; defaults to `100`. The provider requests successive pages until every security group has been retrieved.",
+		Description:  "The number of security groups requested per API call. Must be between `1` and `25`; defaults to `25`. The provider requests successive pages until every security group has been retrieved.",
 	},
 	"security_groups": {
 		Type:        schema.TypeList,

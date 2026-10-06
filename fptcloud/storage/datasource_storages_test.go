@@ -43,7 +43,7 @@ func TestAccFptCloudStorages_basic(t *testing.T) {
 				Config: testAccStoragesConfig(vpcId),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("data.fptcloud_storages.all", "id", vpcId),
-					resource.TestCheckResourceAttr("data.fptcloud_storages.all", "page_size", "100"),
+					resource.TestCheckResourceAttr("data.fptcloud_storages.all", "page_size", "25"),
 					resource.TestCheckResourceAttrSet("data.fptcloud_storages.all", "storages.0.id"),
 					testAccCheckSameStorages("data.fptcloud_storages.all", "data.fptcloud_storages.paged"),
 					resource.TestCheckResourceAttrPair("data.fptcloud_storages.all", "storages.0.name", "data.fptcloud_storage.first", "name"),
@@ -88,7 +88,7 @@ func testAccCheckSameStorages(a, b string) resource.TestCheckFunc {
 func TestDataSourceStorages_SchemaIsValid(t *testing.T) {
 	r := fptcloud_storage.DataSourceStorages()
 	assert.NoError(t, r.InternalValidate(nil, false))
-	assert.Equal(t, 100, r.Schema["page_size"].Default)
+	assert.Equal(t, 25, r.Schema["page_size"].Default)
 }
 
 func TestDataSourceStorages_ReadMapsListToSingularFields(t *testing.T) {

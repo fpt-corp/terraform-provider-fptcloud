@@ -330,7 +330,7 @@ func TestListAllInstances_UsesListShape(t *testing.T) {
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
 
-	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 100})
+	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
 	assert.Len(t, instances, 2)
 	assert.Equal(t, "11111111-aaaa-1111-bbbb-111111111111", *instances[0].ID)
@@ -348,7 +348,7 @@ func TestListAllInstances_EmptyList(t *testing.T) {
 	defer server.Close()
 	service := fptcloud_instance.NewInstanceService(mockClient)
 
-	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 100})
+	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
 	assert.Empty(t, instances)
 }
@@ -358,27 +358,27 @@ func TestListAllInstances_WalksMultiplePages(t *testing.T) {
 		page := req.URL.Query().Get("page")
 		if page == "1" {
 			data := "["
-			for i := 0; i < 100; i++ {
+			for i := 0; i < 25; i++ {
 				if i > 0 {
 					data += ","
 				}
 				data += fmt.Sprintf(`{"id":"vm-p1-%d","name":"vm-%d","flavor":null}`, i, i)
 			}
 			data += "]"
-			_, _ = rw.Write([]byte(fmt.Sprintf(`{"total":150,"data":%s}`, data)))
+			_, _ = rw.Write([]byte(fmt.Sprintf(`{"total":30,"data":%s}`, data)))
 			return
 		}
-		_, _ = rw.Write([]byte(`{"total":150,"data":[{"id":"vm-p2-0","name":"last","flavor":null}]}`))
+		_, _ = rw.Write([]byte(`{"total":30,"data":[{"id":"vm-p2-0","name":"last","flavor":null}]}`))
 	}))
 	defer server.Close()
 	mockClient, _ := common.NewClientForTestingWithServer(server)
 	service := fptcloud_instance.NewInstanceService(mockClient)
 
-	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 100})
+	instances, err := service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
-	assert.Len(t, instances, 101)
+	assert.Len(t, instances, 26)
 	assert.Equal(t, "vm-p1-0", *instances[0].ID)
-	assert.Equal(t, "vm-p2-0", *instances[100].ID)
+	assert.Equal(t, "vm-p2-0", *instances[25].ID)
 }
 
 func TestListAllInstances_RejectsOutOfRangePageSize(t *testing.T) {
@@ -388,7 +388,7 @@ func TestListAllInstances_RejectsOutOfRangePageSize(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "page_size")
 
-	_, err = service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 101})
+	_, err = service.ListAll(fptcloud_instance.InstanceListDTO{VpcId: "vpc_id", PageSize: 26})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "page_size")
 }

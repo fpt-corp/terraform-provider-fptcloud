@@ -7,7 +7,7 @@ import (
 )
 
 // dataSourceStoragesSchema describes the schema of the fptcloud_storages data source.
-// It requires a vpc_id and optionally a page_size (max 100); every storage in the VPC is
+// It requires a vpc_id and optionally a page_size (max 25); every storage in the VPC is
 // returned in the `storages` list. Item attributes keep the names used by the
 // fptcloud_storage data source wherever the list endpoint returns the same value.
 var dataSourceStoragesSchema = map[string]*schema.Schema{
@@ -21,7 +21,7 @@ var dataSourceStoragesSchema = map[string]*schema.Schema{
 		Optional:     true,
 		Default:      common.ListPageSize,
 		ValidateFunc: validation.IntBetween(1, common.ListPageSize),
-		Description:  "The number of storages requested per API call. Must be between `1` and `100`; defaults to `100`. The provider requests successive pages until every storage has been retrieved.",
+		Description:  "The number of storages requested per API call. Must be between `1` and `25`; defaults to `25`. The provider requests successive pages until every storage has been retrieved.",
 	},
 	"storages": {
 		Type:        schema.TypeList,

@@ -8,5 +8,5 @@ const (
 	// groups, storages). Capping it keeps every request small, so fetching N
 	// resources issues ceil(N/page_size) requests rather than one request per
 	// resource or a single oversized request.
-	ListPageSize = 100
+	ListPageSize = 25
 )

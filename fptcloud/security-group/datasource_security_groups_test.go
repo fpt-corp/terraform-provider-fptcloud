@@ -43,7 +43,7 @@ func TestAccFptCloudSecurityGroups_basic(t *testing.T) {
 				Config: testAccSecurityGroupsConfig(vpcId),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("data.fptcloud_security_groups.all", "id", vpcId),
-					resource.TestCheckResourceAttr("data.fptcloud_security_groups.all", "page_size", "100"),
+					resource.TestCheckResourceAttr("data.fptcloud_security_groups.all", "page_size", "25"),
 					resource.TestCheckResourceAttrSet("data.fptcloud_security_groups.all", "security_groups.0.id"),
 					testAccCheckSameSecurityGroups("data.fptcloud_security_groups.all", "data.fptcloud_security_groups.paged"),
 					resource.TestCheckResourceAttrPair("data.fptcloud_security_groups.all", "security_groups.0.name", "data.fptcloud_security_group.first", "name"),
@@ -86,7 +86,7 @@ func testAccCheckSameSecurityGroups(a, b string) resource.TestCheckFunc {
 func TestDataSourceSecurityGroups_SchemaIsValid(t *testing.T) {
 	r := fptcloud_security_group.DataSourceSecurityGroups()
 	assert.NoError(t, r.InternalValidate(nil, false))
-	assert.Equal(t, 100, r.Schema["page_size"].Default)
+	assert.Equal(t, 25, r.Schema["page_size"].Default)
 }
 
 func TestDataSourceSecurityGroups_ReadMapsListToSingularFields(t *testing.T) {

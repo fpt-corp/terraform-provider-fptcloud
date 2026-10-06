@@ -173,7 +173,7 @@ func TestListAllSecurityGroups_UsesListShape(t *testing.T) {
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
 
-	groups, err := service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 100})
+	groups, err := service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
 	assert.Len(t, groups, 1)
 	assert.Equal(t, "ad73e655-064c-420f-b7e1-544891d8e50d", groups[0].ID)
@@ -191,7 +191,7 @@ func TestListAllSecurityGroups_EmptyList(t *testing.T) {
 	defer server.Close()
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
 
-	groups, err := service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 100})
+	groups, err := service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
 	assert.Empty(t, groups)
 }
@@ -200,27 +200,27 @@ func TestListAllSecurityGroups_WalksMultiplePages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if req.URL.Query().Get("page") == "1" {
 			data := "["
-			for i := 0; i < 100; i++ {
+			for i := 0; i < 25; i++ {
 				if i > 0 {
 					data += ","
 				}
 				data += fmt.Sprintf(`{"id":"sg-p1-%d","name":"group-%d","rules":[]}`, i, i)
 			}
 			data += "]"
-			_, _ = rw.Write([]byte(fmt.Sprintf(`{"total":150,"data":%s}`, data)))
+			_, _ = rw.Write([]byte(fmt.Sprintf(`{"total":30,"data":%s}`, data)))
 			return
 		}
-		_, _ = rw.Write([]byte(`{"total":150,"data":[{"id":"sg-p2-0","name":"group-last","rules":[]}]}`))
+		_, _ = rw.Write([]byte(`{"total":30,"data":[{"id":"sg-p2-0","name":"group-last","rules":[]}]}`))
 	}))
 	defer server.Close()
 	mockClient, _ := common.NewClientForTestingWithServer(server)
 	service := fptcloud_security_group.NewSecurityGroupService(mockClient)
 
-	groups, err := service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 100})
+	groups, err := service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 25})
 	assert.NoError(t, err)
-	assert.Len(t, groups, 101)
+	assert.Len(t, groups, 26)
 	assert.Equal(t, "sg-p1-0", groups[0].ID)
-	assert.Equal(t, "sg-p2-0", groups[100].ID)
+	assert.Equal(t, "sg-p2-0", groups[25].ID)
 }
 
 func TestListAllSecurityGroups_RejectsOutOfRangePageSize(t *testing.T) {
@@ -230,7 +230,7 @@ func TestListAllSecurityGroups_RejectsOutOfRangePageSize(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "page_size")
 
-	_, err = service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 101})
+	_, err = service.ListAll(fptcloud_security_group.SecurityGroupListDTO{VpcId: "vpc_id", PageSize: 26})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "page_size")
 }

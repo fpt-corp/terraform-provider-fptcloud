@@ -37,7 +37,7 @@ func TestListAllPages_StopsWhenTotalReached(t *testing.T) {
 
 func TestListAllPages_EmptyResult(t *testing.T) {
 	calls := 0
-	items, err := ListAllPages(100, pagesOf(nil, 0, &calls), identity)
+	items, err := ListAllPages(ListPageSize, pagesOf(nil, 0, &calls), identity)
 	assert.NoError(t, err)
 	assert.Empty(t, items)
 	assert.Equal(t, 1, calls)

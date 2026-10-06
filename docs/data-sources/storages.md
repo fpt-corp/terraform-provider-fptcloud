@@ -33,7 +33,7 @@ output "unattached_storage_ids" {
 
 ### Optional
 
-- `page_size` (Number) The number of storages requested per API call. Must be between `1` and `100`; defaults to `100`. The provider requests successive pages until every storage has been retrieved.
+- `page_size` (Number) The number of storages requested per API call. Must be between `1` and `25`; defaults to `25`. The provider requests successive pages until every storage has been retrieved.
 
 ### Read-Only
 

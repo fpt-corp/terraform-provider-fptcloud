@@ -36,7 +36,7 @@ output "running_instance_names" {
 
 ### Optional
 
-- `page_size` (Number) The number of instances requested per API call. Must be between `1` and `100`; defaults to `100`. The provider requests successive pages until every instance has been retrieved.
+- `page_size` (Number) The number of instances requested per API call. Must be between `1` and `25`; defaults to `25`. The provider requests successive pages until every instance has been retrieved.
 
 ### Read-Only
 
