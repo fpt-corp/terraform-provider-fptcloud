@@ -1,4 +1,4 @@
-## [0.3.79] - 2026-10-05
+## [0.3.80] - 2026-10-05
 
 ### Resource
 
@@ -13,6 +13,14 @@
 ### CI
 
 - `make testacc` now runs the import scenarios against Terraform 1.12.2 installed by the workflow, with `IMPORTTEST_REQUIRE_TERRAFORM=1` so a missing `terraform` fails the job instead of skipping them
+## [0.3.79] - 2026-10-06
+
+### Datasource
+
+- Feat: add `fptcloud_instances` to list all instances in a VPC
+- Feat: add `fptcloud_security_groups` to list all security groups in a VPC
+- Feat: add `fptcloud_storages` to list all storages in a VPC
+
 ## [0.3.78] - 2026-10-01
 
 ### Resource

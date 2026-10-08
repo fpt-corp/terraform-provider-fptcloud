@@ -59,6 +59,58 @@ type FlavorDTO struct {
 	Name string `json:"name"`
 }
 
+// ListFlavorModel is the flavor object nested inside an instance list item.
+type ListFlavorModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListTagModel is a tag attached to a resource as returned by the list endpoints.
+// Its `id` is the tag id, the same value the singular endpoints return in tag_ids.
+type ListTagModel struct {
+	ID string `json:"id"`
+}
+
+// InstanceListModel is one row of the paginated /compute/instances endpoint.
+// Its field names differ from the singular find endpoint: the list carries
+// ip_address / number_of_cpus / ip_public / vm_group_id, a nested `flavor`
+// object and `vm_tags` rather than private_ip / cpu_number / public_ip /
+// instance_group_id / flavor_name / tag_ids.
+type InstanceListModel struct {
+	ID          *string          `json:"id"`
+	VpcId       *string          `json:"vpc_id"`
+	Name        string           `json:"name"`
+	CreatedAt   string           `json:"created_at"`
+	UpdatedAt   string           `json:"updated_at"`
+	Status      string           `json:"status"`
+	GuestOs     *string          `json:"guest_os"`
+	HostName    *string          `json:"host_name"`
+	IpAddress   *string          `json:"ip_address"`
+	Ipv6Address *string          `json:"ipv6_address"`
+	IpPublic    *string          `json:"ip_public"`
+	CpuNumber   int              `json:"number_of_cpus"`
+	MemoryMb    int              `json:"memory_mb"`
+	NetworkName *string          `json:"network_name"`
+	VmGroupId   *string          `json:"vm_group_id"`
+	FlavorId    *string          `json:"flavor_id"`
+	Flavor      *ListFlavorModel `json:"flavor"`
+	GpuName     *string          `json:"gpu_name"`
+	IsNvme      bool             `json:"is_nvme"`
+	VmTags      []ListTagModel   `json:"vm_tags"`
+}
+
+// ListInstancesResponse is the paginated list response of /compute/instances.
+type ListInstancesResponse struct {
+	Data  []InstanceListModel `json:"data"`
+	Total int                 `json:"total"`
+}
+
+// InstanceListDTO holds the parameters of a paginated instance list request.
+type InstanceListDTO struct {
+	VpcId    string
+	PageSize int
+}
+
 // mapGpuPlanToBillingType maps the Terraform-facing gpu_plan value to the API's billing_type value.
 func mapGpuPlanToBillingType(plan string) string {
 	switch plan {
