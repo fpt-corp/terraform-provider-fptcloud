@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"log"
@@ -39,11 +40,87 @@ func ResourceInstance() *schema.Resource {
 		UpdateContext: resourceInstanceUpdate,
 		ReadContext:   resourceInstanceRead,
 		DeleteContext: resourceInstanceDelete,
-		CustomizeDiff: resourceInstanceCustomizeDiff,
+		CustomizeDiff: customdiff.All(
+			resourceInstanceCustomizeDiff,
+			forceNewOnceKnown("image_name"),
+			forceNewOnceKnown("ssh_key"),
+			forceNewOnceKnown("password"),
+		),
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceInstanceImport,
 		},
 	}
+}
+
+const instanceNotFoundCode = "1503002"
+
+var transitionalStatuses = map[string]bool{
+	"CREATING": true, "DELETING": true, "RESIZING": true, "VERIFY_RESIZE": true, "POWERING_ON": true,
+	"POWERING_OFF": true, "REBOOT": true, "REBOOTING": true, "UPDATING_GPU": true,
+}
+
+func resourceInstanceImport(_ context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	if common.IsVpcImportName(d.Id(), "instance") {
+		return importInstanceByName(d, m)
+	}
+
+	vpcId, instanceId, err := common.ParseVpcImportId(d.Id(), "instance")
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := NewInstanceService(m.(*common.Client)).Get(vpcId, instanceId)
+	if err != nil {
+		if common.IsApiErrorCode(err, instanceNotFoundCode) {
+			return nil, fmt.Errorf("unable to import fptcloud_instance: instance %s was not found in VPC %s; check the VPC id, and that the provider region and tenant_name are the ones the instance lives in", instanceId, vpcId)
+		}
+		return nil, fmt.Errorf("unable to import fptcloud_instance %s from VPC %s: %s", instanceId, vpcId, common.DescribeApiError(err))
+	}
+	if transitionalStatuses[instance.Status] {
+		return nil, fmt.Errorf("unable to import fptcloud_instance: instance %s is %s, retry once the operation in progress is over", instanceId, instance.Status)
+	}
+	if isNvme(instance) {
+		return nil, nvmeImportUnsupported(instanceId)
+	}
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, err
+	}
+	d.SetId(instanceId)
+	return []*schema.ResourceData{d}, nil
+}
+
+func importInstanceByName(d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	vpcId, name, err := common.ParseVpcImportName(d.Id(), "instance")
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := NewInstanceService(m.(*common.Client)).GetByName(vpcId, name)
+	if err != nil {
+		if common.IsApiErrorCode(err, instanceNotFoundCode) {
+			return nil, fmt.Errorf("unable to import fptcloud_instance: no instance named %q was found in VPC %s; check the name, the VPC id, and that the provider region and tenant_name are the ones the instance lives in", name, vpcId)
+		}
+		return nil, fmt.Errorf("unable to import fptcloud_instance %q from VPC %s: %s", name, vpcId, common.DescribeApiError(err))
+	}
+	if transitionalStatuses[instance.Status] {
+		return nil, fmt.Errorf("unable to import fptcloud_instance: instance %q is %s, retry once the operation in progress is over", name, instance.Status)
+	}
+	if isNvme(instance) {
+		return nil, nvmeImportUnsupported(instance.ID)
+	}
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, err
+	}
+	d.SetId(strings.ToLower(instance.ID))
+	return []*schema.ResourceData{d}, nil
+}
+
+func forceNewOnceKnown(key string) schema.CustomizeDiffFunc {
+	return customdiff.ForceNewIfChange(key, func(_ context.Context, before, after, _ interface{}) bool {
+		return before.(string) != "" && before.(string) != after.(string)
+	})
 }
 
 // function to create a new instance
@@ -197,9 +274,14 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 		findInstanceModel.VpcId = vpcId.(string)
 	}
 
+	imported := d.Get("name").(string) == ""
+
 	foundInstance, err := instanceService.Find(findInstanceModel)
 	if err != nil {
 		return diag.Errorf("[ERR] Failed to retrieve instance: %s", err)
+	}
+	if imported {
+		return readImportedInstance(d, instanceService, foundInstance)
 	}
 
 	// Set other attributes
@@ -265,6 +347,122 @@ func resourceInstanceRead(_ context.Context, d *schema.ResourceData, m interface
 	}
 
 	return nil
+}
+
+func readImportedInstance(d *schema.ResourceData, instanceService InstanceService, foundInstance *InstanceModel) diag.Diagnostics {
+	if foundInstance.ID != d.Id() {
+		return diag.Errorf("unable to import fptcloud_instance: asked for instance %s, the API returned %s; nothing was recorded", d.Id(), foundInstance.ID)
+	}
+	if isNvme(foundInstance) {
+		return diag.FromErr(nvmeImportUnsupported(foundInstance.ID))
+	}
+	// subnet_id forces a new instance: an empty one in the state would plan a replacement
+	if foundInstance.SubnetId == "" {
+		return diag.Errorf("unable to import fptcloud_instance: the API could not resolve the subnet of instance %s; nothing was recorded, retry later", foundInstance.ID)
+	}
+
+	rootStorage, rootErr := instanceService.FindRootStorage(foundInstance.VpcId, foundInstance.ID)
+	if rootErr != nil {
+		log.Printf("[WARN] Could not retrieve the root disk of instance %s: %s", foundInstance.ID, rootErr)
+	}
+	sizeGb := remoteRootStorageSizeGb(foundInstance, rootStorage)
+	policyId := remoteRootStoragePolicyId(instanceService, foundInstance, rootStorage)
+	if sizeGb == 0 || policyId == "" {
+		return rootStorageUnreadable(foundInstance.ID, rootErr)
+	}
+
+	attributes := map[string]interface{}{
+		"vpc_id":             foundInstance.VpcId,
+		"name":               foundInstance.Name,
+		"status":             foundInstance.Status,
+		"private_ip":         foundInstance.PrivateIp,
+		"public_ip":          foundInstance.PublicIp,
+		"flavor_name":        foundInstance.FlavorName,
+		"subnet_id":          foundInstance.SubnetId,
+		"security_group_ids": foundInstance.SecurityGroupIds,
+		"instance_group_id":  foundInstance.InstanceGroupId,
+		"created_at":         foundInstance.CreatedAt,
+		"tag_ids":            foundInstance.TagIds,
+		"gpu_name":           foundInstance.GpuName,
+		"vm_type":            deriveVmType(foundInstance.GpuName),
+		"gpu_plan":           mapBillingTypeToGpuPlan(foundInstance.BillingType),
+		"is_nvme":            foundInstance.IsNvme,
+		"storage_size_gb":    sizeGb,
+		"storage_policy_id":  policyId,
+	}
+	if foundInstance.ImageName != nil && *foundInstance.ImageName != "" {
+		attributes["image_name"] = *foundInstance.ImageName
+	}
+	for key, value := range attributes {
+		if err := d.Set(key, value); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+	return nil
+}
+
+// isNvme tells a physical NVMe disk, which has no ROOT row and no storage policy
+func isNvme(instance *InstanceModel) bool {
+	return instance.IsNvme || instance.StoragePolicyId == NvmeStoragePolicy
+}
+
+func nvmeImportUnsupported(instanceId string) error {
+	return fmt.Errorf("unable to import fptcloud_instance: instance %s uses a physical NVMe disk, which is on no storage policy, "+
+		"and the storage_policy_id it was created with is not recorded by the API; importing NVMe instances is not supported yet", instanceId)
+}
+
+func rootStorageUnreadable(instanceId string, cause error) diag.Diagnostics {
+	reason := "the API did not report it"
+	if cause != nil {
+		reason = cause.Error()
+	}
+	return diag.Errorf("could not read the root disk of instance %s (%s): its size and storage policy cannot be told, "+
+		"so nothing was recorded; retry once the disk listings of the instance answer", instanceId, reason)
+}
+
+func remoteRootStorageSizeGb(instance *InstanceModel, rootStorage *RootStorageModel) int {
+	switch {
+	case rootStorage != nil && rootStorage.SizeMb > 0:
+		return rootStorage.SizeMb / 1024
+	case instance.StorageId != nil:
+		return instance.StorageSizeGb
+	}
+	return 0
+}
+
+// remoteRootStoragePolicyId get the policy the root disk is on, "" when it cannot be told
+func remoteRootStoragePolicyId(instanceService InstanceService, instance *InstanceModel, rootStorage *RootStorageModel) string {
+	if isNvme(instance) {
+		return ""
+	}
+	if rootStorage != nil && rootStorage.StoragePolicyId != "" {
+		return rootStorage.StoragePolicyId
+	}
+	if instance.StorageId != nil && instance.StoragePolicyId != "" {
+		return instance.StoragePolicyId
+	}
+
+	profile := ""
+	if rootStorage != nil {
+		profile = rootStorage.StoragePolicyName
+	}
+	if profile == "" {
+		found, err := instanceService.FindRootStorageProfile(instance.VpcId, instance.ID)
+		if err != nil {
+			log.Printf("[WARN] Could not retrieve the storage profile of the root disk of instance %s: %s", instance.ID, err)
+			return ""
+		}
+		profile = found
+	}
+	if profile == "" {
+		return ""
+	}
+	storagePolicy, err := instanceService.FindStoragePolicyByProfile(instance.VpcId, profile)
+	if err != nil {
+		log.Printf("[WARN] Could not resolve the storage policy of instance %s: %s", instance.ID, err)
+		return ""
+	}
+	return storagePolicy.ID
 }
 
 // function to delete an instance

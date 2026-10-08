@@ -83,9 +83,45 @@ func ResourceStorage() *schema.Resource {
 		UpdateContext: resourceStorageUpdate,
 		DeleteContext: resourceStorageDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: resourceStorageImport,
 		},
 	}
+}
+
+func resourceStorageImport(_ context.Context, d *schema.ResourceData, m interface{}) ([]*schema.ResourceData, error) {
+	vpcId, storageId, err := common.ParseVpcImportId(d.Id(), "storage")
+	if err != nil {
+		return nil, err
+	}
+
+	storage, err := NewStorageService(m.(*common.Client)).Get(vpcId, storageId)
+	if err != nil {
+		if isStorageNotFound(err) {
+			return nil, fmt.Errorf("unable to import fptcloud_storage: storage %s was not found in VPC %s; check the VPC id, and that the provider region and tenant_name are the ones the storage lives in", storageId, vpcId)
+		}
+		return nil, fmt.Errorf("unable to import fptcloud_storage %s from VPC %s: %s", storageId, vpcId, common.DescribeApiError(err))
+	}
+
+	switch storage.Type {
+	case External:
+	case "ROOT":
+		return nil, fmt.Errorf("unable to import fptcloud_storage: storage %s is the ROOT disk of instance %s; manage it through that fptcloud_instance (storage_size_gb, storage_policy_id)", storageId, storage.InstanceId)
+	default:
+		return nil, fmt.Errorf("unable to import fptcloud_storage: only EXTERNAL disks can be imported, storage %s is a %s disk", storageId, storage.Type)
+	}
+	switch storage.Status {
+	case "ENABLED":
+	case "DISABLED":
+		return nil, fmt.Errorf("unable to import fptcloud_storage: storage %s is DISABLED, the portal no longer finds it in the infrastructure (it may have been deleted)", storageId)
+	default:
+		return nil, fmt.Errorf("unable to import fptcloud_storage: storage %s is not ENABLED yet (status %q), retry once it is", storageId, storage.Status)
+	}
+
+	if err := d.Set("vpc_id", vpcId); err != nil {
+		return nil, err
+	}
+	d.SetId(storageId)
+	return []*schema.ResourceData{d}, nil
 }
 
 // function to create the new Storage

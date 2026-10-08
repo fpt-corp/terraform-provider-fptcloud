@@ -164,3 +164,35 @@ therefore GPU attach/detach) is refused by the API when `is_nvme` is `true`.
 - `id` (String) The id of the instance
 - `is_nvme` (Boolean) Whether the instance uses a physical NVMe disk instead of the requested storage_policy_id (see the `is_nvme` field on the `fptcloud_flavor` data source).
 - `vm_type` (String) Type of the instance (`cpu` or `gpu`), derived by the server from whether a GPU is attached (reported via the `gpu_name` field).
+
+## Import
+
+```shell
+# by id
+terraform import fptcloud_instance.example vpc/<vpc_id>/instance/<instance_id>
+
+# or by name
+terraform import fptcloud_instance.example vpc/<vpc_id>/instance_name/<instance_name>
+```
+
+With Terraform 1.5 and later, an `import` block takes the same `id`:
+
+```terraform
+import {
+  to = fptcloud_instance.example
+  id = "vpc/<vpc_id>/instance/<instance_id>"
+}
+```
+
+If several instances share a name, import by id. Instances with a physical NVMe disk cannot be
+imported yet.
+
+**After the import.** `ssh_key` and `password` cannot be read from the API, so the first plan shows
+them as added (`+ password = ...`). Applying that plan only saves them in the state; the instance is
+not changed. Use the values the instance was created with.
+
+~> Do not apply a plan that shows `forces replacement`: fix your configuration first.
+
+**Generating the configuration** (Terraform 1.5+). With only the `import` block in place, run
+`terraform plan -generate-config-out=generated.tf`, then fill in `ssh_key` or `password` (and
+`image_name` if it is `null`) in `generated.tf`, and run `terraform plan` again.

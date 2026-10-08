@@ -1,3 +1,16 @@
+### CI
+
+- `make testacc` now runs the import scenarios against Terraform 1.12.2 installed by the workflow, with `IMPORTTEST_REQUIRE_TERRAFORM=1` so a missing `terraform` fails the job instead of skipping them
+
+## [0.3.80] - 2026-10-05
+
+### Resource
+
+- Feat: import `fptcloud_instance` by id, `vpc/<vpc_id>/instance/<instance_id>`, or by name, `vpc/<vpc_id>/instance_name/<instance_name>`, with `terraform import` or an `import` block. The state keeps the instance id; every attribute is read from the API. `ssh_key`, `password` and an unknown `image_name` cannot be read: the first apply after the import records the configured values without calling the API
+- Feat: import an `EXTERNAL` `fptcloud_storage` with `vpc/<vpc_id>/storage/<storage_id>`.
+- Resources already in a state are read, planned and applied exactly as before
+- Known limitation: instances with a physical NVMe disk (`is_nvme = true`) cannot be imported yet
+
 ## [0.3.79] - 2026-10-06
 
 ### Datasource
