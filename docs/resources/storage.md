@@ -63,16 +63,12 @@ Optional:
 terraform import fptcloud_storage.example vpc/<vpc_id>/storage/<storage_id>
 ```
 
-or, with Terraform 1.5 and later, an `import` block with the same `id`. With
-`terraform plan -generate-config-out=generated.tf`, Terraform writes the resource for you
-(it never overwrites an existing file).
+With Terraform 1.5 and later, an `import` block takes the same `id`, and
+`terraform plan -generate-config-out=<new file>` writes the resource for you.
 
-Only an `ENABLED` disk of type `EXTERNAL` can be imported; `ROOT` and `LOCAL` disks are refused (the
-root disk belongs to its `fptcloud_instance`). The state keeps the storage id, and every attribute is
-read from the API, so a configuration matching the disk plans `No changes`.
+Only an `ENABLED` disk of type `EXTERNAL` can be imported. `ROOT` and `LOCAL` disks are refused: the
+root disk is managed by its `fptcloud_instance`. The state keeps the storage id and every attribute
+is read from the API, so a configuration matching the disk plans `No changes`.
 
-~> **Attached disks:** declare `instance_id` with the instance the disk is attached to. Without it,
-the first plan shows `- instance_id = "..." -> null` and applying it **detaches** the disk.
-
-Once imported, the disk behaves like one created by Terraform. If the API no longer finds it, the
-plan fails and the state is kept: remove it with `terraform state rm` once you know it was deleted.
+~> **Attached disks:** set `instance_id` to the instance the disk is attached to. Without it, the
+first plan shows `- instance_id = "..." -> null` and applying it **detaches** the disk.

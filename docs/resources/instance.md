@@ -171,38 +171,28 @@ therefore GPU attach/detach) is refused by the API when `is_nvme` is `true`.
 # by id
 terraform import fptcloud_instance.example vpc/<vpc_id>/instance/<instance_id>
 
-# or by name, unique in the VPC
+# or by name
 terraform import fptcloud_instance.example vpc/<vpc_id>/instance_name/<instance_name>
 ```
 
-or, with Terraform 1.5 and later, an `import` block with the same `id`:
+With Terraform 1.5 and later, an `import` block takes the same `id`:
 
 ```terraform
 import {
   to = fptcloud_instance.example
-  id = "vpc/<vpc_id>/instance_name/<instance_name>"
+  id = "vpc/<vpc_id>/instance/<instance_id>"
 }
 ```
 
-The state always keeps the instance id: a name is resolved once, at import, so renaming the instance
-later never makes Terraform follow another one. Every other attribute is read from the API.
+If several instances share a name, import by id. Instances with a physical NVMe disk cannot be
+imported yet.
 
-**First plan after the import.** The API cannot return `ssh_key`, `password`, nor `image_name` when
-the portal does not know the image. The first plan adds them from your configuration
-(`+ ssh_key = ...`, `1 to change`); applying it only writes the state and does not touch the
-instance. Set the values the instance was really created with: they cannot be checked, and changing
-them afterwards replaces the instance. Any other difference in that plan is a real one, e.g. a
-different `storage_size_gb` resizes the root disk: fix the configuration first.
+**After the import.** `ssh_key` and `password` cannot be read from the API, so the first plan shows
+them as added (`+ password = ...`). Applying that plan only saves them in the state; the instance is
+not changed. Use the values the instance was created with.
 
-**Generating the configuration** (Terraform 1.5+). Put only the `import` block in your
-configuration, then:
+~> Do not apply a plan that shows `forces replacement`: fix your configuration first.
 
-1. `terraform plan -generate-config-out=generated.tf`. It ends with
-   ``one of `password,ssh_key` must be specified``; that is expected, nothing is imported yet.
-2. In `generated.tf`, fill in `ssh_key` (or `password`), and `image_name` if it is `null` (the image
-   **name**, e.g. `UBUNTU-24.04-26052025`, not its display name).
-3. `terraform plan` must show `1 to import` and only `+ ssh_key` / `+ password` / `+ image_name`.
-   Do not apply a plan with `forces replacement`.
-4. `terraform apply`, then move the resource into your files and drop the `import` block.
-
-Terraform never overwrites an existing `generated.tf`: use a new file name for each import.
+**Generating the configuration** (Terraform 1.5+). With only the `import` block in place, run
+`terraform plan -generate-config-out=generated.tf`, then fill in `ssh_key` or `password` (and
+`image_name` if it is `null`) in `generated.tf`, and run `terraform plan` again.

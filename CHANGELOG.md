@@ -1,18 +1,16 @@
+### CI
+
+- `make testacc` now runs the import scenarios against Terraform 1.12.2 installed by the workflow, with `IMPORTTEST_REQUIRE_TERRAFORM=1` so a missing `terraform` fails the job instead of skipping them
+
 ## [0.3.80] - 2026-10-05
 
 ### Resource
 
-- Feat: import an existing instance with `terraform import fptcloud_instance.<name> vpc/<vpc_id>/instance/<instance_id>`, or an `import` block with the same id. The state keeps the instance id alone, so states written by earlier versions are unchanged. The import reads name, status, flavor, subnet, IPs, security groups, tags, GPU, root disk size and policy, and the image when the portal knows it
-- Feat: import an instance by its name, unique in the VPC, with `vpc/<vpc_id>/instance_name/<instance_name>`. The name is resolved to the instance id once, at import, and the state keeps that id; imports by id, and storage imports, are unchanged
-- Feat: import an existing `EXTERNAL` disk with `terraform import fptcloud_storage.<name> vpc/<vpc_id>/storage/<storage_id>`. `ROOT` and `LOCAL` disks, and disks that are not `ENABLED`, are refused. The import never detaches a disk; declare `instance_id` for an attached one, or the plan detaches it
-- Feat: `ssh_key`, `password`, and `image_name` when the portal does not know the image, cannot be read back from the API. After an import, the first apply stores their configured values in place without calling the API; changing them afterwards replaces the instance, as before
-- Import: `terraform plan -generate-config-out=<new file>` (Terraform 1.5+) writes the resource from what the API returns; for an instance only `ssh_key` or `password` has to be filled in by hand. Terraform never appends to or overwrites an existing file
-- Import only adds the import path: reading, planning and applying instances and storages that are already in a state is unchanged
-- Import: the root disk size and policy, and the subnet, are read from the instance, never taken from the configuration; the import fails and records nothing when they cannot be read, and refuses an instance while an operation is in progress on it. Known limitation: importing an instance with a physical NVMe disk (`is_nvme = true`) is not supported in this release, the import fails and records nothing; NVMe instances created by Terraform are unchanged
+- Feat: import `fptcloud_instance` by id, `vpc/<vpc_id>/instance/<instance_id>`, or by name, `vpc/<vpc_id>/instance_name/<instance_name>`, with `terraform import` or an `import` block. The state keeps the instance id; every attribute is read from the API. `ssh_key`, `password` and an unknown `image_name` cannot be read: the first apply after the import records the configured values without calling the API
+- Feat: import an `EXTERNAL` `fptcloud_storage` with `vpc/<vpc_id>/storage/<storage_id>`.
+- Resources already in a state are read, planned and applied exactly as before
+- Known limitation: instances with a physical NVMe disk (`is_nvme = true`) cannot be imported yet
 
-### CI
-
-- `make testacc` now runs the import scenarios against Terraform 1.12.2 installed by the workflow, with `IMPORTTEST_REQUIRE_TERRAFORM=1` so a missing `terraform` fails the job instead of skipping them
 ## [0.3.79] - 2026-10-06
 
 ### Datasource
