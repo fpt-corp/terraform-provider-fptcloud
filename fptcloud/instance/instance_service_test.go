@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	common "terraform-provider-fptcloud/commons"
+	fptcloud_instance "terraform-provider-fptcloud/fptcloud/instance"
 
 	"github.com/stretchr/testify/assert"
 )
