@@ -43,3 +43,34 @@ func TestDecodeError_ReturnsUnknownError(t *testing.T) {
 	assert.True(t, errors.Is(err, UnknownError))
 	assert.Equal(t, "UnknownError: System error, please try again !", err.Error())
 }
+
+// A 404/409/422/5xx used to become "System error, please try again !", hiding
+// the message the API sent. Terraform users saw that for a duplicate security
+// group name, a missing storage volume, and every operation failure.
+func TestDecodeError_KeepsReasonForEveryStatus(t *testing.T) {
+	for _, code := range []int{400, 401, 403, 404, 409, 422, 500, 503} {
+		httpErr := HTTPError{
+			Code:   code,
+			Status: "irrelevant",
+			Reason: "Security group name already exists",
+		}
+
+		err := DecodeError(httpErr)
+
+		assert.True(t, errors.Is(err, HttpError), "status %d", code)
+		assert.Equal(t,
+			"HttpError: Security group name already exists", err.Error(),
+			"status %d", code)
+	}
+}
+
+// Callers branch on the status code (resource_storage.go treats 404 as "gone").
+// That could never work while DecodeError dropped the original error.
+func TestDecodeError_KeepsStatusCodeReachable(t *testing.T) {
+	err := DecodeError(HTTPError{Code: 404, Reason: "Storage not found"})
+
+	var httpErr HTTPError
+	assert.True(t, errors.As(err, &httpErr))
+	assert.Equal(t, 404, httpErr.Code)
+	assert.Equal(t, "Storage not found", httpErr.Reason)
+}
