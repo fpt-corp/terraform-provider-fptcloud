@@ -383,7 +383,7 @@ func doResourceInstanceUpdate(ctx context.Context, d *schema.ResourceData, m int
 		}
 
 		updateStateConf := &retry.StateChangeConf{
-			Pending: []string{"VERIFY_RESIZE"},
+			Pending: []string{"VERIFY_RESIZE", "UNRESOLVED"},
 			Target:  []string{"POWERED_ON", "POWERED_OFF"},
 			Refresh: func() (interface{}, string, error) {
 				findModel := FindInstanceDTO{
