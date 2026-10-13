@@ -1,0 +1,164 @@
+package fptcloud_backup_native
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestWaitForTaskPendingThenSuccess(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/task/task-1/progress": {
+			{Body: `{"state":"PENDING","message":"PENDING","status_code":200}`},
+			{Body: `{"state":"STARTED","message":"STARTED","status_code":200}`},
+			{Body: `{"state":"SUCCESS","message":"Create backup successfully","status_code":201}`},
+		},
+	})
+	msg, err := waitForTask(context.Background(), NewVmService(client), "vpc-1", "task-1", "creating", time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Create backup successfully", msg)
+}
+
+// status_code is 200 while a task is pending, so a 200 alone is not "done".
+func TestWaitForTaskDoesNotStopOnPending200(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/task/task-1/progress": {{Body: `{"state":"PENDING","message":"PENDING","status_code":200}`}},
+	})
+	_, err := waitForTask(context.Background(), NewVmService(client), "vpc-1", "task-1", "creating", 300*time.Millisecond)
+	assert.ErrorContains(t, err, "timeout")
+}
+
+func TestWaitForTaskSuccessStateWithErrorCodeFails(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/task/task-1/progress": {{Body: `{"state":"SUCCESS","message":"Instance is registered to a backup","status_code":400}`}},
+	})
+	_, err := waitForTask(context.Background(), NewVmService(client), "vpc-1", "task-1", "creating the VM backup job", time.Minute)
+	assert.ErrorContains(t, err, "creating the VM backup job failed (status 400): Instance is registered to a backup (a VM can belong")
+}
+
+func TestWaitForTaskFailureState(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/task/task-1/progress": {{Body: `{"state":"FAILURE","message":"FAILURE","status_code":200}`}},
+	})
+	_, err := waitForTask(context.Background(), NewVmService(client), "vpc-1", "task-1", "updating", time.Minute)
+	assert.ErrorContains(t, err, "ended in state FAILURE")
+}
+
+func TestWaitVmJobSettled(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {
+			{Body: `{"data":{"id":"job-1","status":"45"}}`},
+			{Body: `{"data":{"id":"job-1","status":"Updating"}}`},
+			{Body: `{"data":{"id":"job-1","status":"Success"}}`},
+		},
+	})
+	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Success", job.Status)
+}
+
+func TestWaitVmJobGone(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {
+			{Body: `{"data":{"id":"job-1","status":"Deleting"}}`},
+			{Body: `{}`},
+		},
+	})
+	assert.NoError(t, waitVmJobGone(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute))
+}
+
+func TestWaitVmJobGoneFailsOnError(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"error_deleting"}}`}},
+	})
+	assert.ErrorContains(t, waitVmJobGone(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute), "error_deleting")
+}
+
+func TestWaitVolumeJobGone(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9": {
+			{Body: `{"data":{"id":"job-9","status":"deleting"}}`},
+			{Status: 400, Body: `{"message":"Backup job not found with id job-9"}`},
+		},
+	})
+	assert.NoError(t, waitVolumeJobGone(context.Background(), NewVolumeService(client), "vpc-1", "job-9", time.Minute))
+}
+
+// Review focus 5.
+func TestFindVmRestoreRowIgnoresOlderRows(t *testing.T) {
+	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
+	rows := []VmHistory{
+		{VmId: "vm-1", Type: "Restore", Status: "Success", StartTime: "2026-10-13T07:00:00"},
+		{VmId: "vm-2", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T08:00:30"},
+		{VmId: "vm-1", Type: "Restore keep", Status: "Restoring keep", StartTime: "2026-10-13T08:00:30"},
+	}
+	assert.Nil(t, findVmRestoreRow(rows, "vm-1", "Restore", since))
+
+	rows = append(rows, VmHistory{VmId: "vm-1", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T07:59:00"})
+	row := findVmRestoreRow(rows, "vm-1", "Restore", since)
+	require.NotNil(t, row, "a row inside the clock-skew window counts")
+	assert.Equal(t, "Restoring", row.Status)
+}
+
+func TestWaitVmRestoreSuccessAndFailure(t *testing.T) {
+	setFastPolling(t)
+	since := time.Now().UTC()
+	start := since.Format(apiTimeLayout)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {
+			{Body: `{"total":0,"data":[]}`},
+			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Restoring","start_time":"` + start + `"}]}`},
+			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Success","start_time":"` + start + `","end_time":"` + start + `"}]}`},
+		},
+	})
+	row, err := waitVmRestore(context.Background(), NewVmService(client), "vpc-1", "vm-1", "Restore", since, time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Success", row.Status)
+
+	_, failing := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Failed","reason":"flavor quota exceeded","start_time":"` + start + `"}]}`}},
+	})
+	_, err = waitVmRestore(context.Background(), NewVmService(failing), "vpc-1", "vm-1", "Restore", since, time.Minute)
+	assert.ErrorContains(t, err, "flavor quota exceeded")
+}
+
+// Review focus 5: rows are newest first, so reading stops at the first row
+// older than the cutoff.
+func TestFindVolumeRestoreRowStopsAtCutoff(t *testing.T) {
+	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/history/combined-history": {
+			{Body: `{"items":[
+				{"source_type":"instance","vm_id":"vm-1","type":"Restore","status":"success","start_time":"2026-10-13T08:05:00"},
+				{"source_type":"volume","object_id":"vol-2","type":"Restore keep","status":"pending","start_time":"2026-10-13T08:04:00"}],"has_more":true}`},
+			{Body: `{"items":[
+				{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"success","start_time":"2026-10-13T07:00:00"}],"has_more":true}`},
+		},
+	})
+	row, err := findVolumeRestoreRow(NewVolumeService(client), "vpc-1", "vol-1", since)
+	require.NoError(t, err)
+	assert.Nil(t, row, "the 07:00 row belongs to an earlier restore")
+	assert.Equal(t, 2, api.count("GET "+volBase+"/history/combined-history"), "stops at the cutoff instead of reading every page")
+}
+
+func TestWaitVolumeRestoreFailureUsesExtractInfo(t *testing.T) {
+	setFastPolling(t)
+	since := time.Now().UTC()
+	start := since.Format(apiTimeLayout)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/history/combined-history": {{Body: `{"items":[{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"failed","start_time":"` + start + `","history_metadata":{"extract_info":{"status":"no space left"}}}],"has_more":false}`}},
+	})
+	_, err := waitVolumeRestore(context.Background(), NewVolumeService(client), "vpc-1", "vol-1", since, time.Minute)
+	assert.ErrorContains(t, err, "no space left")
+}

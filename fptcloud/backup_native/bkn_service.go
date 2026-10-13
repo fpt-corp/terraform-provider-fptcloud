@@ -3,7 +3,6 @@ package fptcloud_backup_native
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	common "terraform-provider-fptcloud/commons"
 )
@@ -236,5 +235,3 @@ func (s *service) ListFloatingIps(vpcId string) ([]FloatingIpItem, error) {
 	}
 	return resp.Data, nil
 }
-
-var pollInterval = 5 * time.Second // moved to bkn_wait.go in Task 7
