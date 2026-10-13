@@ -2,7 +2,7 @@
 
 - `make testacc` now runs the import scenarios against Terraform 1.12.2 installed by the workflow, with `IMPORTTEST_REQUIRE_TERRAFORM=1` so a missing `terraform` fails the job instead of skipping them
 
-## [0.3.80] - 2026-10-05
+## [0.3.81] - 2026-10-12
 
 ### Resource
 
@@ -10,6 +10,9 @@
 - Feat: import an `EXTERNAL` `fptcloud_storage` with `vpc/<vpc_id>/storage/<storage_id>`.
 - Resources already in a state are read, planned and applied exactly as before
 - Known limitation: instances with a physical NVMe disk (`is_nvme = true`) cannot be imported yet
+
+## [0.3.80] - 2026-10-10
+- Fix: resize instance add status UNRESOLVE
 
 ## [0.3.79] - 2026-10-06
 
