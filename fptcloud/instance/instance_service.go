@@ -3,6 +3,7 @@ package fptcloud_instance
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	common "terraform-provider-fptcloud/commons"
 	"terraform-provider-fptcloud/commons/utils"
 )
@@ -14,9 +15,14 @@ const (
 	RootInfraStorageType = "root"
 )
 
+// NvmeStoragePolicy is what the portal reports as the storage policy of a physical NVMe disk
+const NvmeStoragePolicy = "NVME"
+
 // InstanceService defines the interface for instance service
 type InstanceService interface {
 	Find(searchModel FindInstanceDTO) (*InstanceModel, error)
+	Get(vpcId string, instanceId string) (*InstanceModel, error)
+	GetByName(vpcId string, name string) (*InstanceModel, error)
 	ListAll(listModel InstanceListDTO) ([]InstanceListModel, error)
 	Create(createdModel CreateInstanceDTO) (string, error)
 	Delete(vpcId string, instanceId string) (*common.SimpleResponse, error)
@@ -31,6 +37,8 @@ type InstanceService interface {
 	FindRootStorage(vpcId string, instanceId string) (*RootStorageModel, error)
 	ResizeRootDisk(vpcId string, instanceId string, resizeModel ResizeRootDiskDTO) (*common.SimpleResponse, error)
 	FindStoragePolicy(vpcId string, storagePolicyId string) (*StoragePolicyDTO, error)
+	FindStoragePolicyByProfile(vpcId string, profileName string) (*StoragePolicyDTO, error)
+	FindRootStorageProfile(vpcId string, instanceId string) (string, error)
 }
 
 // InstanceServiceImpl is the implementation of InstanceService
@@ -77,6 +85,47 @@ func (s *InstanceServiceImpl) Find(searchModel FindInstanceDTO) (*InstanceModel,
 
 	if err != nil {
 		return nil, common.DecodeError(err)
+	}
+
+	return &responseModel.Data, nil
+}
+
+func (s *InstanceServiceImpl) Get(vpcId string, instanceId string) (*InstanceModel, error) {
+	var apiPath = common.ApiPath.Instance(vpcId) + utils.ToQueryParams(FindInstanceDTO{ID: instanceId})
+	resp, err := s.client.SendGetRequest(apiPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseModel struct {
+		Data InstanceModel `json:"data"`
+	}
+	if err := json.Unmarshal(resp, &responseModel); err != nil {
+		return nil, fmt.Errorf("unreadable instance response: %s", err)
+	}
+	if responseModel.Data.ID == "" {
+		return nil, fmt.Errorf("the API returned no instance for id %s", instanceId)
+	}
+
+	return &responseModel.Data, nil
+}
+
+// GetByName reads an instance by its name, unique in the VPC, and returns the request error as is like Get
+func (s *InstanceServiceImpl) GetByName(vpcId string, name string) (*InstanceModel, error) {
+	var apiPath = common.ApiPath.Instance(vpcId) + utils.ToQueryParams(FindInstanceDTO{Name: name})
+	resp, err := s.client.SendGetRequest(apiPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseModel struct {
+		Data InstanceModel `json:"data"`
+	}
+	if err := json.Unmarshal(resp, &responseModel); err != nil {
+		return nil, fmt.Errorf("unreadable instance response: %s", err)
+	}
+	if responseModel.Data.ID == "" {
+		return nil, fmt.Errorf("the API returned no instance named %q", name)
 	}
 
 	return &responseModel.Data, nil
@@ -382,4 +431,53 @@ func (s *InstanceServiceImpl) FindStoragePolicy(vpcId string, storagePolicyId st
 	}
 
 	return nil, fmt.Errorf("storage policy %s not found in vpc %s", storagePolicyId, vpcId)
+}
+
+func (s *InstanceServiceImpl) FindRootStorageProfile(vpcId string, instanceId string) (string, error) {
+	rootStorage, err := s.findRootStorageInInfra(vpcId, instanceId)
+	if err != nil {
+		return "", err
+	}
+	return rootStorage.StoragePolicyName, nil
+}
+
+func (s *InstanceServiceImpl) FindStoragePolicyByProfile(vpcId string, profileName string) (*StoragePolicyDTO, error) {
+	var apiPath = common.ApiPath.StoragePolicy(vpcId)
+	resp, err := s.client.SendGetRequest(apiPath)
+	if err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var responseModel struct {
+		Data []StoragePolicyDTO `json:"data"`
+	}
+	if err := json.Unmarshal(resp, &responseModel); err != nil {
+		return nil, common.DecodeError(err)
+	}
+
+	var found *StoragePolicyDTO
+	ambiguous := false
+	for i, storagePolicy := range responseModel.Data {
+		if !isProfileOfPolicy(profileName, storagePolicy.Name) {
+			continue
+		}
+		switch {
+		case found == nil || len(storagePolicy.Name) > len(found.Name):
+			found, ambiguous = &responseModel.Data[i], false
+		case len(storagePolicy.Name) == len(found.Name):
+			ambiguous = true
+		}
+	}
+
+	if found == nil {
+		return nil, fmt.Errorf("no storage policy of vpc %s matches the profile %s", vpcId, profileName)
+	}
+	if ambiguous {
+		return nil, fmt.Errorf("several storage policies of vpc %s are named %s", vpcId, found.Name)
+	}
+	return found, nil
+}
+
+func isProfileOfPolicy(profileName string, policyName string) bool {
+	return profileName == policyName || strings.HasPrefix(profileName, policyName+"_")
 }

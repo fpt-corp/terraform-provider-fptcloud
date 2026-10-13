@@ -159,8 +159,7 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"image_name": {
 		Type:        schema.TypeString,
 		Required:    true,
-		Description: "The image name of the instance (get from API or data source)",
-		ForceNew:    true,
+		Description: "The image name of the instance (get from API or data source). Changing it replaces the instance. After an import it is read from the API when the portal knows the image; otherwise the first apply stores the configured value without calling the API.",
 	},
 	"subnet_id": {
 		Type:        schema.TypeString,
@@ -195,15 +194,13 @@ var resourceInstanceSchema = map[string]*schema.Schema{
 	"ssh_key": {
 		Type:         schema.TypeString,
 		Optional:     true,
-		Description:  "The ssh key of the instance",
-		ForceNew:     true,
+		Description:  "The ssh key of the instance. ",
 		ExactlyOneOf: []string{"ssh_key", "password"},
 	},
 	"password": {
 		Type:         schema.TypeString,
 		Optional:     true,
-		Description:  "The password of the instance",
-		ForceNew:     true,
+		Description:  "The password of the instance. ",
 		ExactlyOneOf: []string{"ssh_key", "password"},
 	},
 	"created_at": {
