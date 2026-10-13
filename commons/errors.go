@@ -57,6 +57,21 @@ func (err wrapError) Is(target error) bool {
 	return constError(err.msg).Is(target)
 }
 
+// reasonError renders as the reason the API sent, so a wrapped error reads
+// "HttpError: <reason>" and not the full "<code>: <status>, <reason>" dump,
+// while still carrying the HTTPError for errors.As.
+type reasonError struct {
+	http HTTPError
+}
+
+func (err reasonError) Error() string {
+	return err.http.Reason
+}
+
+func (err reasonError) Unwrap() error {
+	return err.http
+}
+
 func DecodeError(err error) error {
 	var urlErr *url.Error
 	var netErr net.Error
@@ -69,9 +84,16 @@ func DecodeError(err error) error {
 	}
 
 	if errors.As(err, &httpErr) {
-		if httpErr.Code == 400 {
-			return HttpError.WrapString(httpErr.Reason)
-		}
+		// Every status keeps the reason the API sent. Only 400 used to: 404,
+		// 409, 422 and 5xx all collapsed into "System error, please try again !",
+		// so a message the API had already written for the user (e.g. "Security
+		// group name already exists") never reached them.
+		//
+		// Wrapping the HTTPError itself -- rather than only its text -- also
+		// keeps the status code reachable via errors.As. Callers already try
+		// that (see fptcloud/storage/resource_storage.go), but it could never
+		// match while the original error was dropped here.
+		return HttpError.Wrap(reasonError{http: httpErr})
 	}
 	return UnknownError.WrapString("System error, please try again !")
 }
