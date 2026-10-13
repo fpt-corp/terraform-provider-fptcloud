@@ -1,3 +1,17 @@
+## [Unreleased]
+
+### Resource
+
+- Feat: add `fptcloud_backup_native_vm_job` to manage VM backup jobs of the Backup Native service
+- Feat: add `fptcloud_backup_native_volume_job` to manage backup jobs of FKE persistent volumes
+- Feat: add `fptcloud_backup_native_vm_restore` to restore a VM onto itself (`overwrite`) or into a new VM (`keep`)
+- Feat: add `fptcloud_backup_native_volume_restore` to restore a volume restore point into a new volume
+
+### Datasource
+
+- Feat: add `fptcloud_backup_native_vm_jobs` and `fptcloud_backup_native_volume_jobs` to list backup jobs
+- Feat: add `fptcloud_backup_native_vm_restore_points` and `fptcloud_backup_native_volume_restore_points` to list restore points, newest first
+
 ## [0.3.82] - 2026-10-20
 
 ### Docs
