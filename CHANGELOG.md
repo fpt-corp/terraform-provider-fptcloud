@@ -1,7 +1,3 @@
-### CI
-
-- `make testacc` now runs the import scenarios against Terraform 1.12.2 installed by the workflow, with `IMPORTTEST_REQUIRE_TERRAFORM=1` so a missing `terraform` fails the job instead of skipping them
-
 ## [0.3.81] - 2026-10-12
 
 ### Resource
