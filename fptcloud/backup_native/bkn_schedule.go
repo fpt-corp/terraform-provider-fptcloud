@@ -107,8 +107,10 @@ func flattenSchedule(s Schedule) []interface{} {
 
 // validateScheduleDay checks full_backup_day against the frequency. daySet
 // says whether the configuration sets full_backup_day at all, because 0 is a
-// real value (Monday) and cannot stand for "unset".
-func validateScheduleDay(s Schedule, daySet bool) error {
+// real value (Monday) and cannot stand for "unset". dayKnown is false when the
+// day comes from a value Terraform learns only at apply; s.FullBackupDay then
+// reads 0, so only its presence is checked.
+func validateScheduleDay(s Schedule, daySet bool, dayKnown bool) error {
 	switch s.FullBackupFrequency {
 	case frequencyDaily:
 		if daySet {
@@ -118,14 +120,14 @@ func validateScheduleDay(s Schedule, daySet bool) error {
 		if !daySet {
 			return fmt.Errorf("schedule.full_backup_day is required when full_backup_frequency is weekly (0-6, Monday is 0)")
 		}
-		if s.FullBackupDay < 0 || s.FullBackupDay > 6 {
+		if dayKnown && (s.FullBackupDay < 0 || s.FullBackupDay > 6) {
 			return fmt.Errorf("schedule.full_backup_day must be 0-6 (Monday is 0) when full_backup_frequency is weekly, got %d", s.FullBackupDay)
 		}
 	case frequencyMonthly:
 		if !daySet {
 			return fmt.Errorf("schedule.full_backup_day is required when full_backup_frequency is monthly (1-31)")
 		}
-		if s.FullBackupDay < 1 || s.FullBackupDay > 31 {
+		if dayKnown && (s.FullBackupDay < 1 || s.FullBackupDay > 31) {
 			return fmt.Errorf("schedule.full_backup_day must be 1-31 when full_backup_frequency is monthly, got %d", s.FullBackupDay)
 		}
 	}
@@ -133,30 +135,32 @@ func validateScheduleDay(s Schedule, daySet bool) error {
 }
 
 // scheduleDaySet reads from the raw configuration whether
-// schedule.full_backup_day is written. known is false when the schedule block
-// itself is not known yet; the check then waits for apply.
-func scheduleDaySet(rawConfig cty.Value) (set bool, known bool) {
+// schedule.full_backup_day is written and whether its value is known yet.
+// known is false when the schedule block itself is not known yet; the check
+// then waits for apply.
+func scheduleDaySet(rawConfig cty.Value) (set bool, dayKnown bool, known bool) {
 	if !rawConfig.IsKnown() || rawConfig.IsNull() || !rawConfig.Type().IsObjectType() || !rawConfig.Type().HasAttribute("schedule") {
-		return false, false
+		return false, false, false
 	}
 	sched := rawConfig.GetAttr("schedule")
 	if !sched.IsKnown() || sched.IsNull() || sched.LengthInt() == 0 {
-		return false, false
+		return false, false, false
 	}
 	block := sched.Index(cty.NumberIntVal(0))
 	if !block.IsKnown() || block.IsNull() {
-		return false, false
+		return false, false, false
 	}
-	return !block.GetAttr("full_backup_day").IsNull(), true
+	day := block.GetAttr("full_backup_day")
+	return !day.IsNull(), day.IsKnown(), true
 }
 
 // customizeSchedule is the CustomizeDiff step both job resources share.
 func customizeSchedule(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
-	set, known := scheduleDaySet(d.GetRawConfig())
+	set, dayKnown, known := scheduleDaySet(d.GetRawConfig())
 	if !known {
 		return nil
 	}
-	return validateScheduleDay(expandSchedule(d.Get("schedule")), set)
+	return validateScheduleDay(expandSchedule(d.Get("schedule")), set, dayKnown)
 }
 
 // applyVmCreateSchedule fills the schedule part of a v1 create body the way

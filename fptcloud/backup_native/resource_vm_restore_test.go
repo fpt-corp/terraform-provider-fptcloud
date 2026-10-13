@@ -14,6 +14,12 @@ func TestVmRestoreSchemaIsValid(t *testing.T) {
 	assert.NoError(t, ResourceVmRestore().InternalValidate(nil, true))
 }
 
+// A restore is matched to its history row by VM, type and start time, so two
+// restores of one VM in the same apply can each finish on the other's row.
+func TestVmRestoreDescriptionWarnsAgainstConcurrentRestores(t *testing.T) {
+	assert.Contains(t, ResourceVmRestore().Description, "Run one restore per VM at a time")
+}
+
 func TestCheckRestoreArguments(t *testing.T) {
 	assert.NoError(t, checkRestoreArguments("overwrite", map[string]bool{}))
 	assert.ErrorContains(t, checkRestoreArguments("overwrite", map[string]bool{"flavor_id": true}), "flavor_id can only be set when mode is keep")

@@ -28,7 +28,8 @@ func ResourceVmRestore() *schema.Resource {
 	return &schema.Resource{
 		Description: "Restores a VM from a Backup Native restore point. Applying the resource runs the restore once and waits for it to finish. " +
 			"Destroying it only removes it from state; it never changes the VM. `overwrite` restores onto the original VM; `keep` creates a new VM and keeps the original. " +
-			"The API does not return the new VM's id; find it by `instance_name` with the `fptcloud_instances` data source.",
+			"The API does not return the new VM's id; find it by `instance_name` with the `fptcloud_instances` data source. " +
+			"Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row.",
 		CreateContext: createVmRestore,
 		ReadContext:   readOneShot,
 		DeleteContext: deleteOneShot,

@@ -22,30 +22,37 @@ func scheduleConfig(day cty.Value) cty.Value {
 
 // Review focus 1: Monday is 0 and must count as set.
 func TestScheduleDaySetTreatsZeroAsSet(t *testing.T) {
-	set, known := scheduleDaySet(scheduleConfig(cty.NumberIntVal(0)))
+	set, dayKnown, known := scheduleDaySet(scheduleConfig(cty.NumberIntVal(0)))
 	assert.True(t, known)
 	assert.True(t, set)
+	assert.True(t, dayKnown)
 
-	set, known = scheduleDaySet(scheduleConfig(cty.NullVal(cty.Number)))
+	set, _, known = scheduleDaySet(scheduleConfig(cty.NullVal(cty.Number)))
 	assert.True(t, known)
 	assert.False(t, set)
 
-	_, known = scheduleDaySet(scheduleConfig(cty.UnknownVal(cty.Number)))
-	assert.True(t, known, "an unknown day is still a set day")
+	set, dayKnown, known = scheduleDaySet(scheduleConfig(cty.UnknownVal(cty.Number)))
+	assert.True(t, known)
+	assert.True(t, set, "an unknown day is still a set day")
+	assert.False(t, dayKnown, "its value is not known until apply")
 
-	_, known = scheduleDaySet(cty.UnknownVal(cty.DynamicPseudoType))
+	_, _, known = scheduleDaySet(cty.UnknownVal(cty.DynamicPseudoType))
 	assert.False(t, known)
 }
 
 func TestValidateScheduleDay(t *testing.T) {
-	assert.NoError(t, validateScheduleDay(Schedule{FullBackupFrequency: "daily"}, false))
-	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "daily"}, true), "not allowed")
-	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "weekly"}, false), "required")
-	assert.NoError(t, validateScheduleDay(Schedule{FullBackupFrequency: "weekly", FullBackupDay: 0}, true))
-	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "weekly", FullBackupDay: 7}, true), "0-6")
-	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "monthly"}, false), "required")
-	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "monthly", FullBackupDay: 0}, true), "1-31")
-	assert.NoError(t, validateScheduleDay(Schedule{FullBackupFrequency: "monthly", FullBackupDay: 31}, true))
+	assert.NoError(t, validateScheduleDay(Schedule{FullBackupFrequency: "daily"}, false, true))
+	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "daily"}, true, true), "not allowed")
+	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "weekly"}, false, true), "required")
+	assert.NoError(t, validateScheduleDay(Schedule{FullBackupFrequency: "weekly", FullBackupDay: 0}, true, true))
+	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "weekly", FullBackupDay: 7}, true, true), "0-6")
+	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "monthly"}, false, true), "required")
+	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "monthly", FullBackupDay: 0}, true, true), "1-31")
+	assert.NoError(t, validateScheduleDay(Schedule{FullBackupFrequency: "monthly", FullBackupDay: 31}, true, true))
+	// A day taken from another resource is unknown at plan time and reads as
+	// 0; only its presence is checked then, the range waits for apply.
+	assert.NoError(t, validateScheduleDay(Schedule{FullBackupFrequency: "monthly", FullBackupDay: 0}, true, false))
+	assert.ErrorContains(t, validateScheduleDay(Schedule{FullBackupFrequency: "daily"}, true, false), "not allowed")
 }
 
 func TestExpandAndFlattenSchedule(t *testing.T) {
