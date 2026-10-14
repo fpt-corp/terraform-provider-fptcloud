@@ -16,7 +16,8 @@ func ResourceVolumeRestore() *schema.Resource {
 	return &schema.Resource{
 		Description: "Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. " +
 			"Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. " +
-			"The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source.",
+			"The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. " +
+			"Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.",
 		CreateContext: createVolumeRestore,
 		ReadContext:   readOneShot,
 		DeleteContext: deleteOneShot,
@@ -62,7 +63,12 @@ func createVolumeRestore(ctx context.Context, d *schema.ResourceData, m interfac
 	restorePointId := d.Get("restore_point_id").(string)
 	submitted := time.Now().UTC()
 
-	err := svc.RestoreVolume(vpcId, volumeId, VolumeRestorePayload{
+	// Rows already in the history belong to earlier restores of this volume.
+	seen, err := volumeRestoreRowsSeen(svc, vpcId, volumeId, submitted)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	err = svc.RestoreVolume(vpcId, volumeId, VolumeRestorePayload{
 		BackupId: restorePointId,
 		Metadata: VolumeRestoreMetadata{Name: d.Get("name").(string), Size: d.Get("size_gb").(int)},
 	})
@@ -70,7 +76,7 @@ func createVolumeRestore(ctx context.Context, d *schema.ResourceData, m interfac
 		return diag.FromErr(err)
 	}
 
-	row, err := waitVolumeRestore(ctx, svc, vpcId, volumeId, submitted, d.Timeout(schema.TimeoutCreate))
+	row, err := waitVolumeRestore(ctx, svc, vpcId, volumeId, submitted, seen, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}

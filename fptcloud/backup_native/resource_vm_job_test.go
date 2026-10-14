@@ -203,13 +203,40 @@ func TestDeleteVmJobWaitsUntilGone(t *testing.T) {
 	setFastPolling(t)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"DELETE " + vmBase + "/job-1/delete": {{Status: 202, Body: `{"message":"Delete successfully."}`}},
-		"GET " + vmBase + "/detail":          {{Body: `{"data":{"id":"job-1","status":"Deleting"}}`}, {Body: `{}`}},
+		"GET " + vmBase + "/detail": {
+			{Body: `{"data":{"id":"job-1","status":"45"}}`}, // a scheduled backup is running
+			{Body: `{"data":{"id":"job-1","status":"Success"}}`},
+			{Body: `{"data":{"id":"job-1","status":"Deleting"}}`},
+			{Body: `{}`},
+		},
 	})
 	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
 	d.SetId("job-1")
 	diags := deleteVmJob(context.Background(), d, client)
 	require.False(t, diags.HasError(), "%v", diags)
-	assert.Equal(t, 2, api.count("GET "+vmBase+"/detail"))
+	assert.Equal(t, 1, api.servedBefore("GET "+vmBase+"/detail", "DELETE "+vmBase+"/job-1/delete"), "the delete waits for the backup to finish")
+	assert.Equal(t, 4, api.count("GET "+vmBase+"/detail"))
+}
+
+func TestDeleteVmJobThatDisappearsWhileWaiting(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Deleting"}}`}, {Body: `{}`}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+	diags := deleteVmJob(context.Background(), d, client)
+	require.False(t, diags.HasError(), "%v", diags)
+}
+
+func TestDeleteVmJobThatIsAlreadyGone(t *testing.T) {
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: `{}`}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+	diags := deleteVmJob(context.Background(), d, client)
+	require.False(t, diags.HasError(), "%v", diags)
 }
 
 func TestImportVmJobId(t *testing.T) {

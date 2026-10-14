@@ -147,7 +147,15 @@ func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{})
 	submitted := time.Now().UTC()
 
 	historyType := "Restore"
-	var err error
+	if mode != modeOverwrite {
+		historyType = "Restore keep"
+	}
+	// Rows already in the history belong to earlier restores of this VM.
+	seen, err := vmRestoreRowsSeen(svc, vpcId, vmId, historyType, submitted)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
 	if mode == modeOverwrite {
 		err = svc.RestoreVm(vpcId, VmRestorePayload{
 			VmId:        vmId,
@@ -157,7 +165,6 @@ func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{})
 			PowerOn:     d.Get("power_on").(bool),
 		})
 	} else {
-		historyType = "Restore keep"
 		var payload VmRestoreKeepPayload
 		payload, err = buildRestoreKeepPayload(vpcId, keepArgs{
 			VmId:             vmId,
@@ -179,7 +186,7 @@ func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{})
 		return diag.FromErr(err)
 	}
 
-	row, err := waitVmRestore(ctx, svc, vpcId, vmId, historyType, submitted, d.Timeout(schema.TimeoutCreate))
+	row, err := waitVmRestore(ctx, svc, vpcId, vmId, historyType, submitted, seen, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}

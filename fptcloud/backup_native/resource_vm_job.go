@@ -297,6 +297,21 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 func deleteVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
+	// The API rejects a delete while a backup runs, so wait for it first.
+	job, err := svc.GetVmJob(vpcId, d.Id())
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if job == nil {
+		return nil
+	}
+	if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {
+		// An earlier delete that timed out may finish while this one waits.
+		if job, getErr := svc.GetVmJob(vpcId, d.Id()); getErr == nil && job == nil {
+			return nil
+		}
+		return diag.FromErr(err)
+	}
 	if err := svc.DeleteVmJob(vpcId, d.Id()); err != nil {
 		return diag.FromErr(err)
 	}

@@ -122,7 +122,7 @@ func findVolumeJobByName(svc VolumeService, vpcId, name string) (*VolumeJobListI
 }
 
 func applyVolumeJobUpdate(ctx context.Context, svc VolumeService, vpcId, jobId string, p VolumeJobPayload, timeout time.Duration) error {
-	if _, err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
+	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
 		return err
 	}
 	failures, err := svc.UpdateVolumeJob(vpcId, jobId, p)
@@ -133,6 +133,31 @@ func applyVolumeJobUpdate(ctx context.Context, svc VolumeService, vpcId, jobId s
 		return fmt.Errorf("the volume backup job %s was updated, but these volumes could not be added: %s", jobId, formatVolumeFailures(failures))
 	}
 	return nil
+}
+
+// setVolumeJobEnabled waits for a running operation to finish first, because
+// v2 accepts actions only from a settled job.
+func setVolumeJobEnabled(ctx context.Context, svc VolumeService, vpcId, jobId string, enabled bool, timeout time.Duration) error {
+	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
+		return err
+	}
+	return svc.SetVolumeJobEnabled(vpcId, jobId, enabled)
+}
+
+// withoutFailedVolumes drops the volumes a create could not add, so the
+// update that follows does not send them again.
+func withoutFailedVolumes(volumeIds []string, failures []VolumeFailure) []string {
+	failed := map[string]bool{}
+	for _, f := range failures {
+		failed[f.VolumeId] = true
+	}
+	kept := make([]string, 0, len(volumeIds))
+	for _, id := range volumeIds {
+		if !failed[id] {
+			kept = append(kept, id)
+		}
+	}
+	return kept
 }
 
 func createVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -169,24 +194,31 @@ func createVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 	}
 	d.SetId(job.Id)
 
+	// A partial create is a warning, not an error: an error with the id set
+	// taints the resource, and the next apply would replace the job instead
+	// of adding the missing volumes.
+	var diags diag.Diagnostics
 	if len(failures) > 0 {
-		diags := readVolumeJob(ctx, d, m)
-		return append(diags, diag.Errorf("the volume backup job %s was created, but these volumes could not be added: %s. The job is saved in state; the next plan shows the missing volumes in volume_ids",
-			job.Id, formatVolumeFailures(failures))...)
+		payload.BackupObjects = withoutFailedVolumes(payload.BackupObjects, failures)
+		diags = append(diags, diag.Diagnostic{
+			Severity: diag.Warning,
+			Summary:  fmt.Sprintf("the volume backup job %s was created, but these volumes could not be added: %s", job.Id, formatVolumeFailures(failures)),
+			Detail:   "The job is saved in state without them; the next plan shows them as a change to volume_ids.",
+		})
 	}
 
 	// v2 create does not store description; update does.
 	if payload.Description != "" {
 		if err := applyVolumeJobUpdate(ctx, svc, vpcId, job.Id, payload, timeout); err != nil {
-			return diag.FromErr(err)
+			return append(diags, diag.FromErr(err)...)
 		}
 	}
 	if !d.Get("schedule_enabled").(bool) {
-		if err := svc.SetVolumeJobEnabled(vpcId, job.Id, false); err != nil {
-			return diag.FromErr(err)
+		if err := setVolumeJobEnabled(ctx, svc, vpcId, job.Id, false, timeout); err != nil {
+			return append(diags, diag.FromErr(err)...)
 		}
 	}
-	return readVolumeJob(ctx, d, m)
+	return append(diags, readVolumeJob(ctx, d, m)...)
 }
 
 func readVolumeJob(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -241,7 +273,7 @@ func updateVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 		return diag.Errorf("volume backup job %s no longer exists", d.Id())
 	}
 	if want := d.Get("schedule_enabled").(bool); job.IsEnabled != want {
-		if err := svc.SetVolumeJobEnabled(vpcId, d.Id(), want); err != nil {
+		if err := setVolumeJobEnabled(ctx, svc, vpcId, d.Id(), want, timeout); err != nil {
 			return diag.FromErr(err)
 		}
 	}
@@ -251,6 +283,21 @@ func updateVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 func deleteVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	svc := NewVolumeService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
+	// The API rejects a delete while a backup runs, so wait for it first.
+	job, err := svc.GetVolumeJob(vpcId, d.Id())
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if job == nil {
+		return nil
+	}
+	if err := waitVolumeJobSettled(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {
+		// An earlier delete that timed out may finish while this one waits.
+		if job, getErr := svc.GetVolumeJob(vpcId, d.Id()); getErr == nil && job == nil {
+			return nil
+		}
+		return diag.FromErr(err)
+	}
 	if err := svc.DeleteVolumeJob(vpcId, d.Id()); err != nil {
 		return diag.FromErr(err)
 	}

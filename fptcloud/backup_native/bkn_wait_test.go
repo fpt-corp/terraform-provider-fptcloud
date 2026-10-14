@@ -84,6 +84,42 @@ func TestWaitVmJobGoneFailsOnError(t *testing.T) {
 	assert.ErrorContains(t, waitVmJobGone(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute), "error_deleting")
 }
 
+// A job whose last backup failed sits in "error"; that is not a failed delete
+// until the job has moved on from the status it had when the delete started.
+func TestWaitVmJobGoneIgnoresErrorFromBeforeTheDelete(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {
+			{Body: `{"data":{"id":"job-1","status":"Error"}}`},
+			{Body: `{"data":{"id":"job-1","status":"Error"}}`},
+			{Body: `{}`},
+		},
+	})
+	assert.NoError(t, waitVmJobGone(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute))
+}
+
+func TestWaitVmJobGoneFailsWhenTheDeleteEndsInError(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {
+			{Body: `{"data":{"id":"job-1","status":"Deleting"}}`},
+			{Body: `{"data":{"id":"job-1","status":"Error"}}`},
+		},
+	})
+	assert.ErrorContains(t, waitVmJobGone(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute), "state Error")
+}
+
+func TestWaitVolumeJobGoneIgnoresErrorFromBeforeTheDelete(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9": {
+			{Body: `{"data":{"id":"job-9","status":"error"}}`},
+			{Status: 400, Body: `{"message":"Backup job not found with id job-9"}`},
+		},
+	})
+	assert.NoError(t, waitVolumeJobGone(context.Background(), NewVolumeService(client), "vpc-1", "job-9", time.Minute))
+}
+
 func TestWaitVolumeJobGone(t *testing.T) {
 	setFastPolling(t)
 	_, client := newFakeAPI(t, map[string][]fakeResponse{
@@ -103,10 +139,10 @@ func TestFindVmRestoreRowIgnoresOlderRows(t *testing.T) {
 		{VmId: "vm-2", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T08:00:30"},
 		{VmId: "vm-1", Type: "Restore keep", Status: "Restoring keep", StartTime: "2026-10-13T08:00:30"},
 	}
-	assert.Nil(t, findVmRestoreRow(rows, "vm-1", "Restore", since))
+	assert.Nil(t, findVmRestoreRow(rows, "vm-1", "Restore", since, nil))
 
 	rows = append(rows, VmHistory{VmId: "vm-1", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T07:59:00"})
-	row := findVmRestoreRow(rows, "vm-1", "Restore", since)
+	row := findVmRestoreRow(rows, "vm-1", "Restore", since, nil)
 	require.NotNil(t, row, "a row inside the clock-skew window counts")
 	assert.Equal(t, "Restoring", row.Status)
 }
@@ -122,15 +158,64 @@ func TestWaitVmRestoreSuccessAndFailure(t *testing.T) {
 			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Success","start_time":"` + start + `","end_time":"` + start + `"}]}`},
 		},
 	})
-	row, err := waitVmRestore(context.Background(), NewVmService(client), "vpc-1", "vm-1", "Restore", since, time.Minute)
+	row, err := waitVmRestore(context.Background(), NewVmService(client), "vpc-1", "vm-1", "Restore", since, nil, time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, "Success", row.Status)
 
 	_, failing := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + vmBase + "/histories/list": {{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Failed","reason":"flavor quota exceeded","start_time":"` + start + `"}]}`}},
 	})
-	_, err = waitVmRestore(context.Background(), NewVmService(failing), "vpc-1", "vm-1", "Restore", since, time.Minute)
+	_, err = waitVmRestore(context.Background(), NewVmService(failing), "vpc-1", "vm-1", "Restore", since, nil, time.Minute)
 	assert.ErrorContains(t, err, "flavor quota exceeded")
+}
+
+// A restore that finished just before this one was submitted can still sit
+// inside the clock-skew window; rows seen before submitting never match.
+func TestFindVmRestoreRowSkipsRowsSeenBeforeSubmit(t *testing.T) {
+	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
+	rows := []VmHistory{{VmId: "vm-1", Type: "Restore", Status: "Success", StartTime: "2026-10-13T07:59:30"}}
+	seen := map[string]bool{"2026-10-13T07:59:30": true}
+	assert.Nil(t, findVmRestoreRow(rows, "vm-1", "Restore", since, seen))
+
+	rows = append(rows, VmHistory{VmId: "vm-1", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T08:00:10"})
+	row := findVmRestoreRow(rows, "vm-1", "Restore", since, seen)
+	require.NotNil(t, row)
+	assert.Equal(t, "Restoring", row.Status)
+}
+
+func TestWaitVmRestoreStatusIgnoresCase(t *testing.T) {
+	setFastPolling(t)
+	since := time.Now().UTC()
+	start := since.Format(apiTimeLayout)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"SUCCESS","start_time":"` + start + `"}]}`}},
+	})
+	_, err := waitVmRestore(context.Background(), NewVmService(client), "vpc-1", "vm-1", "Restore", since, nil, 2*time.Second)
+	require.NoError(t, err)
+
+	_, failing := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"failed","reason":"disk full","start_time":"` + start + `"}]}`}},
+	})
+	_, err = waitVmRestore(context.Background(), NewVmService(failing), "vpc-1", "vm-1", "Restore", since, nil, 2*time.Second)
+	assert.ErrorContains(t, err, "disk full")
+}
+
+func TestFindVolumeRestoreRowSkipsRowsSeenBeforeSubmit(t *testing.T) {
+	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/history/combined-history": {{Body: `{"items":[
+			{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"pending","start_time":"2026-10-13T08:00:20"},
+			{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"success","start_time":"2026-10-13T07:59:40"}],"has_more":false}`}},
+	})
+	svc := NewVolumeService(client)
+	row, err := findVolumeRestoreRow(svc, "vpc-1", "vol-1", since, map[string]bool{"2026-10-13T08:00:20": true})
+	require.NoError(t, err)
+	require.NotNil(t, row)
+	assert.Equal(t, "2026-10-13T07:59:40", row.StartTime, "the newest row was seen before submit, so the next one matches")
+
+	row, err = findVolumeRestoreRow(svc, "vpc-1", "vol-1", since, map[string]bool{"2026-10-13T08:00:20": true, "2026-10-13T07:59:40": true})
+	require.NoError(t, err)
+	assert.Nil(t, row)
 }
 
 // Review focus 5: rows are newest first, so reading stops at the first row
@@ -146,7 +231,7 @@ func TestFindVolumeRestoreRowStopsAtCutoff(t *testing.T) {
 				{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"success","start_time":"2026-10-13T07:00:00"}],"has_more":true}`},
 		},
 	})
-	row, err := findVolumeRestoreRow(NewVolumeService(client), "vpc-1", "vol-1", since)
+	row, err := findVolumeRestoreRow(NewVolumeService(client), "vpc-1", "vol-1", since, nil)
 	require.NoError(t, err)
 	assert.Nil(t, row, "the 07:00 row belongs to an earlier restore")
 	assert.Equal(t, 2, api.count("GET "+volBase+"/history/combined-history"), "stops at the cutoff instead of reading every page")
@@ -159,6 +244,6 @@ func TestWaitVolumeRestoreFailureUsesExtractInfo(t *testing.T) {
 	_, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + volBase + "/history/combined-history": {{Body: `{"items":[{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"failed","start_time":"` + start + `","history_metadata":{"extract_info":{"status":"no space left"}}}],"has_more":false}`}},
 	})
-	_, err := waitVolumeRestore(context.Background(), NewVolumeService(client), "vpc-1", "vol-1", since, time.Minute)
+	_, err := waitVolumeRestore(context.Background(), NewVolumeService(client), "vpc-1", "vol-1", since, nil, time.Minute)
 	assert.ErrorContains(t, err, "no space left")
 }

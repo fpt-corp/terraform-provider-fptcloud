@@ -23,6 +23,7 @@ type recordedRequest struct {
 	Path   string
 	Query  url.Values
 	Body   map[string]interface{}
+	Served int // index of the scripted response this request got
 }
 
 // fakeAPI answers requests by "METHOD /path" (query string excluded). Each
@@ -56,9 +57,13 @@ func (a *fakeAPI) serve(w http.ResponseWriter, r *http.Request) {
 	raw, _ := io.ReadAll(r.Body)
 	var body map[string]interface{}
 	_ = json.Unmarshal(raw, &body)
-	a.requests = append(a.requests, recordedRequest{Method: r.Method, Path: r.URL.Path, Query: r.URL.Query(), Body: body})
-
 	responses := a.routes[key]
+	served := a.calls[key]
+	if served >= len(responses) {
+		served = len(responses) - 1
+	}
+	a.requests = append(a.requests, recordedRequest{Method: r.Method, Path: r.URL.Path, Query: r.URL.Query(), Body: body, Served: served})
+
 	if len(responses) == 0 {
 		a.t.Errorf("unexpected request %s?%s", key, r.URL.RawQuery)
 		w.WriteHeader(http.StatusTeapot)
@@ -89,6 +94,24 @@ func (a *fakeAPI) last(key string) recordedRequest {
 	}
 	a.t.Fatalf("no request to %s", key)
 	return recordedRequest{}
+}
+
+// servedBefore returns which scripted response the last request to key got
+// before the first request to next, or -1 when key was not called before it.
+func (a *fakeAPI) servedBefore(key, next string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	served := -1
+	for _, r := range a.requests {
+		switch r.Method + " " + r.Path {
+		case next:
+			return served
+		case key:
+			served = r.Served
+		}
+	}
+	a.t.Fatalf("no request to %s", next)
+	return -1
 }
 
 func (a *fakeAPI) count(key string) int {

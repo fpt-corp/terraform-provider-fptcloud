@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_volume_restore Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. The API does not return the new volume's id; find it by name with the fptcloud_storages data source.
+  Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. The API does not return the new volume's id; find it by name with the fptcloud_storages data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
 ---
 
 # fptcloud_backup_native_volume_restore (Resource)
 
-Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source.
+Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
 
 ## Example Usage
 

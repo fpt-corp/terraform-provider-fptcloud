@@ -43,6 +43,7 @@ func TestCreateVmRestoreOverwrite(t *testing.T) {
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"POST " + vmBase + "/restore": {{Status: 202, Body: `{"message":"Your request have been accepted.","status":true}`}},
 		"GET " + vmBase + "/histories/list": {
+			{Body: `{"total":0,"data":[]}`},
 			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Restoring","start_time":"` + start + `"}]}`},
 			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Success","start_time":"` + start + `","end_time":"` + start + `"}]}`},
 		},
@@ -62,12 +63,36 @@ func TestCreateVmRestoreOverwrite(t *testing.T) {
 	assert.Equal(t, "Restore", api.last("GET "+vmBase+"/histories/list").Query.Get("type"))
 }
 
+// Review focus 5: the row of a restore that finished just before this one was
+// submitted is inside the clock-skew window and must not complete it.
+func TestCreateVmRestoreIgnoresTheRowOfAnEarlierRestore(t *testing.T) {
+	setFastPolling(t)
+	earlier := time.Now().UTC().Add(-30 * time.Second).Format(apiTimeLayout)
+	start := time.Now().UTC().Add(time.Second).Format(apiTimeLayout)
+	old := `{"vm_id":"vm-1","type":"Restore","status":"Success","start_time":"` + earlier + `","end_time":"` + earlier + `"}`
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"POST " + vmBase + "/restore": {{Status: 202, Body: `{"status":true}`}},
+		"GET " + vmBase + "/histories/list": {
+			{Body: `{"total":1,"data":[` + old + `]}`},
+			{Body: `{"total":2,"data":[{"vm_id":"vm-1","type":"Restore","status":"Restoring","start_time":"` + start + `"},` + old + `]}`},
+			{Body: `{"total":2,"data":[{"vm_id":"vm-1","type":"Restore","status":"Success","start_time":"` + start + `","end_time":"` + start + `"},` + old + `]}`},
+		},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmRestoreSchema(), map[string]interface{}{
+		"vpc_id": "vpc-1", "vm_id": "vm-1", "restore_point_created_at": "2026-10-12T19:00:00", "mode": "overwrite",
+	})
+	diags := createVmRestore(context.Background(), d, client)
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, formatAPITime(start), d.Get("started_at"))
+}
+
 func TestCreateVmRestoreFailureLeavesNoState(t *testing.T) {
 	setFastPolling(t)
 	start := time.Now().UTC().Format(apiTimeLayout)
 	_, client := newFakeAPI(t, map[string][]fakeResponse{
 		"POST " + vmBase + "/restore": {{Status: 202, Body: `{"status":true}`}},
 		"GET " + vmBase + "/histories/list": {
+			{Body: `{"total":0,"data":[]}`},
 			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore","status":"Failed","reason":"disk error","start_time":"` + start + `"}]}`},
 		},
 	})

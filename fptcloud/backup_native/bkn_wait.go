@@ -94,7 +94,23 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, t
 	return raw.(*VmJobDetail), nil
 }
 
+// deleteFailed reports whether a job status during a delete wait means the
+// delete failed. A job whose last backup failed already reads "error" before
+// the delete starts, so "error" counts only after another status was seen.
+func deleteFailed(status, failedStatus string, sawOther *bool) bool {
+	status = strings.ToLower(status)
+	if status == failedStatus {
+		return true
+	}
+	if status == "error" {
+		return *sawOther
+	}
+	*sawOther = true
+	return false
+}
+
 func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, timeout time.Duration) error {
+	sawOther := false
 	conf := newStateConf([]string{"deleting"}, []string{"gone"}, func() (interface{}, string, error) {
 		job, err := svc.GetVmJob(vpcId, jobId)
 		if err != nil {
@@ -103,8 +119,7 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 		if job == nil {
 			return struct{}{}, "gone", nil
 		}
-		switch strings.ToLower(job.Status) {
-		case "error", "error_deleting":
+		if deleteFailed(job.Status, "error_deleting", &sawOther) {
 			return nil, "", fmt.Errorf("deleting VM backup job %s failed: the job is in state %s", jobId, job.Status)
 		}
 		return job, "deleting", nil
@@ -118,7 +133,7 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 // Statuses in which a v2 job accepts update, actions and executions.
 var volumeJobStableStatuses = map[string]bool{"initiated": true, "available": true, "success": true, "error": true}
 
-func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) (*VolumeJobDetail, error) {
+func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) error {
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVolumeJob(vpcId, jobId)
 		if err != nil {
@@ -132,14 +147,14 @@ func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId s
 		}
 		return job, "busy", nil
 	}, timeout)
-	raw, err := conf.WaitForStateContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("waiting for volume backup job %s to finish its running operation: %w", jobId, err)
+	if _, err := conf.WaitForStateContext(ctx); err != nil {
+		return fmt.Errorf("waiting for volume backup job %s to finish its running operation: %w", jobId, err)
 	}
-	return raw.(*VolumeJobDetail), nil
+	return nil
 }
 
 func waitVolumeJobGone(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) error {
+	sawOther := false
 	conf := newStateConf([]string{"deleting"}, []string{"gone"}, func() (interface{}, string, error) {
 		job, err := svc.GetVolumeJob(vpcId, jobId)
 		if err != nil {
@@ -148,8 +163,7 @@ func waitVolumeJobGone(ctx context.Context, svc VolumeService, vpcId, jobId stri
 		if job == nil {
 			return struct{}{}, "gone", nil
 		}
-		switch strings.ToLower(job.Status) {
-		case "error", "deleting error":
+		if deleteFailed(job.Status, "deleting error", &sawOther) {
 			return nil, "", fmt.Errorf("deleting volume backup job %s failed: the job is in state %s", jobId, job.Status)
 		}
 		return job, "deleting", nil
@@ -162,14 +176,16 @@ func waitVolumeJobGone(ctx context.Context, svc VolumeService, vpcId, jobId stri
 
 // findVmRestoreRow returns the newest history row of a restore submitted at
 // since, or nil. History rows carry no id, so a row matches on VM, type and
-// a start time no earlier than since minus historyClockSkew.
-func findVmRestoreRow(rows []VmHistory, vmId, historyType string, since time.Time) *VmHistory {
+// a start time no earlier than since minus historyClockSkew. seen holds the
+// start times of matching rows read before the restore was submitted; they
+// belong to earlier restores.
+func findVmRestoreRow(rows []VmHistory, vmId, historyType string, since time.Time, seen map[string]bool) *VmHistory {
 	cutoff := since.Add(-historyClockSkew)
 	var best *VmHistory
 	var bestStart time.Time
 	for i := range rows {
 		row := &rows[i]
-		if row.VmId != vmId || row.Type != historyType {
+		if row.VmId != vmId || row.Type != historyType || seen[row.StartTime] {
 			continue
 		}
 		start, err := parseAPITime(row.StartTime)
@@ -183,20 +199,37 @@ func findVmRestoreRow(rows []VmHistory, vmId, historyType string, since time.Tim
 	return best
 }
 
-func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType string, since time.Time, timeout time.Duration) (*VmHistory, error) {
+// vmRestoreRowsSeen returns the start times of the rows findVmRestoreRow
+// would match before a restore is submitted.
+func vmRestoreRowsSeen(svc VmService, vpcId, vmId, historyType string, since time.Time) (map[string]bool, error) {
+	rows, err := svc.ListVmHistories(vpcId, historyType)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for {
+		row := findVmRestoreRow(rows, vmId, historyType, since, seen)
+		if row == nil {
+			return seen, nil
+		}
+		seen[row.StartTime] = true
+	}
+}
+
+func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType string, since time.Time, seen map[string]bool, timeout time.Duration) (*VmHistory, error) {
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
 		rows, err := svc.ListVmHistories(vpcId, historyType)
 		if err != nil {
 			return nil, "", err
 		}
-		row := findVmRestoreRow(rows, vmId, historyType, since)
+		row := findVmRestoreRow(rows, vmId, historyType, since, seen)
 		if row == nil {
 			return struct{}{}, "waiting", nil
 		}
-		switch row.Status {
-		case "Success":
+		switch strings.ToLower(row.Status) {
+		case "success":
 			return row, "done", nil
-		case "Failed":
+		case "failed":
 			return nil, "", fmt.Errorf("restoring VM %s failed: %s", vmId, row.Reason)
 		}
 		return row, "waiting", nil
@@ -208,15 +241,41 @@ func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType 
 	return raw.(*VmHistory), nil
 }
 
-// findVolumeRestoreRow reads combined history newest first until it finds the
-// "Restore keep" row of this volume, or reaches rows older than the cutoff.
-// The endpoint ignores every filter, so matching happens here.
-func findVolumeRestoreRow(svc VolumeService, vpcId, volumeId string, since time.Time) (*VolumeHistoryItem, error) {
+// findVolumeRestoreRow returns the newest "Restore keep" row of this volume
+// that is not in seen, or nil. seen works as in findVmRestoreRow.
+func findVolumeRestoreRow(svc VolumeService, vpcId, volumeId string, since time.Time, seen map[string]bool) (*VolumeHistoryItem, error) {
+	var found *VolumeHistoryItem
+	err := scanVolumeRestoreRows(svc, vpcId, volumeId, since, func(item *VolumeHistoryItem) bool {
+		if seen[item.StartTime] {
+			return false
+		}
+		found = item
+		return true
+	})
+	return found, err
+}
+
+// volumeRestoreRowsSeen returns the start times of the rows
+// findVolumeRestoreRow would match before a restore is submitted.
+func volumeRestoreRowsSeen(svc VolumeService, vpcId, volumeId string, since time.Time) (map[string]bool, error) {
+	seen := map[string]bool{}
+	err := scanVolumeRestoreRows(svc, vpcId, volumeId, since, func(item *VolumeHistoryItem) bool {
+		seen[item.StartTime] = true
+		return false
+	})
+	return seen, err
+}
+
+// scanVolumeRestoreRows reads combined history newest first and calls visit
+// for each "Restore keep" row of this volume, until visit returns true or the
+// rows get older than the cutoff. The endpoint ignores every filter, so
+// matching happens here.
+func scanVolumeRestoreRows(svc VolumeService, vpcId, volumeId string, since time.Time, visit func(*VolumeHistoryItem) bool) error {
 	cutoff := since.Add(-historyClockSkew)
 	for page := 1; page <= maxListPages; page++ {
 		result, err := svc.ListVolumeHistoryPage(vpcId, page, historyPageSize)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for i := range result.Items {
 			item := &result.Items[i]
@@ -225,22 +284,22 @@ func findVolumeRestoreRow(svc VolumeService, vpcId, volumeId string, since time.
 				continue
 			}
 			if start.Before(cutoff) {
-				return nil, nil
+				return nil
 			}
-			if item.SourceType == "volume" && item.ObjectId == volumeId && item.Type == "Restore keep" {
-				return item, nil
+			if item.SourceType == "volume" && item.ObjectId == volumeId && item.Type == "Restore keep" && visit(item) {
+				return nil
 			}
 		}
 		if !result.HasMore {
-			return nil, nil
+			return nil
 		}
 	}
-	return nil, nil
+	return nil
 }
 
-func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId string, since time.Time, timeout time.Duration) (*VolumeHistoryItem, error) {
+func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId string, since time.Time, seen map[string]bool, timeout time.Duration) (*VolumeHistoryItem, error) {
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
-		row, err := findVolumeRestoreRow(svc, vpcId, volumeId, since)
+		row, err := findVolumeRestoreRow(svc, vpcId, volumeId, since, seen)
 		if err != nil {
 			return nil, "", err
 		}
