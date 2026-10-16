@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Resource
+
+- Fix: `fptcloud_subnet` keeps waiting while the portal is still creating the subnet, instead of failing with `UnknownError: System error, please try again !` when the create task takes longer than the first check (10 seconds). The subnet was created anyway and was left out of the state, so the next apply failed on the CIDR. Other errors still stop the wait, with the API message
+
 ## [0.3.82] - 2026-10-20
 
 ### Docs
