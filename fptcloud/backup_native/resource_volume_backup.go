@@ -36,7 +36,7 @@ func createVolumeBackup(ctx context.Context, d *schema.ResourceData, m interface
 	jobId := d.Get("job_id").(string)
 	return createManualBackup(ctx, d, manualBackupRun{
 		settle: func(ctx context.Context, timeout time.Duration) error {
-			return waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout)
+			return waitVolumeJobSettled(ctx, svc, vpcId, jobId, settleToRun, timeout)
 		},
 		start: func() error { return svc.StartVolumeJobBackup(vpcId, jobId) },
 		wait: func(ctx context.Context, timeout time.Duration) (string, error) {

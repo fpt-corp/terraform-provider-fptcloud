@@ -45,3 +45,16 @@ func TestCreateVolumeBackupQuotaExhausted(t *testing.T) {
 	assert.Contains(t, diags[0].Summary, "backup quota is exhausted")
 	assert.Empty(t, d.Id())
 }
+
+// A v2 job with several volumes reads "error" once one volume fails while the
+// others still back up; the manual run must not start on top of that run.
+func TestCreateVolumeBackupWaitsOutAMidRunError(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9":             jobStatuses("job-9", "backing up", "error", "backing up", "success", "pending", "success"),
+		"POST " + volBase + "/backup-jobs/job-9/executions": {{Body: `{"message":"Backup job started successfully","status":true}`}},
+	})
+	diags := createVolumeBackup(context.Background(), volumeBackupData(t), client)
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, 3, api.servedBefore("GET "+volBase+"/backup-jobs/job-9", "POST "+volBase+"/backup-jobs/job-9/executions"))
+}

@@ -111,12 +111,16 @@ var vmJobStableStatuses = map[string]bool{"initiated": true, "available": true, 
 // settlePurpose says what a settle wait is for. A v1 job reads "Failed" after
 // a run in which any VM failed, and keeps it until another run starts. Update,
 // switch_schedule and a manual backup refuse that state, so waiting for it to
-// change would only run out the timeout; delete accepts it.
+// change would only run out the timeout; delete accepts it. A v2 job with
+// several volumes reads "error" as soon as one volume fails, while the others
+// still back up, so before a manual backup a v2 "error" counts only once it
+// has held for runFailureHold.
 type settlePurpose int
 
 const (
 	settleToChange settlePurpose = iota
 	settleToDelete
+	settleToRun
 )
 
 func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, purpose settlePurpose, timeout time.Duration) (*VmJobDetail, error) {
@@ -188,7 +192,8 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 // Statuses in which a v2 job accepts update, actions and executions.
 var volumeJobStableStatuses = map[string]bool{"initiated": true, "available": true, "success": true, "error": true}
 
-func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) error {
+func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId string, purpose settlePurpose, timeout time.Duration) error {
+	var failingSince time.Time
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVolumeJob(vpcId, jobId)
 		if err != nil {
@@ -197,7 +202,18 @@ func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId s
 		if job == nil {
 			return nil, "", fmt.Errorf("volume backup job %s no longer exists", jobId)
 		}
-		if volumeJobStableStatuses[strings.ToLower(job.Status)] {
+		status := strings.ToLower(job.Status)
+		if status == "error" && purpose == settleToRun {
+			if failingSince.IsZero() {
+				failingSince = time.Now()
+			}
+			if time.Since(failingSince) < runFailureHold {
+				return job, "busy", nil
+			}
+			return job, "settled", nil
+		}
+		failingSince = time.Time{}
+		if volumeJobStableStatuses[status] {
 			return job, "settled", nil
 		}
 		return job, "busy", nil
@@ -411,10 +427,14 @@ func waitVolumeJobRun(ctx context.Context, svc VolumeService, vpcId, jobId strin
 func waitJobRun(ctx context.Context, kind, jobId string, read func() (status string, found bool, err error), failed map[string]bool, timeout time.Duration) (string, error) {
 	var outcome error
 	var failingSince time.Time
+	lastStatus := "Pending"
 	conf := newStateConf([]string{"running"}, []string{"done"}, func() (interface{}, string, error) {
 		status, found, err := read()
 		if err != nil {
 			return nil, "", readFailed(err)
+		}
+		if found {
+			lastStatus = status
 		}
 		if !found {
 			outcome = fmt.Errorf("the %s backup job %s was deleted while its backup ran", kind, jobId)
@@ -444,8 +464,12 @@ func waitJobRun(ctx context.Context, kind, jobId string, read func() (status str
 	}
 	var timeoutErr *retry.TimeoutError
 	if errors.As(err, &timeoutErr) {
+		if strings.EqualFold(lastStatus, "pending") {
+			return "", fmt.Errorf("waiting for the backup of %s backup job %s to finish: %w. "+
+				"The job may be stuck in Pending; the API refuses a new run until the job settles", kind, jobId, err)
+		}
 		return "", fmt.Errorf("waiting for the backup of %s backup job %s to finish: %w. "+
-			"The job may be stuck in Pending; the API refuses a new run until the job settles", kind, jobId, err)
+			"The job was last in state %s: the backup goes on without Terraform. Raise timeouts.create to wait longer", kind, jobId, err, lastStatus)
 	}
 	if err != nil {
 		return "", fmt.Errorf("waiting for the backup of %s backup job %s to finish: %w", kind, jobId, err)

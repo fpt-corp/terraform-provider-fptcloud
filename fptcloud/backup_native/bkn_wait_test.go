@@ -404,3 +404,23 @@ func TestWaitJobRunTimesOutOnAStuckPending(t *testing.T) {
 	_, err := waitVmRun(t, jobStatuses("job-1", "Pending"), 200*time.Millisecond)
 	assert.ErrorContains(t, err, "stuck in Pending")
 }
+
+func TestWaitVolumeJobSettledAcceptsAHeldErrorBeforeARun(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{"GET " + volBase + "/backup-jobs/job-9": jobStatuses("job-9", "error")})
+	require.NoError(t, waitVolumeJobSettled(context.Background(), NewVolumeService(client), "vpc-1", "job-9", settleToRun, time.Minute))
+	assert.Greater(t, api.count("GET "+volBase+"/backup-jobs/job-9"), 1, "the error had to hold")
+}
+
+func TestWaitVolumeJobSettledAcceptsErrorAtOnceBeforeAChange(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{"GET " + volBase + "/backup-jobs/job-9": jobStatuses("job-9", "error")})
+	require.NoError(t, waitVolumeJobSettled(context.Background(), NewVolumeService(client), "vpc-1", "job-9", settleToChange, time.Minute))
+	assert.Equal(t, 1, api.count("GET "+volBase+"/backup-jobs/job-9"))
+}
+
+func TestWaitJobRunTimeoutNamesTheLastStatus(t *testing.T) {
+	_, err := waitVmRun(t, jobStatuses("job-1", "Backing up"), 200*time.Millisecond)
+	assert.ErrorContains(t, err, "last in state Backing up")
+	assert.NotContains(t, err.Error(), "stuck in Pending")
+}

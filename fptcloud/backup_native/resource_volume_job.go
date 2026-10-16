@@ -122,7 +122,7 @@ func findVolumeJobByName(svc VolumeService, vpcId, name string) (*VolumeJobListI
 }
 
 func applyVolumeJobUpdate(ctx context.Context, svc VolumeService, vpcId, jobId string, p VolumeJobPayload, timeout time.Duration) error {
-	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
+	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, settleToChange, timeout); err != nil {
 		return err
 	}
 	failures, err := svc.UpdateVolumeJob(vpcId, jobId, p)
@@ -138,7 +138,7 @@ func applyVolumeJobUpdate(ctx context.Context, svc VolumeService, vpcId, jobId s
 // setVolumeJobEnabled waits for a running operation to finish first, because
 // v2 accepts actions only from a settled job.
 func setVolumeJobEnabled(ctx context.Context, svc VolumeService, vpcId, jobId string, enabled bool, timeout time.Duration) error {
-	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
+	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, settleToChange, timeout); err != nil {
 		return err
 	}
 	return svc.SetVolumeJobEnabled(vpcId, jobId, enabled)
@@ -291,7 +291,7 @@ func deleteVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 	if job == nil {
 		return nil
 	}
-	if err := waitVolumeJobSettled(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {
+	if err := waitVolumeJobSettled(ctx, svc, vpcId, d.Id(), settleToDelete, d.Timeout(schema.TimeoutDelete)); err != nil {
 		// An earlier delete that timed out may finish while this one waits.
 		if job, getErr := svc.GetVolumeJob(vpcId, d.Id()); getErr == nil && job == nil {
 			return nil

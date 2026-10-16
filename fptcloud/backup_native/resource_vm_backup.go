@@ -119,7 +119,7 @@ func createVmBackup(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	jobId := d.Get("job_id").(string)
 	return createManualBackup(ctx, d, manualBackupRun{
 		settle: func(ctx context.Context, timeout time.Duration) error {
-			_, err := waitVmJobSettled(ctx, svc, vpcId, jobId, settleToChange, timeout)
+			_, err := waitVmJobSettled(ctx, svc, vpcId, jobId, settleToRun, timeout)
 			return err
 		},
 		start: func() error { return svc.StartVmJobBackup(vpcId, jobId) },
