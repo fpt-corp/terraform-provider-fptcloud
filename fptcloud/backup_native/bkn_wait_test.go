@@ -247,3 +247,63 @@ func TestWaitVolumeRestoreFailureUsesExtractInfo(t *testing.T) {
 	_, err := waitVolumeRestore(context.Background(), NewVolumeService(client), "vpc-1", "vol-1", since, nil, time.Minute)
 	assert.ErrorContains(t, err, "no space left")
 }
+
+// A dev apply got one 401 from the history list while a submitted restore
+// ran; the wait must keep polling through a passing API error.
+func TestWaitVmRestoreSurvivesAPassingAPIError(t *testing.T) {
+	setFastPolling(t)
+	since := time.Now().UTC()
+	start := since.Format(apiTimeLayout)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {
+			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore keep","status":"Restoring","start_time":"` + start + `"}]}`},
+			{Status: 401, Body: `{"message":"Unauthorized Access"}`},
+			{Status: 502, Body: `<html>bad gateway</html>`},
+			{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore keep","status":"Success","start_time":"` + start + `"}]}`},
+		},
+	})
+	row, err := waitVmRestore(context.Background(), NewVmService(client), "vpc-1", "vm-1", "Restore keep", since, nil, time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Success", row.Status)
+}
+
+func TestWaitVolumeRestoreSurvivesAPassingAPIError(t *testing.T) {
+	setFastPolling(t)
+	since := time.Now().UTC()
+	start := since.Format(apiTimeLayout)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/history/combined-history": {
+			{Status: 401, Body: `{"message":"Unauthorized Access"}`},
+			{Body: `{"items":[{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"success","start_time":"` + start + `"}],"has_more":false}`},
+		},
+	})
+	row, err := waitVolumeRestore(context.Background(), NewVolumeService(client), "vpc-1", "vol-1", since, nil, time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "success", row.Status)
+}
+
+// The VM job create path: the task was accepted, then one progress read fails.
+func TestWaitForTaskSurvivesAPassingAPIError(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/task/task-1/progress": {
+			{Status: 401, Body: `{"message":"Unauthorized Access"}`},
+			{Body: `{"state":"SUCCESS","message":"Create backup successfully","status_code":201}`},
+		},
+	})
+	msg, err := waitForTask(context.Background(), NewVmService(client), "vpc-1", "task-1", "creating", time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Create backup successfully", msg)
+}
+
+// An error that does not pass still ends the wait, and says it was retried.
+func TestWaitGivesUpAfterRepeatedAPIErrors(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {{Status: 401, Body: `{"message":"Unauthorized Access"}`}},
+	})
+	_, err := waitVmRestore(context.Background(), NewVmService(client), "vpc-1", "vm-1", "Restore", time.Now().UTC(), nil, time.Minute)
+	assert.ErrorContains(t, err, "Unauthorized Access")
+	assert.ErrorContains(t, err, "6 reads in a row")
+	assert.Equal(t, maxPollErrors+1, api.count("GET "+vmBase+"/histories/list"))
+}

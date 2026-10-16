@@ -2,6 +2,7 @@ package fptcloud_backup_native
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,11 @@ import (
 
 // pollInterval is the wait between polls. Tests shorten it.
 var pollInterval = 5 * time.Second
+
+// maxPollErrors is how many failed API reads in a row a wait rides out. The
+// operation being waited on is already running, so a passing error (a dev
+// gateway answered one poll with 401) must not abandon it.
+const maxPollErrors = 5
 
 // historyClockSkew widens the "after submit" test on history rows, because
 // the backend clock and this machine's clock are not the same clock.
@@ -27,11 +33,39 @@ func pollTimeout(crudTimeout time.Duration) time.Duration {
 	return crudTimeout - margin
 }
 
+// pollReadError marks a failed API read inside a refresh function, as opposed
+// to an outcome such as "the restore failed", which ends the wait at once.
+type pollReadError struct{ err error }
+
+func (e pollReadError) Error() string { return e.err.Error() }
+func (e pollReadError) Unwrap() error { return e.err }
+
+func readFailed(err error) error { return pollReadError{err} }
+
+// tolerateReadErrors keeps a wait in its pending state through up to
+// maxPollErrors failed reads in a row; one more ends it with the last error.
+func tolerateReadErrors(refresh retry.StateRefreshFunc, pending string) retry.StateRefreshFunc {
+	failures := 0
+	return func() (interface{}, string, error) {
+		result, state, err := refresh()
+		var readErr pollReadError
+		if !errors.As(err, &readErr) {
+			failures = 0
+			return result, state, err
+		}
+		failures++
+		if failures > maxPollErrors {
+			return nil, "", fmt.Errorf("%w (failed %d reads in a row)", readErr.err, failures)
+		}
+		return struct{}{}, pending, nil
+	}
+}
+
 func newStateConf(pending, target []string, refresh retry.StateRefreshFunc, timeout time.Duration) *retry.StateChangeConf {
 	return &retry.StateChangeConf{
 		Pending:                   pending,
 		Target:                    target,
-		Refresh:                   refresh,
+		Refresh:                   tolerateReadErrors(refresh, pending[0]),
 		Timeout:                   pollTimeout(timeout),
 		Delay:                     pollInterval,
 		MinTimeout:                pollInterval,
@@ -47,7 +81,7 @@ func waitForTask(ctx context.Context, svc VmService, vpcId, taskId, action strin
 	conf := newStateConf([]string{"running"}, []string{"done"}, func() (interface{}, string, error) {
 		progress, err := svc.GetTaskProgress(vpcId, taskId)
 		if err != nil {
-			return nil, "", err
+			return nil, "", readFailed(err)
 		}
 		switch strings.ToUpper(progress.State) {
 		case "SUCCESS":
@@ -77,7 +111,7 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, t
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVmJob(vpcId, jobId)
 		if err != nil {
-			return nil, "", err
+			return nil, "", readFailed(err)
 		}
 		if job == nil {
 			return nil, "", fmt.Errorf("VM backup job %s no longer exists", jobId)
@@ -114,7 +148,7 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 	conf := newStateConf([]string{"deleting"}, []string{"gone"}, func() (interface{}, string, error) {
 		job, err := svc.GetVmJob(vpcId, jobId)
 		if err != nil {
-			return nil, "", err
+			return nil, "", readFailed(err)
 		}
 		if job == nil {
 			return struct{}{}, "gone", nil
@@ -137,7 +171,7 @@ func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId s
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVolumeJob(vpcId, jobId)
 		if err != nil {
-			return nil, "", err
+			return nil, "", readFailed(err)
 		}
 		if job == nil {
 			return nil, "", fmt.Errorf("volume backup job %s no longer exists", jobId)
@@ -158,7 +192,7 @@ func waitVolumeJobGone(ctx context.Context, svc VolumeService, vpcId, jobId stri
 	conf := newStateConf([]string{"deleting"}, []string{"gone"}, func() (interface{}, string, error) {
 		job, err := svc.GetVolumeJob(vpcId, jobId)
 		if err != nil {
-			return nil, "", err
+			return nil, "", readFailed(err)
 		}
 		if job == nil {
 			return struct{}{}, "gone", nil
@@ -220,7 +254,7 @@ func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType 
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
 		rows, err := svc.ListVmHistories(vpcId, historyType)
 		if err != nil {
-			return nil, "", err
+			return nil, "", readFailed(err)
 		}
 		row := findVmRestoreRow(rows, vmId, historyType, since, seen)
 		if row == nil {
@@ -301,7 +335,7 @@ func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId s
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
 		row, err := findVolumeRestoreRow(svc, vpcId, volumeId, since, seen)
 		if err != nil {
-			return nil, "", err
+			return nil, "", readFailed(err)
 		}
 		if row == nil {
 			return struct{}{}, "waiting", nil
