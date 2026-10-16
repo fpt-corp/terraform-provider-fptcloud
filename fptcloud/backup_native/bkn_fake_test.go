@@ -122,7 +122,8 @@ func (a *fakeAPI) count(key string) int {
 
 // setFastPolling shortens every poll in this package for one test.
 func setFastPolling(t *testing.T) {
-	old := pollInterval
+	old, oldHold := pollInterval, runFailureHold
 	pollInterval = 10 * time.Millisecond
-	t.Cleanup(func() { pollInterval = old })
+	runFailureHold = 50 * time.Millisecond
+	t.Cleanup(func() { pollInterval, runFailureHold = old, oldHold })
 }

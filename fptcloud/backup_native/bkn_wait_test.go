@@ -328,3 +328,79 @@ func TestWaitVmJobSettledTreatsFailedAsSettledBeforeADelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Failed", job.Status)
 }
+
+// jobStatuses scripts a job detail route that answers with each status in
+// turn; the last one repeats.
+func jobStatuses(jobId string, statuses ...string) []fakeResponse {
+	out := make([]fakeResponse, len(statuses))
+	for i, status := range statuses {
+		out[i] = fakeResponse{Body: `{"data":{"id":"` + jobId + `","status":"` + status + `"}}`}
+	}
+	return out
+}
+
+func waitVmRun(t *testing.T, routes []fakeResponse, timeout time.Duration) (string, error) {
+	t.Helper()
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{"GET " + vmBase + "/detail": routes})
+	return waitVmJobRun(context.Background(), NewVmService(client), "vpc-1", "job-1", timeout)
+}
+
+func waitVolumeRun(t *testing.T, routes []fakeResponse) (string, error) {
+	t.Helper()
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{"GET " + volBase + "/backup-jobs/job-9": routes})
+	return waitVolumeJobRun(context.Background(), NewVolumeService(client), "vpc-1", "job-9", time.Minute)
+}
+
+func TestWaitVmJobRunSuccess(t *testing.T) {
+	status, err := waitVmRun(t, jobStatuses("job-1", "Pending", "Backing up", "Success"), time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Success", status)
+}
+
+func TestWaitVmJobRunFailsOnceFailedHolds(t *testing.T) {
+	_, err := waitVmRun(t, jobStatuses("job-1", "Pending", "Failed"), time.Minute)
+	assert.ErrorContains(t, err, "Failed")
+	assert.ErrorContains(t, err, "may still be retried")
+}
+
+func TestWaitVmJobRunTreatsErrorAsFailed(t *testing.T) {
+	_, err := waitVmRun(t, jobStatuses("job-1", "Error"), time.Minute)
+	assert.ErrorContains(t, err, "in state Error")
+}
+
+// The error streak lasts one poll, shorter than the hold, so the retry that
+// follows decides the outcome.
+func TestWaitVolumeJobRunErrorThenRetryEndsInSuccess(t *testing.T) {
+	status, err := waitVolumeRun(t, jobStatuses("job-9", "backing up", "error", "pending", "backing up", "success"))
+	require.NoError(t, err)
+	assert.Equal(t, "success", status)
+}
+
+func TestWaitVolumeJobRunTreatsUnknownStatusAsRunning(t *testing.T) {
+	status, err := waitVolumeRun(t, jobStatuses("job-9", "pending", "failed", "success"))
+	require.NoError(t, err)
+	assert.Equal(t, "success", status)
+}
+
+// Review focus 4.
+func TestWaitJobRunFailsWhenTheJobIsDeleted(t *testing.T) {
+	routes := append(jobStatuses("job-1", "Backing up"), fakeResponse{Body: `{}`})
+	_, err := waitVmRun(t, routes, time.Minute)
+	assert.ErrorContains(t, err, "deleted")
+}
+
+// Review focus 5.
+func TestWaitJobRunSurvivesAPassingAPIError(t *testing.T) {
+	routes := jobStatuses("job-1", "Backing up", "Success")
+	routes = []fakeResponse{routes[0], {Status: 502, Body: `{"message":"bad gateway"}`}, routes[1]}
+	status, err := waitVmRun(t, routes, time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Success", status)
+}
+
+func TestWaitJobRunTimesOutOnAStuckPending(t *testing.T) {
+	_, err := waitVmRun(t, jobStatuses("job-1", "Pending"), 200*time.Millisecond)
+	assert.ErrorContains(t, err, "stuck in Pending")
+}

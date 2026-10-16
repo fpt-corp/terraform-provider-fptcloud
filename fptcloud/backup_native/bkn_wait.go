@@ -376,3 +376,79 @@ func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId s
 	}
 	return raw.(*VolumeHistoryItem), nil
 }
+
+// runFailureHold is how long a failed job status must hold before a manual
+// backup counts as failed. A job with one VM or volume is retried after a
+// failure, and a v2 job with several volumes reads "error" while the others
+// still back up, so a failed status can turn back into a running one. Tests
+// shorten it.
+var runFailureHold = 60 * time.Second
+
+func waitVmJobRun(ctx context.Context, svc VmService, vpcId, jobId string, timeout time.Duration) (string, error) {
+	return waitJobRun(ctx, "VM", jobId, func() (string, bool, error) {
+		job, err := svc.GetVmJob(vpcId, jobId)
+		if err != nil || job == nil {
+			return "", false, err
+		}
+		return job.Status, true, nil
+	}, map[string]bool{"failed": true, "error": true}, timeout)
+}
+
+func waitVolumeJobRun(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) (string, error) {
+	return waitJobRun(ctx, "volume", jobId, func() (string, bool, error) {
+		job, err := svc.GetVolumeJob(vpcId, jobId)
+		if err != nil || job == nil {
+			return "", false, err
+		}
+		return job.Status, true, nil
+	}, map[string]bool{"error": true}, timeout)
+}
+
+// waitJobRun polls a job whose manual backup was just started and returns the
+// job's final status. A job runs one backup at a time and the start call
+// writes Pending before it returns, so every status read here belongs to this
+// run. read returns found=false when the job is gone.
+func waitJobRun(ctx context.Context, kind, jobId string, read func() (status string, found bool, err error), failed map[string]bool, timeout time.Duration) (string, error) {
+	var outcome error
+	var failingSince time.Time
+	conf := newStateConf([]string{"running"}, []string{"done"}, func() (interface{}, string, error) {
+		status, found, err := read()
+		if err != nil {
+			return nil, "", readFailed(err)
+		}
+		if !found {
+			outcome = fmt.Errorf("the %s backup job %s was deleted while its backup ran", kind, jobId)
+			return nil, "", outcome
+		}
+		s := strings.ToLower(status)
+		if s == "success" {
+			return status, "done", nil
+		}
+		if !failed[s] {
+			failingSince = time.Time{}
+			return status, "running", nil
+		}
+		if failingSince.IsZero() {
+			failingSince = time.Now()
+		}
+		if time.Since(failingSince) < runFailureHold {
+			return status, "running", nil
+		}
+		outcome = fmt.Errorf("the backup of %s backup job %s failed: the job is in state %s. "+
+			"A job with one VM or volume may still be retried by the backend; check the backup history in the portal", kind, jobId, status)
+		return nil, "", outcome
+	}, timeout)
+	raw, err := conf.WaitForStateContext(ctx)
+	if outcome != nil {
+		return "", outcome
+	}
+	var timeoutErr *retry.TimeoutError
+	if errors.As(err, &timeoutErr) {
+		return "", fmt.Errorf("waiting for the backup of %s backup job %s to finish: %w. "+
+			"The job may be stuck in Pending; the API refuses a new run until the job settles", kind, jobId, err)
+	}
+	if err != nil {
+		return "", fmt.Errorf("waiting for the backup of %s backup job %s to finish: %w", kind, jobId, err)
+	}
+	return raw.(string), nil
+}
