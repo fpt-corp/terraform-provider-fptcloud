@@ -304,6 +304,7 @@ var ApiPath = struct {
 	BackupNativeVmUpdate         func(vpcId string, jobId string) string
 	BackupNativeVmDelete         func(vpcId string, jobId string) string
 	BackupNativeVmSwitchSchedule func(vpcId string) string
+	BackupNativeVmStartBackup    func(vpcId string) string
 	BackupNativeVmTaskProgress   func(vpcId string, taskId string) string
 	BackupNativeVmRestorePoints  func(vpcId string, vmId string) string
 	BackupNativeVmHistories      func(vpcId string, historyType string, page int, pageSize int) string
@@ -316,6 +317,7 @@ var ApiPath = struct {
 	BackupNativeVolumeJobCreate     func(vpcId string) string
 	BackupNativeVolumeJob           func(vpcId string, jobId string) string
 	BackupNativeVolumeJobActions    func(vpcId string, jobId string) string
+	BackupNativeVolumeJobExecutions func(vpcId string, jobId string) string
 	BackupNativeVolumeRestorePoints func(vpcId string, volumeId string) string
 	BackupNativeVolumeRestore       func(vpcId string, volumeId string) string
 	BackupNativeVolumeHistory       func(vpcId string, page int, pageSize int) string
@@ -1334,6 +1336,9 @@ var ApiPath = struct {
 	BackupNativeVmSwitchSchedule: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/switch_schedule", vpcId)
 	},
+	BackupNativeVmStartBackup: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/start_backup", vpcId)
+	},
 	BackupNativeVmTaskProgress: func(vpcId string, taskId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/task/%s/progress", vpcId, taskId)
 	},
@@ -1371,6 +1376,9 @@ var ApiPath = struct {
 	},
 	BackupNativeVolumeJobActions: func(vpcId string, jobId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backup-jobs/%s/actions", vpcId, jobId)
+	},
+	BackupNativeVolumeJobExecutions: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backup-jobs/%s/executions", vpcId, jobId)
 	},
 	BackupNativeVolumeRestorePoints: func(vpcId string, volumeId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backups?volume_id=%s", vpcId, url.QueryEscape(volumeId))
