@@ -136,3 +136,11 @@ func TestListVolumeHistoryPage(t *testing.T) {
 	assert.Equal(t, "vol-1", page.Items[0].ObjectId)
 	assert.Equal(t, "quota exceeded", page.Items[0].HistoryMetadata.ExtractInfo["status"])
 }
+
+func TestStartVolumeJobBackup(t *testing.T) {
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"POST " + volBase + "/backup-jobs/job-9/executions": {{Body: `{"message":"Backup job started successfully","status":true}`}},
+	})
+	require.NoError(t, NewVolumeService(client).StartVolumeJobBackup("vpc-1", "job-9"))
+	assert.Empty(t, api.last("POST "+volBase+"/backup-jobs/job-9/executions").Body)
+}

@@ -19,6 +19,7 @@ type VmService interface {
 	UpdateVmJob(vpcId string, jobId string, p VmJobUpdatePayload) (string, error)
 	DeleteVmJob(vpcId string, jobId string) error
 	SwitchVmJobSchedule(vpcId string, jobId string, enable bool) (string, error)
+	StartVmJobBackup(vpcId string, jobId string) error
 	GetTaskProgress(vpcId string, taskId string) (*TaskProgress, error)
 	ListVmRestorePoints(vpcId string, vmId string) ([]VmRestorePoint, error)
 	ListVmHistories(vpcId string, historyType string) ([]VmHistory, error)
@@ -149,6 +150,18 @@ func (s *service) SwitchVmJobSchedule(vpcId string, jobId string, enable bool) (
 		return "", wrapAPIError(action, err)
 	}
 	return taskIdFrom(raw, action)
+}
+
+// StartVmJobBackup starts one run of the job outside its schedule. The API
+// returns no task id; the job's status tracks the run.
+func (s *service) StartVmJobBackup(vpcId string, jobId string) error {
+	const action = "starting the VM backup job"
+	raw, err := s.client.SendPostRequest(common.ApiPath.BackupNativeVmStartBackup(vpcId), map[string]string{"resource_id": jobId})
+	if err != nil {
+		return wrapAPIError(action, err)
+	}
+	_, err = decodeEnvelope(raw, action)
+	return err
 }
 
 func (s *service) GetTaskProgress(vpcId string, taskId string) (*TaskProgress, error) {

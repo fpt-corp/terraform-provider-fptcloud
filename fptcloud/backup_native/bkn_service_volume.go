@@ -24,6 +24,7 @@ type VolumeService interface {
 	UpdateVolumeJob(vpcId string, jobId string, p VolumeJobPayload) ([]VolumeFailure, error)
 	DeleteVolumeJob(vpcId string, jobId string) error
 	SetVolumeJobEnabled(vpcId string, jobId string, enabled bool) error
+	StartVolumeJobBackup(vpcId string, jobId string) error
 	ListVolumeRestorePoints(vpcId string, volumeId string) ([]VolumeRestorePoint, error)
 	RestoreVolume(vpcId string, volumeId string, p VolumeRestorePayload) error
 	ListVolumeHistoryPage(vpcId string, page int, pageSize int) (*VolumeHistoryPage, error)
@@ -155,6 +156,18 @@ func (s *service) SetVolumeJobEnabled(vpcId string, jobId string, enabled bool) 
 		return wrapAPIError(fmt.Sprintf("%sing the volume backup job schedule", strings.TrimSuffix(action, "e")), err)
 	}
 	return nil
+}
+
+// StartVolumeJobBackup starts one run of the job outside its schedule. The
+// endpoint reads no body; the job's status tracks the run.
+func (s *service) StartVolumeJobBackup(vpcId string, jobId string) error {
+	const action = "starting the volume backup job"
+	raw, err := s.client.SendPostRequest(common.ApiPath.BackupNativeVolumeJobExecutions(vpcId, jobId), map[string]string{})
+	if err != nil {
+		return wrapAPIError(action, err)
+	}
+	_, err = decodeEnvelope(raw, action)
+	return err
 }
 
 func (s *service) ListVolumeRestorePoints(vpcId string, volumeId string) ([]VolumeRestorePoint, error) {

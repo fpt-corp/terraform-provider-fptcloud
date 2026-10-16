@@ -102,12 +102,24 @@ func waitForTask(ctx context.Context, svc VmService, vpcId, taskId, action strin
 	return raw.(*TaskProgress).Message, nil
 }
 
-// Statuses in which a v1 job accepts update and switch_schedule
-// (SwitchScheduleController.py:50). Anything else, including a percentage
-// while a backup runs, means busy.
+// Statuses in which a v1 job accepts update, switch_schedule and a manual
+// backup (SwitchScheduleController.py:50). Anything else, including a
+// percentage while a backup runs, means busy, except "failed": see
+// settlePurpose.
 var vmJobStableStatuses = map[string]bool{"initiated": true, "available": true, "success": true, "error": true}
 
-func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, timeout time.Duration) (*VmJobDetail, error) {
+// settlePurpose says what a settle wait is for. A v1 job reads "Failed" after
+// a run in which any VM failed, and keeps it until another run starts. Update,
+// switch_schedule and a manual backup refuse that state, so waiting for it to
+// change would only run out the timeout; delete accepts it.
+type settlePurpose int
+
+const (
+	settleToChange settlePurpose = iota
+	settleToDelete
+)
+
+func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, purpose settlePurpose, timeout time.Duration) (*VmJobDetail, error) {
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVmJob(vpcId, jobId)
 		if err != nil {
@@ -116,7 +128,16 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, t
 		if job == nil {
 			return nil, "", fmt.Errorf("VM backup job %s no longer exists", jobId)
 		}
-		if vmJobStableStatuses[strings.ToLower(job.Status)] {
+		status := strings.ToLower(job.Status)
+		if status == "failed" {
+			if purpose == settleToDelete {
+				return job, "settled", nil
+			}
+			return nil, "", fmt.Errorf("VM backup job %s is in state Failed because a VM failed in its last run. "+
+				"The API refuses to change or start the job until another run starts, either a scheduled run or a backend retry; "+
+				"check the backup history in the portal", jobId)
+		}
+		if vmJobStableStatuses[status] {
 			return job, "settled", nil
 		}
 		return job, "busy", nil

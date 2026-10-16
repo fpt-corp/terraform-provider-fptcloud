@@ -144,7 +144,7 @@ func findVmJobByName(svc VmService, vpcId, name string) (*VmJobListItem, error) 
 }
 
 func switchVmJob(ctx context.Context, svc VmService, vpcId, jobId string, enable bool, timeout time.Duration) error {
-	if _, err := waitVmJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
+	if _, err := waitVmJobSettled(ctx, svc, vpcId, jobId, settleToChange, timeout); err != nil {
 		return err
 	}
 	taskId, err := svc.SwitchVmJobSchedule(vpcId, jobId, enable)
@@ -260,7 +260,7 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	timeout := d.Timeout(schema.TimeoutUpdate)
 
 	if vmJobNeedsUpdate(d) {
-		if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), timeout); err != nil {
+		if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), settleToChange, timeout); err != nil {
 			return diag.FromErr(err)
 		}
 		payload, err := expandVmJobUpdate(d, time.Now())
@@ -305,7 +305,7 @@ func deleteVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	if job == nil {
 		return nil
 	}
-	if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {
+	if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), settleToDelete, d.Timeout(schema.TimeoutDelete)); err != nil {
 		// An earlier delete that timed out may finish while this one waits.
 		if job, getErr := svc.GetVmJob(vpcId, d.Id()); getErr == nil && job == nil {
 			return nil

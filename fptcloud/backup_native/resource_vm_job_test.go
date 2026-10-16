@@ -251,3 +251,32 @@ func TestImportVmJobId(t *testing.T) {
 	_, err = importJob("backup_native_vm_job")(context.Background(), d, nil)
 	assert.ErrorContains(t, err, "expected vpc/<vpc_id>/backup_native_vm_job/<job_id>")
 }
+
+func TestUpdateVmJobFailsAtOnceOnFailedJob(t *testing.T) {
+	setFastPolling(t)
+	failed := strings.Replace(vmJobDetailBody, `"status":"Initiated"`, `"status":"Failed"`, 1)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: failed}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+
+	diags := updateVmJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Failed")
+	assert.Equal(t, 0, api.count("PUT "+vmBase+"/job-1/update"))
+}
+
+func TestDeleteVmJobProceedsFromFailed(t *testing.T) {
+	setFastPolling(t)
+	failed := `{"data":{"id":"job-1","status":"Failed"}}`
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"DELETE " + vmBase + "/job-1/delete": {{Status: 202, Body: `{"message":"Delete successfully."}`}},
+		"GET " + vmBase + "/detail":          {{Body: failed}, {Body: failed}, {Body: `{}`}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+	diags := deleteVmJob(context.Background(), d, client)
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, 1, api.count("DELETE "+vmBase+"/job-1/delete"))
+}

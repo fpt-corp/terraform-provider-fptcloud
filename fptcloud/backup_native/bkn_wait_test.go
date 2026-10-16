@@ -60,7 +60,7 @@ func TestWaitVmJobSettled(t *testing.T) {
 			{Body: `{"data":{"id":"job-1","status":"Success"}}`},
 		},
 	})
-	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute)
+	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToChange, time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, "Success", job.Status)
 }
@@ -306,4 +306,25 @@ func TestWaitGivesUpAfterRepeatedAPIErrors(t *testing.T) {
 	assert.ErrorContains(t, err, "Unauthorized Access")
 	assert.ErrorContains(t, err, "6 reads in a row")
 	assert.Equal(t, maxPollErrors+1, api.count("GET "+vmBase+"/histories/list"))
+}
+
+func TestWaitVmJobSettledFailsAtOnceOnFailedBeforeAChange(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Failed"}}`}},
+	})
+	_, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToChange, time.Minute)
+	assert.ErrorContains(t, err, "Failed")
+	assert.ErrorContains(t, err, "until another run starts")
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"))
+}
+
+func TestWaitVmJobSettledTreatsFailedAsSettledBeforeADelete(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Failed"}}`}},
+	})
+	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToDelete, time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Failed", job.Status)
 }

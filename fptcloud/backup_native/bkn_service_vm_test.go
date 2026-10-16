@@ -162,3 +162,20 @@ func TestListFloatingIps(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []FloatingIpItem{{Id: "ip-1", IpAddress: "203.0.113.5"}}, ips)
 }
+
+func TestStartVmJobBackup(t *testing.T) {
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"POST " + vmBase + "/start_backup": {{Body: `{"message":"Started backup job","status":true}`}},
+	})
+	require.NoError(t, NewVmService(client).StartVmJobBackup("vpc-1", "job-1"))
+	assert.Equal(t, map[string]interface{}{"resource_id": "job-1"}, api.last("POST "+vmBase+"/start_backup").Body)
+}
+
+func TestStartVmJobBackupBusy(t *testing.T) {
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"POST " + vmBase + "/start_backup": {{Status: 400, Body: `{"message":"Resource is unavailable. Please try again later"}`}},
+	})
+	err := NewVmService(client).StartVmJobBackup("vpc-1", "job-1")
+	assert.ErrorContains(t, err, "starting the VM backup job")
+	assert.ErrorContains(t, err, "busy")
+}
