@@ -183,6 +183,8 @@ func Provider() *schema.Provider {
 			"fptcloud_backup_native_volume_job":             fptcloud_backup_native.ResourceVolumeJob(),
 			"fptcloud_backup_native_vm_restore":             fptcloud_backup_native.ResourceVmRestore(),
 			"fptcloud_backup_native_volume_restore":         fptcloud_backup_native.ResourceVolumeRestore(),
+			"fptcloud_backup_native_vm_backup":              fptcloud_backup_native.ResourceVmBackup(),
+			"fptcloud_backup_native_volume_backup":          fptcloud_backup_native.ResourceVolumeBackup(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}

@@ -169,3 +169,78 @@ data "fptcloud_backup_native_volume_restore_points" "test" {
 		}},
 	})
 }
+
+// TestAccBackupNativeVmBackup_basic creates a VM backup job, runs it once, then
+// changes triggers to run it a second time. It runs two real backups, and each
+// creates a restore point of BKN_VM_ID. BKN_VM_ID must not be in another job.
+func TestAccBackupNativeVmBackup_basic(t *testing.T) {
+	env := requireEnv(t, "VPC_ID", "BKN_VM_ID", "BKN_NOTIFICATION_ID")
+	config := func(run string) string {
+		return fmt.Sprintf(`
+resource "fptcloud_backup_native_vm_job" "test" {
+  vpc_id                  = %q
+  name                    = "tfacc-vm-backup"
+  instance_ids            = [%q]
+  notification_method_ids = [%q]
+  retention               = 3
+  schedule {
+    full_backup_frequency = "daily"
+    time                  = "02:00"
+  }
+}
+
+resource "fptcloud_backup_native_vm_backup" "test" {
+  vpc_id   = fptcloud_backup_native_vm_job.test.vpc_id
+  job_id   = fptcloud_backup_native_vm_job.test.id
+  triggers = { run = %q }
+}
+`, env["VPC_ID"], env["BKN_VM_ID"], env["BKN_NOTIFICATION_ID"], run)
+	}
+	check := resource.ComposeTestCheckFunc(
+		resource.TestCheckResourceAttr("fptcloud_backup_native_vm_backup.test", "status", "Success"),
+		resource.TestCheckResourceAttrSet("fptcloud_backup_native_vm_backup.test", "started_at"),
+	)
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { test_helper.TestPreCheck(t) },
+		ProviderFactories: test_helper.TestProviderFactories,
+		Steps:             []resource.TestStep{{Config: config("1"), Check: check}, {Config: config("2"), Check: check}},
+	})
+}
+
+// TestAccBackupNativeVolumeBackup_basic creates a volume backup job, runs it
+// once, then changes triggers to run it a second time. It runs two real
+// backups, and each creates a restore point of BKN_VOLUME_ID, which must be an
+// FKE persistent volume (pv-fke*) not in another job.
+func TestAccBackupNativeVolumeBackup_basic(t *testing.T) {
+	env := requireEnv(t, "VPC_ID", "BKN_VOLUME_ID", "BKN_NOTIFICATION_ID")
+	config := func(run string) string {
+		return fmt.Sprintf(`
+resource "fptcloud_backup_native_volume_job" "test" {
+  vpc_id                  = %q
+  name                    = "tfacc-volume-backup"
+  volume_ids              = [%q]
+  notification_method_ids = [%q]
+  retention               = 3
+  schedule {
+    full_backup_frequency = "daily"
+    time                  = "03:30"
+  }
+}
+
+resource "fptcloud_backup_native_volume_backup" "test" {
+  vpc_id   = fptcloud_backup_native_volume_job.test.vpc_id
+  job_id   = fptcloud_backup_native_volume_job.test.id
+  triggers = { run = %q }
+}
+`, env["VPC_ID"], env["BKN_VOLUME_ID"], env["BKN_NOTIFICATION_ID"], run)
+	}
+	check := resource.ComposeTestCheckFunc(
+		resource.TestCheckResourceAttr("fptcloud_backup_native_volume_backup.test", "status", "success"),
+		resource.TestCheckResourceAttrSet("fptcloud_backup_native_volume_backup.test", "started_at"),
+	)
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { test_helper.TestPreCheck(t) },
+		ProviderFactories: test_helper.TestProviderFactories,
+		Steps:             []resource.TestStep{{Config: config("1"), Check: check}, {Config: config("2"), Check: check}},
+	})
+}
