@@ -75,9 +75,13 @@ func (s *service) sendVolumeJob(action string, send func() ([]byte, error)) ([]V
 	return volumeFailures(raw), nil
 }
 
+// Not common.ListAllPages: total here is not a job count, so stop on has_more.
 func (s *service) ListVolumeJobs(vpcId string) ([]VolumeJobListItem, error) {
 	const action = "listing volume backup jobs"
 	var jobs []VolumeJobListItem
+	// A job created while paging shifts rows onto the next page; skip a job
+	// already read, as common.ListAllPages does.
+	seen := map[string]bool{}
 	for page := 1; page <= maxListPages; page++ {
 		raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeVolumeJobs(vpcId, page, volumeJobsPageSize))
 		if err != nil {
@@ -92,7 +96,8 @@ func (s *service) ListVolumeJobs(vpcId string) ([]VolumeJobListItem, error) {
 		}
 		// The list mixes v1 VM jobs (job_type 1) with volume jobs (job_type 0).
 		for _, item := range resp.Data {
-			if item.JobType == "0" {
+			if item.JobType == "0" && !seen[item.Id] {
+				seen[item.Id] = true
 				jobs = append(jobs, item)
 			}
 		}

@@ -43,6 +43,23 @@ func TestListVolumeJobsPagesAndFiltersVmJobs(t *testing.T) {
 	assert.Equal(t, "2", api.last("GET "+volBase+"/backup-jobs").Query.Get("page"))
 }
 
+// A job created between two page reads pushes job-8 onto page 2 as well.
+func TestListVolumeJobsSkipsAJobShiftedOntoTheNextPage(t *testing.T) {
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs": {
+			{Body: `{"total":2,"data":[{"id":"job-9","name":"b","job_type":"0","instances":[]},{"id":"job-8","name":"a","job_type":"0","instances":[]}],"has_more":true}`},
+			{Body: `{"total":3,"data":[{"id":"job-8","name":"a","job_type":"0","instances":[]},{"id":"job-7","name":"c","job_type":"0","instances":[]}],"has_more":false}`},
+		},
+	})
+	jobs, err := NewVolumeService(client).ListVolumeJobs("vpc-1")
+	require.NoError(t, err)
+	ids := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		ids = append(ids, job.Id)
+	}
+	assert.Equal(t, []string{"job-9", "job-8", "job-7"}, ids)
+}
+
 func TestCreateVolumeJobSuccess(t *testing.T) {
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"POST " + volBase + "/backup-jobs": {{Status: 201, Body: `{"message":"Backup job created successfully","data":[],"status":true}`}},
