@@ -55,7 +55,8 @@ func TestBuildRestoreKeepPayloadFloatingIpSentinels(t *testing.T) {
 	base.FloatingIp = "new"
 	p, err = buildRestoreKeepPayload("vpc-1", base, fakeLookups())
 	require.NoError(t, err)
-	assert.Equal(t, RestoreFloatingIp{Id: "new", Ip: "new"}, p.FloatingIp)
+	assert.Equal(t, RestoreFloatingIp{Id: "new", Ip: ""}, p.FloatingIp,
+		"the id alone asks for a new IP; the portal sends no ip with it")
 }
 
 func TestBuildRestoreKeepPayloadUnknownIds(t *testing.T) {

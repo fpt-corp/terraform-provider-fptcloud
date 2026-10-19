@@ -136,9 +136,14 @@ func buildRestoreKeepPayload(vpcId string, a keepArgs, l keepLookups) (VmRestore
 	case "":
 		p.FloatingIp = RestoreFloatingIp{Id: "", Ip: ""}
 	case "new":
-		// A non-empty ip makes the backend run its floating IP quota check,
-		// as the portal's option label does.
-		p.FloatingIp = RestoreFloatingIp{Id: "new", Ip: "new"}
+		// The id alone makes the restore worker allocate a new IP
+		// (network_config/task.py) and the balance check count it
+		// (restore/controller.py:274). The portal sends no ip with it: its
+		// option label is not a string (VmNetworkConfig.js passes
+		// withTranslation('compute') as t), so JSON drops the field. A
+		// non-empty ip would run FloatingIpResourceVerifier's quota branch,
+		// which reads a vpc_id it never sets (verify_resource/network.py:80).
+		p.FloatingIp = RestoreFloatingIp{Id: "new", Ip: ""}
 	default:
 		ips, err := l.listFloatingIps(vpcId)
 		if err != nil {
