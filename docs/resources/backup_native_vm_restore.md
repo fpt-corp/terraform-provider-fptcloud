@@ -51,7 +51,7 @@ data "fptcloud_instances" "all" {
 ### Optional
 
 - `flavor_id` (String) `keep` only, required for `keep`. ID of the new VM's flavor.
-- `floating_ip` (String) `keep` only. Omit for no floating IP, or the ID of a floating IP that is not in use. `new` is accepted and sends the same request as omitting it, as the portal does.
+- `floating_ip` (String) `keep` only. Omit for no floating IP, `new` to allocate one, or the ID of a floating IP that is not in use.
 - `instance_name` (String) `keep` only. Name of the new VM, at most 50 characters.
 - `new_password` (String, Sensitive) New password for the restored VM.
 - `power_on` (Boolean) Whether the restored VM is powered on.
