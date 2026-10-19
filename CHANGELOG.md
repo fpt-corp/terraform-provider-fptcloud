@@ -6,7 +6,7 @@
 - Feat: add `fptcloud_backup_native_volume_job` to manage backup jobs of FKE persistent volumes
 - Feat: add `fptcloud_backup_native_vm_restore` to restore a VM onto itself (`overwrite`) or into a new VM (`keep`)
 - Feat: add `fptcloud_backup_native_volume_restore` to restore a volume restore point into a new volume
-- Feat: add `fptcloud_backup_native_vm_backup` and `fptcloud_backup_native_volume_backup` to run a backup job once and wait for the run to end; change `triggers` to run it again
+- Feat: add `fptcloud_backup_native_vm_job_run` and `fptcloud_backup_native_volume_job_run` to run a backup job once and wait for the run to end; change `triggers` to run it again
 
 ### Datasource
 

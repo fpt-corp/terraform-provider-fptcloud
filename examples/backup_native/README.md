@@ -41,7 +41,7 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
 
    The `vm_jobs` and `volume_jobs` outputs show the new jobs. The restore point outputs stay empty until a job has run.
 
-5. To run a job now instead of waiting for its schedule, set `vm_backup_run` or `volume_backup_run` to any value, for example `"1"`, and apply. Apply waits for the run to end; the `vm_backup` and `volume_backup` outputs show its status. Set a new value to run it again.
+5. To run a job now instead of waiting for its schedule, set `vm_backup_run` or `volume_backup_run` to any value, for example `"1"`, and apply. Apply waits for the run to end; the `vm_job_run` and `volume_job_run` outputs show its status. Set a new value to run it again.
 6. After a backup has run, set `vm_restore = true` or `volume_restore = true` and apply again. The restore uses the newest restore point. The `vm_restore_status` and `volume_restore_status` outputs show the result.
 7. Run `terraform destroy` to delete the jobs. Destroying a restore only removes it from state; the restored VM or volume stays and must be deleted in the portal.
 
@@ -52,7 +52,7 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
 | Schedule change | Change `full_backup_frequency` in `volume.tf` or `vm.tf` (weekly needs `full_backup_day` 0-6 with 0 as Monday, monthly 1-31, daily none) and apply. The next plan shows no changes. |
 | Schedule off and on | Add `schedule_enabled = false` to a job and apply, then remove it and apply. |
 | Import | `terraform import 'fptcloud_backup_native_vm_job.example[0]' vpc/<vpc_id>/backup_native_vm_job/<job_id>` after `terraform state rm`. |
-| Manual backup while a restore is on | The restores use the newest restore point, so the apply after a manual backup runs them again; with `vm_restore_mode = "overwrite"` that overwrites `vm_id` again. Turn the restores off first, or apply only the backup: `terraform apply -target='fptcloud_backup_native_vm_backup.example[0]'`. |
+| Manual backup while a restore is on | The restores use the newest restore point, so the apply after a manual backup runs them again; with `vm_restore_mode = "overwrite"` that overwrites `vm_id` again. Turn the restores off first, or apply only the backup: `terraform apply -target='fptcloud_backup_native_vm_job_run.example[0]'`. |
 | Overwrite restore | Set `vm_restore_mode = "overwrite"`. This replaces the disk of `vm_id`. |
 | Requests sent | `TF_LOG=DEBUG terraform apply` logs every API call; all of them are user API paths. |
 

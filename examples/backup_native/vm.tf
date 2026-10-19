@@ -79,7 +79,7 @@ resource "fptcloud_backup_native_vm_job" "example" {
   }
 }
 
-resource "fptcloud_backup_native_vm_backup" "example" {
+resource "fptcloud_backup_native_vm_job_run" "example" {
   count = var.vm_id != "" && var.vm_backup_run != "" ? 1 : 0
 
   vpc_id   = data.fptcloud_vpc.this.id
@@ -121,11 +121,11 @@ output "vm_restore_points" {
   value = try(data.fptcloud_backup_native_vm_restore_points.example[0].restore_points, [])
 }
 
-output "vm_backup" {
+output "vm_job_run" {
   value = try({
-    status      = fptcloud_backup_native_vm_backup.example[0].status
-    started_at  = fptcloud_backup_native_vm_backup.example[0].started_at
-    finished_at = fptcloud_backup_native_vm_backup.example[0].finished_at
+    status      = fptcloud_backup_native_vm_job_run.example[0].status
+    started_at  = fptcloud_backup_native_vm_job_run.example[0].started_at
+    finished_at = fptcloud_backup_native_vm_job_run.example[0].finished_at
   }, null)
 }
 

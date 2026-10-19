@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func ResourceVolumeBackup() *schema.Resource {
+func ResourceVolumeJobRun() *schema.Resource {
 	return &schema.Resource{
 		Description: "Runs a Backup Native volume backup job once, outside its schedule, the same operation as \"Start backup\" in the portal. " +
 			"Applying the resource checks the job's status, starts the run and waits for it to end. " +
@@ -21,23 +21,23 @@ func ResourceVolumeBackup() *schema.Resource {
 			"A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. " +
 			"A job with one volume may be retried by the backend after a failed run. " +
 			"When the job stays in `pending`, the apply runs out its timeout; only a later run or the backend clears that state.",
-		CreateContext: createVolumeBackup,
+		CreateContext: createVolumeJobRun,
 		ReadContext:   readOneShot,
 		DeleteContext: deleteOneShot,
-		Schema:        manualBackupSchema("fptcloud_backup_native_volume_job"),
+		Schema:        jobRunSchema("fptcloud_backup_native_volume_job"),
 		// No UpdateContext and no Importer, for the reasons given on
-		// ResourceVmBackup.
+		// ResourceVmJobRun.
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(60 * time.Minute),
 		},
 	}
 }
 
-func createVolumeBackup(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func createVolumeJobRun(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	svc := NewVolumeService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
 	jobId := d.Get("job_id").(string)
-	return createManualBackup(ctx, d, manualBackupRun{
+	return createJobRun(ctx, d, jobRunSteps{
 		check: func() error {
 			job, err := svc.GetVolumeJob(vpcId, jobId)
 			if err != nil {

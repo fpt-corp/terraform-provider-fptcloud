@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-func ResourceVmBackup() *schema.Resource {
+func ResourceVmJobRun() *schema.Resource {
 	return &schema.Resource{
 		Description: "Runs a Backup Native VM backup job once, outside its schedule, the same operation as \"Start backup\" in the portal. " +
 			"Applying the resource checks the job's status, starts the run and waits for it to end. " +
@@ -22,10 +22,10 @@ func ResourceVmBackup() *schema.Resource {
 			"A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. " +
 			"A job in state `Failed` refuses a new run until another run starts. " +
 			"When the job stays in `Pending`, the apply runs out its timeout; only a later run or the backend clears that state.",
-		CreateContext: createVmBackup,
+		CreateContext: createVmJobRun,
 		ReadContext:   readOneShot,
 		DeleteContext: deleteOneShot,
-		Schema:        manualBackupSchema("fptcloud_backup_native_vm_job"),
+		Schema:        jobRunSchema("fptcloud_backup_native_vm_job"),
 		// No UpdateContext: every argument is ForceNew, so any change runs the
 		// backup again rather than editing a run that already happened.
 		//
@@ -37,9 +37,9 @@ func ResourceVmBackup() *schema.Resource {
 	}
 }
 
-// manualBackupSchema is the schema of both manual backup resources.
+// jobRunSchema is the schema of both job run resources.
 // jobResource names the job resource whose id job_id takes.
-func manualBackupSchema(jobResource string) map[string]*schema.Schema {
+func jobRunSchema(jobResource string) map[string]*schema.Schema {
 	return map[string]*schema.Schema{
 		"vpc_id": {
 			Type:         schema.TypeString,
@@ -81,20 +81,20 @@ func manualBackupSchema(jobResource string) map[string]*schema.Schema {
 	}
 }
 
-// manualBackupRun holds the three API steps of a manual backup. check marks
+// jobRunSteps holds the three API steps of a job run. check marks
 // a failed API read with readFailed, so that it is retried.
-type manualBackupRun struct {
+type jobRunSteps struct {
 	check func() error
 	start func() error
 	wait  func(ctx context.Context, timeout time.Duration) (string, error)
 }
 
-// createManualBackup checks that the job can start a run now, starts it and
+// createJobRun checks that the job can start a run now, starts it and
 // waits for it to end. It does not wait for a busy job: only the run it
 // started is waited on. The id is set once the run has started, so a run that
 // fails or times out leaves the resource tainted and the next apply runs it
 // again.
-func createManualBackup(ctx context.Context, d *schema.ResourceData, run manualBackupRun) diag.Diagnostics {
+func createJobRun(ctx context.Context, d *schema.ResourceData, run jobRunSteps) diag.Diagnostics {
 	begin := time.Now()
 	timeout := d.Timeout(schema.TimeoutCreate)
 	if err := retryRead(ctx, run.check); err != nil {
@@ -118,11 +118,11 @@ func createManualBackup(ctx context.Context, d *schema.ResourceData, run manualB
 	})
 }
 
-func createVmBackup(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func createVmJobRun(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
 	jobId := d.Get("job_id").(string)
-	return createManualBackup(ctx, d, manualBackupRun{
+	return createJobRun(ctx, d, jobRunSteps{
 		check: func() error {
 			job, err := svc.GetVmJob(vpcId, jobId)
 			if err != nil {

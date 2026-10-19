@@ -83,7 +83,7 @@ resource "fptcloud_backup_native_volume_job" "example" {
 # Each run creates a restore point, and the restore below uses the newest one:
 # turn the restore off before running a backup, or the next apply runs the
 # restore again.
-resource "fptcloud_backup_native_volume_backup" "example" {
+resource "fptcloud_backup_native_volume_job_run" "example" {
   count = var.volume_id != "" && var.volume_backup_run != "" ? 1 : 0
 
   vpc_id   = data.fptcloud_vpc.this.id
@@ -125,11 +125,11 @@ output "volume_restore_points" {
   value = try(data.fptcloud_backup_native_volume_restore_points.example[0].restore_points, [])
 }
 
-output "volume_backup" {
+output "volume_job_run" {
   value = try({
-    status      = fptcloud_backup_native_volume_backup.example[0].status
-    started_at  = fptcloud_backup_native_volume_backup.example[0].started_at
-    finished_at = fptcloud_backup_native_volume_backup.example[0].finished_at
+    status      = fptcloud_backup_native_volume_job_run.example[0].status
+    started_at  = fptcloud_backup_native_volume_job_run.example[0].started_at
+    finished_at = fptcloud_backup_native_volume_job_run.example[0].finished_at
   }, null)
 }
 
