@@ -79,7 +79,7 @@ func resourceVmRestoreSchema() map[string]*schema.Schema {
 			Type:        schema.TypeString,
 			Optional:    true,
 			ForceNew:    true,
-			Description: "`keep` only. Omit for no floating IP, `new` to allocate one, or the ID of a floating IP that is not in use.",
+			Description: "`keep` only. Omit for no floating IP, or the ID of a floating IP that is not in use. `new` is accepted and sends the same request as omitting it, as the portal does.",
 		},
 		"private_ip":  {Type: schema.TypeString, Optional: true, ForceNew: true, ValidateFunc: validation.IsIPv4Address, Description: "`keep` only. Private IP of the new VM."},
 		"status":      {Type: schema.TypeString, Computed: true, Description: "Result of the restore, `Success` after a successful apply."},
