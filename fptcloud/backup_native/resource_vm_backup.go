@@ -3,6 +3,7 @@ package fptcloud_backup_native
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	common "terraform-provider-fptcloud/commons"
@@ -15,8 +16,9 @@ import (
 func ResourceVmBackup() *schema.Resource {
 	return &schema.Resource{
 		Description: "Runs a Backup Native VM backup job once, outside its schedule, the same operation as \"Start backup\" in the portal. " +
-			"Applying the resource waits for a running backup of the job to finish, starts the run and waits for it to end; " +
-			"destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. " +
+			"Applying the resource checks the job's status, starts the run and waits for it to end. " +
+			"A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. " +
+			"Destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. " +
 			"A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. " +
 			"A job in state `Failed` refuses a new run until another run starts. " +
 			"When the job stays in `Pending`, the apply runs out its timeout; only a later run or the backend clears that state.",
@@ -79,20 +81,23 @@ func manualBackupSchema(jobResource string) map[string]*schema.Schema {
 	}
 }
 
-// manualBackupRun holds the three API steps of a manual backup.
+// manualBackupRun holds the three API steps of a manual backup. check marks
+// a failed API read with readFailed, so that it is retried.
 type manualBackupRun struct {
-	settle func(ctx context.Context, timeout time.Duration) error
-	start  func() error
-	wait   func(ctx context.Context, timeout time.Duration) (string, error)
+	check func() error
+	start func() error
+	wait  func(ctx context.Context, timeout time.Duration) (string, error)
 }
 
-// createManualBackup waits for the job to settle, starts the run and waits
-// for it to end. The id is set once the run has started, so a run that fails
-// or times out leaves the resource tainted and the next apply runs it again.
+// createManualBackup checks that the job can start a run now, starts it and
+// waits for it to end. It does not wait for a busy job: only the run it
+// started is waited on. The id is set once the run has started, so a run that
+// fails or times out leaves the resource tainted and the next apply runs it
+// again.
 func createManualBackup(ctx context.Context, d *schema.ResourceData, run manualBackupRun) diag.Diagnostics {
 	begin := time.Now()
 	timeout := d.Timeout(schema.TimeoutCreate)
-	if err := run.settle(ctx, timeout); err != nil {
+	if err := retryRead(ctx, run.check); err != nil {
 		return diag.FromErr(err)
 	}
 	started := time.Now().UTC()
@@ -118,9 +123,22 @@ func createVmBackup(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	vpcId := d.Get("vpc_id").(string)
 	jobId := d.Get("job_id").(string)
 	return createManualBackup(ctx, d, manualBackupRun{
-		settle: func(ctx context.Context, timeout time.Duration) error {
-			_, err := waitVmJobSettled(ctx, svc, vpcId, jobId, settleToRun, timeout)
-			return err
+		check: func() error {
+			job, err := svc.GetVmJob(vpcId, jobId)
+			if err != nil {
+				return readFailed(err)
+			}
+			if job == nil {
+				return fmt.Errorf("VM backup job %s no longer exists", jobId)
+			}
+			status := strings.ToLower(job.Status)
+			if status == "failed" {
+				return vmJobFailedError(jobId)
+			}
+			if !vmJobStableStatuses[status] {
+				return jobBusyError("VM", jobId, job.Status)
+			}
+			return nil
 		},
 		start: func() error { return svc.StartVmJobBackup(vpcId, jobId) },
 		wait: func(ctx context.Context, timeout time.Duration) (string, error) {

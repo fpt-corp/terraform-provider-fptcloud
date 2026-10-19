@@ -46,15 +46,42 @@ func TestCreateVolumeBackupQuotaExhausted(t *testing.T) {
 	assert.Empty(t, d.Id())
 }
 
-// A v2 job with several volumes reads "error" once one volume fails while the
-// others still back up; the manual run must not start on top of that run.
-func TestCreateVolumeBackupWaitsOutAMidRunError(t *testing.T) {
+func TestCreateVolumeBackupRefusesABusyJob(t *testing.T) {
 	setFastPolling(t)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
-		"GET " + volBase + "/backup-jobs/job-9":             jobStatuses("job-9", "backing up", "error", "backing up", "success", "pending", "success"),
+		"GET " + volBase + "/backup-jobs/job-9": jobStatuses("job-9", "backing up", "success"),
+	})
+	d := volumeBackupData(t)
+	diags := createVolumeBackup(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "backing up")
+	assert.Empty(t, d.Id())
+	assert.Equal(t, 1, api.count("GET "+volBase+"/backup-jobs/job-9"), "the status is read once, not waited on")
+	assert.Equal(t, 0, api.count("POST "+volBase+"/backup-jobs/job-9/executions"))
+}
+
+// The executions endpoint accepts a job in "error", so the run starts at once.
+func TestCreateVolumeBackupStartsOnAnErrorJob(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9":             jobStatuses("job-9", "error", "pending", "success"),
 		"POST " + volBase + "/backup-jobs/job-9/executions": {{Body: `{"message":"Backup job started successfully","status":true}`}},
 	})
 	diags := createVolumeBackup(context.Background(), volumeBackupData(t), client)
 	require.False(t, diags.HasError(), "%v", diags)
-	assert.Equal(t, 3, api.servedBefore("GET "+volBase+"/backup-jobs/job-9", "POST "+volBase+"/backup-jobs/job-9/executions"))
+	assert.Equal(t, 0, api.servedBefore("GET "+volBase+"/backup-jobs/job-9", "POST "+volBase+"/backup-jobs/job-9/executions"))
+}
+
+// The dev gateway answers a passing 401 now and then; one failed read must
+// not fail the apply before the run starts.
+func TestCreateVolumeBackupCheckSurvivesAPassingAPIError(t *testing.T) {
+	setFastPolling(t)
+	statuses := jobStatuses("job-9", "success", "pending", "success")
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9":             append([]fakeResponse{{Status: 401, Body: `{"message":"Unauthorized Access"}`}}, statuses...),
+		"POST " + volBase + "/backup-jobs/job-9/executions": {{Body: `{"message":"Backup job started successfully","status":true}`}},
+	})
+	diags := createVolumeBackup(context.Background(), volumeBackupData(t), client)
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, 1, api.servedBefore("GET "+volBase+"/backup-jobs/job-9", "POST "+volBase+"/backup-jobs/job-9/executions"))
 }

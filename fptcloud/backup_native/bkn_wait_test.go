@@ -405,17 +405,10 @@ func TestWaitJobRunTimesOutOnAStuckPending(t *testing.T) {
 	assert.ErrorContains(t, err, "stuck in Pending")
 }
 
-func TestWaitVolumeJobSettledAcceptsAHeldErrorBeforeARun(t *testing.T) {
+func TestWaitVolumeJobSettledAcceptsErrorAtOnce(t *testing.T) {
 	setFastPolling(t)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{"GET " + volBase + "/backup-jobs/job-9": jobStatuses("job-9", "error")})
-	require.NoError(t, waitVolumeJobSettled(context.Background(), NewVolumeService(client), "vpc-1", "job-9", settleToRun, time.Minute))
-	assert.Greater(t, api.count("GET "+volBase+"/backup-jobs/job-9"), 1, "the error had to hold")
-}
-
-func TestWaitVolumeJobSettledAcceptsErrorAtOnceBeforeAChange(t *testing.T) {
-	setFastPolling(t)
-	api, client := newFakeAPI(t, map[string][]fakeResponse{"GET " + volBase + "/backup-jobs/job-9": jobStatuses("job-9", "error")})
-	require.NoError(t, waitVolumeJobSettled(context.Background(), NewVolumeService(client), "vpc-1", "job-9", settleToChange, time.Minute))
+	require.NoError(t, waitVolumeJobSettled(context.Background(), NewVolumeService(client), "vpc-1", "job-9", time.Minute))
 	assert.Equal(t, 1, api.count("GET "+volBase+"/backup-jobs/job-9"))
 }
 

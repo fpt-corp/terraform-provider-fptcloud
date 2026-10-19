@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_volume_backup Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Runs a Backup Native volume backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource waits for a running backup of the job to finish, starts the run and waits for it to end; destroying the resource only removes it from state. Change a value in triggers to run the backup again. A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. A job with one volume may be retried by the backend after a failed run. When the job stays in pending, the apply runs out its timeout; only a later run or the backend clears that state.
+  Runs a Backup Native volume backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource checks the job's status, starts the run and waits for it to end. A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. Destroying the resource only removes it from state. Change a value in triggers to run the backup again. A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. A job with one volume may be retried by the backend after a failed run. When the job stays in pending, the apply runs out its timeout; only a later run or the backend clears that state.
 ---
 
 # fptcloud_backup_native_volume_backup (Resource)
 
-Runs a Backup Native volume backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource waits for a running backup of the job to finish, starts the run and waits for it to end; destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. A job with one volume may be retried by the backend after a failed run. When the job stays in `pending`, the apply runs out its timeout; only a later run or the backend clears that state.
+Runs a Backup Native volume backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource checks the job's status, starts the run and waits for it to end. A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. Destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. A job with one volume may be retried by the backend after a failed run. When the job stays in `pending`, the apply runs out its timeout; only a later run or the backend clears that state.
 
 ## Example Usage
 

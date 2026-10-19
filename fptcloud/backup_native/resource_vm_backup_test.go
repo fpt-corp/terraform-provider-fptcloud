@@ -57,15 +57,18 @@ func TestCreateVmBackup(t *testing.T) {
 }
 
 // Review focus 1.
-func TestCreateVmBackupWaitsForARunningBackup(t *testing.T) {
+func TestCreateVmBackupRefusesABusyJob(t *testing.T) {
 	setFastPolling(t)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
-		"GET " + vmBase + "/detail":        jobStatuses("job-1", "Backing up", "Success", "Pending", "Success"),
-		"POST " + vmBase + "/start_backup": {{Body: startedBody}},
+		"GET " + vmBase + "/detail": jobStatuses("job-1", "Backing up", "Success"),
 	})
-	diags := createVmBackup(context.Background(), vmBackupData(t), client)
-	require.False(t, diags.HasError(), "%v", diags)
-	assert.Equal(t, 1, api.servedBefore("GET "+vmBase+"/detail", "POST "+vmBase+"/start_backup"), "the run starts after the running backup ends")
+	d := vmBackupData(t)
+	diags := createVmBackup(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Backing up")
+	assert.Empty(t, d.Id())
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"), "the status is read once, not waited on")
+	assert.Equal(t, 0, api.count("POST "+vmBase+"/start_backup"))
 }
 
 func TestCreateVmBackupFailsAtOnceOnAFailedJob(t *testing.T) {
@@ -78,6 +81,7 @@ func TestCreateVmBackupFailsAtOnceOnAFailedJob(t *testing.T) {
 	require.True(t, diags.HasError())
 	assert.Contains(t, diags[0].Summary, "Failed")
 	assert.Empty(t, d.Id())
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"))
 	assert.Equal(t, 0, api.count("POST "+vmBase+"/start_backup"))
 }
 

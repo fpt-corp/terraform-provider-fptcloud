@@ -61,6 +61,26 @@ func tolerateReadErrors(refresh retry.StateRefreshFunc, pending string) retry.St
 	}
 }
 
+// retryRead calls read until it returns anything but a failed API read,
+// riding out up to maxPollErrors of those pollInterval apart, as a poll does.
+func retryRead(ctx context.Context, read func() error) error {
+	for failures := 0; ; failures++ {
+		err := read()
+		var readErr pollReadError
+		if !errors.As(err, &readErr) {
+			return err
+		}
+		if failures >= maxPollErrors {
+			return fmt.Errorf("%w (failed %d reads in a row)", readErr.err, failures+1)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
 func newStateConf(pending, target []string, refresh retry.StateRefreshFunc, timeout time.Duration) *retry.StateChangeConf {
 	return &retry.StateChangeConf{
 		Pending:                   pending,
@@ -111,17 +131,29 @@ var vmJobStableStatuses = map[string]bool{"initiated": true, "available": true, 
 // settlePurpose says what a settle wait is for. A v1 job reads "Failed" after
 // a run in which any VM failed, and keeps it until another run starts. Update,
 // switch_schedule and a manual backup refuse that state, so waiting for it to
-// change would only run out the timeout; delete accepts it. A v2 job with
-// several volumes reads "error" as soon as one volume fails, while the others
-// still back up, so before a manual backup a v2 "error" counts only once it
-// has held for runFailureHold.
+// change would only run out the timeout; delete accepts it.
 type settlePurpose int
 
 const (
 	settleToChange settlePurpose = iota
 	settleToDelete
-	settleToRun
 )
+
+// vmJobFailedError reports a v1 job in state Failed, which refuses every
+// change and run (see settlePurpose).
+func vmJobFailedError(jobId string) error {
+	return fmt.Errorf("VM backup job %s is in state Failed because a VM failed in its last run. "+
+		"The API refuses to change or start the job until another run starts, either a scheduled run or a backend retry; "+
+		"check the backup history in the portal", jobId)
+}
+
+// jobBusyError reports a job that cannot start a manual backup now. A manual
+// backup reads the status once instead of waiting: the run in progress may be
+// a scheduled backup that outlasts the apply's timeout.
+func jobBusyError(kind, jobId, status string) error {
+	return fmt.Errorf("the %s backup job %s cannot start a backup now: it is in state %s, so a backup, a restore or a change of the job is still running. "+
+		"Apply again after it ends", kind, jobId, status)
+}
 
 func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, purpose settlePurpose, timeout time.Duration) (*VmJobDetail, error) {
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
@@ -137,9 +169,7 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, p
 			if purpose == settleToDelete {
 				return job, "settled", nil
 			}
-			return nil, "", fmt.Errorf("VM backup job %s is in state Failed because a VM failed in its last run. "+
-				"The API refuses to change or start the job until another run starts, either a scheduled run or a backend retry; "+
-				"check the backup history in the portal", jobId)
+			return nil, "", vmJobFailedError(jobId)
 		}
 		if vmJobStableStatuses[status] {
 			return job, "settled", nil
@@ -192,8 +222,7 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 // Statuses in which a v2 job accepts update, actions and executions.
 var volumeJobStableStatuses = map[string]bool{"initiated": true, "available": true, "success": true, "error": true}
 
-func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId string, purpose settlePurpose, timeout time.Duration) error {
-	var failingSince time.Time
+func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) error {
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVolumeJob(vpcId, jobId)
 		if err != nil {
@@ -202,18 +231,7 @@ func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId s
 		if job == nil {
 			return nil, "", fmt.Errorf("volume backup job %s no longer exists", jobId)
 		}
-		status := strings.ToLower(job.Status)
-		if status == "error" && purpose == settleToRun {
-			if failingSince.IsZero() {
-				failingSince = time.Now()
-			}
-			if time.Since(failingSince) < runFailureHold {
-				return job, "busy", nil
-			}
-			return job, "settled", nil
-		}
-		failingSince = time.Time{}
-		if volumeJobStableStatuses[status] {
+		if volumeJobStableStatuses[strings.ToLower(job.Status)] {
 			return job, "settled", nil
 		}
 		return job, "busy", nil
