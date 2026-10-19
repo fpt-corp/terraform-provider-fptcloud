@@ -1,10 +1,15 @@
 package fptcloud_backup_native
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	common "terraform-provider-fptcloud/commons"
 )
 
 const (
@@ -129,7 +134,7 @@ func TestListVmHistoriesSendsTypeAndPaging(t *testing.T) {
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + vmBase + "/histories/list": {{Body: `{"total":1,"data":[{"vm_id":"vm-1","type":"Restore keep","status":"Success","start_time":"2026-10-13T08:00:00","end_time":"2026-10-13T08:10:00"}]}`}},
 	})
-	rows, err := NewVmService(client).ListVmHistories("vpc-1", "Restore keep")
+	rows, err := NewVmService(client).ListVmHistories("vpc-1", "Restore keep", time.Time{})
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	q := api.last("GET " + vmBase + "/histories/list").Query
@@ -152,6 +157,95 @@ func TestRestoreVmKeepSendsObjects(t *testing.T) {
 	assert.Equal(t, []interface{}{}, body["security_groups"], "never null")
 	assert.Equal(t, map[string]interface{}{"id": "", "ip": ""}, body["floating_ip"], "never null")
 	assert.Equal(t, false, body["is_overwrite"])
+}
+
+// historyRows returns n rows of VM history, one minute apart and newest
+// first, starting at newest.
+func historyRows(newest time.Time, n int) string {
+	rows := make([]string, n)
+	for i := range rows {
+		start := newest.Add(-time.Duration(i) * time.Minute).Format(apiTimeLayout)
+		rows[i] = fmt.Sprintf(`{"vm_id":"vm-%d","type":"Restore","status":"Success","start_time":"%s"}`, i, start)
+	}
+	return strings.Join(rows, ",")
+}
+
+// A busy VPC can have more restores since the cutoff than fit on one page.
+func TestListVmHistoriesPagesUntilRowsPassTheCutoff(t *testing.T) {
+	newest := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	page := `{"total":500,"data":[` + historyRows(newest, historyPageSize) + `]}`
+	older := `{"total":500,"data":[` + historyRows(newest.Add(-historyPageSize*time.Minute), historyPageSize) + `]}`
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {{Body: page}, {Body: older}, {Body: older}},
+	})
+	cutoff := newest.Add(-70 * time.Minute)
+	rows, err := NewVmService(client).ListVmHistories("vpc-1", "Restore", cutoff)
+	require.NoError(t, err)
+	assert.Len(t, rows, 2*historyPageSize)
+	assert.Equal(t, 2, api.count("GET "+vmBase+"/histories/list"), "stops on the first page that reaches the cutoff")
+	assert.Equal(t, "2", api.last("GET "+vmBase+"/histories/list").Query.Get("page"))
+}
+
+func TestListVmHistoriesStopsAtTheEndOfTheList(t *testing.T) {
+	newest := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/histories/list": {{Body: `{"total":50,"data":[` + historyRows(newest, historyPageSize) + `]}`}},
+	})
+	rows, err := NewVmService(client).ListVmHistories("vpc-1", "Restore", time.Time{})
+	require.NoError(t, err)
+	assert.Len(t, rows, historyPageSize)
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/histories/list"))
+}
+
+// jobRows returns n VM job list rows with ids job-<from> and up.
+func jobRows(from, n int) string {
+	rows := make([]string, n)
+	for i := range rows {
+		rows[i] = fmt.Sprintf(`{"id":"job-%d","name":"web-%d"}`, from+i, from+i)
+	}
+	return strings.Join(rows, ",")
+}
+
+func TestListVmJobsReadsEveryPage(t *testing.T) {
+	size := common.ListPageSize
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/list": {
+			{Body: fmt.Sprintf(`{"total":%d,"data":[%s]}`, 2*size+3, jobRows(0, size))},
+			{Body: fmt.Sprintf(`{"total":%d,"data":[%s]}`, 2*size+3, jobRows(size, size))},
+			{Body: fmt.Sprintf(`{"total":%d,"data":[%s]}`, 2*size+3, jobRows(2*size, 3))},
+		},
+	})
+	jobs, err := NewVmService(client).ListVmJobs("vpc-1")
+	require.NoError(t, err)
+	assert.Len(t, jobs, 2*size+3)
+	assert.Equal(t, 3, api.count("GET "+vmBase+"/list"))
+	q := api.last("GET " + vmBase + "/list").Query
+	assert.Equal(t, "3", q.Get("page"))
+	assert.Equal(t, fmt.Sprint(size), q.Get("page_size"))
+}
+
+func TestListFloatingIpsReadsEveryPage(t *testing.T) {
+	size := common.ListPageSize
+	ips := func(from, n int) string {
+		rows := make([]string, n)
+		for i := range rows {
+			rows[i] = fmt.Sprintf(`{"id":"ip-%d","ip_address":"203.0.113.%d"}`, from+i, from+i)
+		}
+		return strings.Join(rows, ",")
+	}
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET /v1/vmware/vpc/vpc-1/ip-address": {
+			{Body: fmt.Sprintf(`{"status":true,"total":%d,"data":[%s]}`, size+1, ips(0, size))},
+			{Body: fmt.Sprintf(`{"status":true,"total":%d,"data":[%s]}`, size+1, ips(size, 1))},
+		},
+	})
+	got, err := NewVmService(client).ListFloatingIps("vpc-1")
+	require.NoError(t, err)
+	assert.Len(t, got, size+1)
+	assert.Equal(t, FloatingIpItem{Id: fmt.Sprintf("ip-%d", size), IpAddress: fmt.Sprintf("203.0.113.%d", size)}, got[size])
+	q := api.last("GET /v1/vmware/vpc/vpc-1/ip-address").Query
+	assert.Equal(t, "2", q.Get("page"))
+	assert.Equal(t, "false", q.Get("is_all"))
 }
 
 func TestListFloatingIps(t *testing.T) {

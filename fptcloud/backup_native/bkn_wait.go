@@ -291,7 +291,7 @@ func findVmRestoreRow(rows []VmHistory, vmId, historyType string, since time.Tim
 // vmRestoreRowsSeen returns the start times of the rows findVmRestoreRow
 // would match before a restore is submitted.
 func vmRestoreRowsSeen(svc VmService, vpcId, vmId, historyType string, since time.Time) (map[string]bool, error) {
-	rows, err := svc.ListVmHistories(vpcId, historyType)
+	rows, err := svc.ListVmHistories(vpcId, historyType, since.Add(-historyClockSkew))
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +307,7 @@ func vmRestoreRowsSeen(svc VmService, vpcId, vmId, historyType string, since tim
 
 func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType string, since time.Time, seen map[string]bool, timeout time.Duration) (*VmHistory, error) {
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
-		rows, err := svc.ListVmHistories(vpcId, historyType)
+		rows, err := svc.ListVmHistories(vpcId, historyType, since.Add(-historyClockSkew))
 		if err != nil {
 			return nil, "", readFailed(err)
 		}

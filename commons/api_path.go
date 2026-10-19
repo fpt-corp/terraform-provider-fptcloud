@@ -298,7 +298,7 @@ var ApiPath = struct {
 	AlertNotificationMethods func(vpcId string, level string) string
 
 	// Backup Native - v1 OSP native backup (VM jobs). User API only.
-	BackupNativeVmList           func(vpcId string) string
+	BackupNativeVmList           func(vpcId string, page int, pageSize int) string
 	BackupNativeVmCreate         func(vpcId string) string
 	BackupNativeVmDetail         func(vpcId string, jobId string) string
 	BackupNativeVmUpdate         func(vpcId string, jobId string) string
@@ -310,7 +310,7 @@ var ApiPath = struct {
 	BackupNativeVmHistories      func(vpcId string, historyType string, page int, pageSize int) string
 	BackupNativeVmRestore        func(vpcId string) string
 	BackupNativeVmRestoreKeep    func(vpcId string) string
-	BackupNativeFloatingIps      func(vpcId string) string
+	BackupNativeFloatingIps      func(vpcId string, page int, pageSize int) string
 
 	// Backup Native - v2 Backup Volume (volume jobs). User API only.
 	BackupNativeVolumeJobs          func(vpcId string, page int, pageSize int) string
@@ -1315,11 +1315,10 @@ var ApiPath = struct {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/alert/alarm-notification/list?level=%s", vpcId, url.QueryEscape(level))
 	},
 
-	// Backup Native - v1. The list takes page=0&page_size=0 to return every
-	// job; omitting either parameter makes the backend fail with HTTP 500
-	// (ListBackupController.py:22).
-	BackupNativeVmList: func(vpcId string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/list?page=0&page_size=0", vpcId)
+	// Backup Native - v1. The list needs both page and page_size; omitting
+	// either makes the backend fail with HTTP 500 (ListBackupController.py:22).
+	BackupNativeVmList: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/list?page=%d&page_size=%d", vpcId, page, pageSize)
 	},
 	BackupNativeVmCreate: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/create", vpcId)
@@ -1360,8 +1359,8 @@ var ApiPath = struct {
 	},
 	// is_all=false leaves out floating IPs that are already in use, as the
 	// portal's restore dialog does.
-	BackupNativeFloatingIps: func(vpcId string) string {
-		return fmt.Sprintf("/v1/vmware/vpc/%s/ip-address?page=1&page_size=999&is_all=false", vpcId)
+	BackupNativeFloatingIps: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/ip-address?page=%d&page_size=%d&is_all=false", vpcId, page, pageSize)
 	},
 
 	// Backup Native - v2

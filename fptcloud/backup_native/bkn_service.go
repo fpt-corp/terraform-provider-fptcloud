@@ -3,12 +3,13 @@ package fptcloud_backup_native
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	common "terraform-provider-fptcloud/commons"
 )
 
-// historyPageSize is how many history rows a restore poll reads. Rows come
-// back newest first, and a restore's row is written when it starts.
+// historyPageSize is the page size of the history lists. Rows come back
+// newest first, and a restore's row is written when it starts.
 const historyPageSize = 50
 
 // VmService calls the v1 OSP native backup user API.
@@ -22,7 +23,9 @@ type VmService interface {
 	StartVmJobBackup(vpcId string, jobId string) error
 	GetTaskProgress(vpcId string, taskId string) (*TaskProgress, error)
 	ListVmRestorePoints(vpcId string, vmId string) ([]VmRestorePoint, error)
-	ListVmHistories(vpcId string, historyType string) ([]VmHistory, error)
+	// ListVmHistories returns the rows of historyType that started at or after
+	// cutoff, newest first, plus at most one page of older rows.
+	ListVmHistories(vpcId string, historyType string, cutoff time.Time) ([]VmHistory, error)
 	RestoreVm(vpcId string, p VmRestorePayload) error
 	RestoreVmKeep(vpcId string, p VmRestoreKeepPayload) error
 	ListFloatingIps(vpcId string) ([]FloatingIpItem, error)
@@ -70,17 +73,20 @@ func taskIdFrom(raw []byte, action string) (string, error) {
 
 func (s *service) ListVmJobs(vpcId string) ([]VmJobListItem, error) {
 	const action = "listing VM backup jobs"
-	raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeVmList(vpcId))
-	if err != nil {
-		return nil, wrapAPIError(action, err)
-	}
-	var resp struct {
-		Data []VmJobListItem `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("%s: could not parse the response: %w", action, err)
-	}
-	return resp.Data, nil
+	return common.ListAllPages(common.ListPageSize, func(page int) ([]VmJobListItem, int, error) {
+		raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeVmList(vpcId, page, common.ListPageSize))
+		if err != nil {
+			return nil, 0, wrapAPIError(action, err)
+		}
+		var resp struct {
+			Data  []VmJobListItem `json:"data"`
+			Total int             `json:"total"`
+		}
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, 0, fmt.Errorf("%s: could not parse the response: %w", action, err)
+		}
+		return resp.Data, resp.Total, nil
+	}, func(job VmJobListItem) string { return job.Id })
 }
 
 func (s *service) CreateVmJob(vpcId string, p VmJobCreatePayload) (string, error) {
@@ -199,19 +205,34 @@ func (s *service) ListVmRestorePoints(vpcId string, vmId string) ([]VmRestorePoi
 	return data.RestorePoints, nil
 }
 
-func (s *service) ListVmHistories(vpcId string, historyType string) ([]VmHistory, error) {
+func (s *service) ListVmHistories(vpcId string, historyType string, cutoff time.Time) ([]VmHistory, error) {
 	const action = "listing backup histories"
-	raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeVmHistories(vpcId, historyType, 1, historyPageSize))
-	if err != nil {
-		return nil, wrapAPIError(action, err)
+	var rows []VmHistory
+	for page := 1; page <= maxListPages; page++ {
+		raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeVmHistories(vpcId, historyType, page, historyPageSize))
+		if err != nil {
+			return nil, wrapAPIError(action, err)
+		}
+		var resp struct {
+			Data  []VmHistory `json:"data"`
+			Total int         `json:"total"`
+		}
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, fmt.Errorf("%s: could not parse the response: %w", action, err)
+		}
+		rows = append(rows, resp.Data...)
+		if len(resp.Data) < historyPageSize || page*historyPageSize >= resp.Total || olderThan(resp.Data[len(resp.Data)-1], cutoff) {
+			return rows, nil
+		}
 	}
-	var resp struct {
-		Data []VmHistory `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("%s: could not parse the response: %w", action, err)
-	}
-	return resp.Data, nil
+	return nil, fmt.Errorf("%s: the list did not end after %d pages", action, maxListPages)
+}
+
+// olderThan reports whether row started before cutoff. A row whose time does
+// not parse is not older, so paging goes on past it.
+func olderThan(row VmHistory, cutoff time.Time) bool {
+	start, err := parseAPITime(row.StartTime)
+	return err == nil && start.Before(cutoff)
 }
 
 func (s *service) RestoreVm(vpcId string, p VmRestorePayload) error {
@@ -236,15 +257,18 @@ func (s *service) RestoreVmKeep(vpcId string, p VmRestoreKeepPayload) error {
 
 func (s *service) ListFloatingIps(vpcId string) ([]FloatingIpItem, error) {
 	const action = "listing floating IPs"
-	raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeFloatingIps(vpcId))
-	if err != nil {
-		return nil, wrapAPIError(action, err)
-	}
-	var resp struct {
-		Data []FloatingIpItem `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("%s: could not parse the response: %w", action, err)
-	}
-	return resp.Data, nil
+	return common.ListAllPages(common.ListPageSize, func(page int) ([]FloatingIpItem, int, error) {
+		raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeFloatingIps(vpcId, page, common.ListPageSize))
+		if err != nil {
+			return nil, 0, wrapAPIError(action, err)
+		}
+		var resp struct {
+			Data  []FloatingIpItem `json:"data"`
+			Total int              `json:"total"`
+		}
+		if err := json.Unmarshal(raw, &resp); err != nil {
+			return nil, 0, fmt.Errorf("%s: could not parse the response: %w", action, err)
+		}
+		return resp.Data, resp.Total, nil
+	}, func(ip FloatingIpItem) string { return ip.Id })
 }

@@ -11,7 +11,7 @@ import (
 func TestBackupNativePaths(t *testing.T) {
 	p := common.ApiPath
 	cases := map[string]string{
-		p.BackupNativeVmList("v"):                             "/v1/vmware/vpc/v/osp_native_backup/list?page=0&page_size=0",
+		p.BackupNativeVmList("v", 2, 25):                      "/v1/vmware/vpc/v/osp_native_backup/list?page=2&page_size=25",
 		p.BackupNativeVmCreate("v"):                           "/v1/vmware/vpc/v/osp_native_backup/create",
 		p.BackupNativeVmDetail("v", "j"):                      "/v1/vmware/vpc/v/osp_native_backup/detail?backup_id=j",
 		p.BackupNativeVmUpdate("v", "j"):                      "/v1/vmware/vpc/v/osp_native_backup/j/update",
@@ -23,7 +23,7 @@ func TestBackupNativePaths(t *testing.T) {
 		p.BackupNativeVmHistories("v", "Restore keep", 1, 50): "/v1/vmware/vpc/v/osp_native_backup/histories/list?type=Restore+keep&page=1&page_size=50",
 		p.BackupNativeVmRestore("v"):                          "/v1/vmware/vpc/v/osp_native_backup/restore",
 		p.BackupNativeVmRestoreKeep("v"):                      "/v1/vmware/vpc/v/osp_native_backup/restore-new",
-		p.BackupNativeFloatingIps("v"):                        "/v1/vmware/vpc/v/ip-address?page=1&page_size=999&is_all=false",
+		p.BackupNativeFloatingIps("v", 2, 25):                 "/v1/vmware/vpc/v/ip-address?page=2&page_size=25&is_all=false",
 		p.BackupNativeVolumeJobs("v", 2, 100):                 "/v2/vpc/v/backup-volume/backup-jobs?page=2&page_size=100",
 		p.BackupNativeVolumeJobCreate("v"):                    "/v2/vpc/v/backup-volume/backup-jobs",
 		p.BackupNativeVolumeJob("v", "j"):                     "/v2/vpc/v/backup-volume/backup-jobs/j",
