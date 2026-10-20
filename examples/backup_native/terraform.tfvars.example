@@ -1,0 +1,21 @@
+vpc_name                = "your_vpc_name"
+notification_method_ids = ["your_notification_method_id"]
+
+# Leave either id empty to skip that half.
+# vm_id     = "your_throwaway_vm_id"
+volume_id = "your_pv_fke_volume_id"
+
+# Manual backups: any value runs the job once, a new value runs it again.
+# Turn the restores off first: they follow the newest restore point.
+# vm_backup_run     = ""
+volume_backup_run = ""
+
+# Restores: turn on after a restore point exists.
+# vm_restore                    = false
+# vm_restore_mode               = "keep"
+# vm_restore_flavor_id          = "your_flavor_id"
+# vm_restore_subnet_id          = "your_subnet_id"
+# vm_restore_security_group_ids = []
+
+volume_restore         = false
+volume_restore_size_gb = 20
