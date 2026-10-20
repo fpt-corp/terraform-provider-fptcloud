@@ -1,3 +1,9 @@
+## [0.3.82] - 2026-10-20
+
+### Docs
+
+- Add docs and examples for Object Storage IAM user and IAM role
+
 ## [0.3.81] - 2026-10-12
 
 ### Resource
