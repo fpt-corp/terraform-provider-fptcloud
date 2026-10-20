@@ -11,7 +11,7 @@ Applying it creates real jobs and restores, which may incur cost.
 - An FKE persistent volume (name starts with `pv-fke`) that is not in another backup job.
 - The ID of a notification method, for example from the `fptcloud_alert_notification_methods` data source.
 
-The configuration is two files: `volume.tf` holds the provider, the VPC lookup, the shared variables and the volume backup (v2); `vm.tf` holds the VM backup (v1) and is commented out. To try the VM half, uncomment `vm.tf` and the `vm_*` lines in `terraform.tfvars`. Leave `volume_id` empty to skip the volume half.
+Everything is in `backup_native.tf`: the provider, the VPC lookup and the shared variables, then the VM backup (v1) and the volume backup (v2). Leave `vm_id` or `volume_id` empty to skip that half.
 
 ## Run it
 
@@ -49,7 +49,7 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
 
 | Check | How |
 |---|---|
-| Schedule change | Change `full_backup_frequency` in `volume.tf` or `vm.tf` (weekly needs `full_backup_day` 0-6 with 0 as Monday, monthly 1-31, daily none) and apply. The next plan shows no changes. |
+| Schedule change | Change `full_backup_frequency` in `backup_native.tf` (weekly needs `full_backup_day` 0-6 with 0 as Monday, monthly 1-31, daily none) and apply. The next plan shows no changes. |
 | Schedule off and on | Add `schedule_enabled = false` to a job and apply, then remove it and apply. |
 | Import | `terraform import 'fptcloud_backup_native_vm_job.example[0]' vpc/<vpc_id>/backup_native_vm_job/<job_id>` after `terraform state rm`. |
 | Manual backup while a restore is on | The restores use the newest restore point, so the apply after a manual backup runs them again; with `vm_restore_mode = "overwrite"` that overwrites `vm_id` again. Turn the restores off first, or apply only the backup: `terraform apply -target='fptcloud_backup_native_vm_job_run.example[0]'`. |
