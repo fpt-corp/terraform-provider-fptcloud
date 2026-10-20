@@ -31,6 +31,11 @@ go.work
 *.tfstate.*
 *.tfvars
 
+# Terraform working files: the downloaded providers and the lock file that
+# pins them. The examples load the provider through dev_overrides instead.
+.terraform/
+.terraform.lock.hcl
+
 # .log files
 *.log
 *.log.*

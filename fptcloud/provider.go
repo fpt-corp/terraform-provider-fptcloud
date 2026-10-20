@@ -5,6 +5,7 @@ import (
 	"log"
 	common "terraform-provider-fptcloud/commons"
 	fptcloud_alert "terraform-provider-fptcloud/fptcloud/alert"
+	fptcloud_backup_native "terraform-provider-fptcloud/fptcloud/backup_native"
 	fptcloud_backup_veeam "terraform-provider-fptcloud/fptcloud/backup_veeam"
 	fptcloud_database_flavors "terraform-provider-fptcloud/fptcloud/database_flavors"
 	fptcloud_flavor "terraform-provider-fptcloud/fptcloud/flavor"
@@ -136,6 +137,10 @@ func Provider() *schema.Provider {
 			"fptcloud_backup_veeam_jobs":                      fptcloud_backup_veeam.DataSourceBackupVeeamJobs(),
 			"fptcloud_backup_veeam_instances":                 fptcloud_backup_veeam.DataSourceBackupVeeamInstances(),
 			"fptcloud_alert_notification_methods":             fptcloud_alert.DataSourceAlertNotificationMethods(),
+			"fptcloud_backup_native_vm_jobs":                  fptcloud_backup_native.DataSourceVmJobs(),
+			"fptcloud_backup_native_vm_restore_points":        fptcloud_backup_native.DataSourceVmRestorePoints(),
+			"fptcloud_backup_native_volume_jobs":              fptcloud_backup_native.DataSourceVolumeJobs(),
+			"fptcloud_backup_native_volume_restore_points":    fptcloud_backup_native.DataSourceVolumeRestorePoints(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"fptcloud_storage":                              fptcloud_storage.ResourceStorage(),
@@ -174,6 +179,12 @@ func Provider() *schema.Provider {
 			"fptcloud_backup_veeam_restore":                 fptcloud_backup_veeam.ResourceBackupVeeamRestore(),
 			"fptcloud_backup_veeam_restore_clone":           fptcloud_backup_veeam.ResourceBackupVeeamRestoreClone(),
 			"fptcloud_backup_veeam_instant_recovery":        fptcloud_backup_veeam.ResourceBackupVeeamInstantRecovery(),
+			"fptcloud_backup_native_vm_job":                 fptcloud_backup_native.ResourceVmJob(),
+			"fptcloud_backup_native_volume_job":             fptcloud_backup_native.ResourceVolumeJob(),
+			"fptcloud_backup_native_vm_restore":             fptcloud_backup_native.ResourceVmRestore(),
+			"fptcloud_backup_native_volume_restore":         fptcloud_backup_native.ResourceVolumeRestore(),
+			"fptcloud_backup_native_vm_job_run":             fptcloud_backup_native.ResourceVmJobRun(),
+			"fptcloud_backup_native_volume_job_run":         fptcloud_backup_native.ResourceVolumeJobRun(),
 		},
 		ConfigureContextFunc: providerConfigureContext,
 	}
