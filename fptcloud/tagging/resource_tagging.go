@@ -74,8 +74,8 @@ func ResourceTagging() *schema.Resource {
 				// "" keeps the tag without a color.
 				ValidateFunc: validation.StringInSlice(append([]string{""}, AllowedColors...), true),
 				// The API stores the color in lowercase.
-				DiffSuppressFunc: func(_, old, new string, _ *schema.ResourceData) bool {
-					return strings.EqualFold(old, new)
+				DiffSuppressFunc: func(_, oldValue, newValue string, _ *schema.ResourceData) bool {
+					return strings.EqualFold(oldValue, newValue)
 				},
 				Description: "Hex color of the tag, case-insensitive. One of " + strings.Join(AllowedColors, ", ") +
 					", or empty for no color",

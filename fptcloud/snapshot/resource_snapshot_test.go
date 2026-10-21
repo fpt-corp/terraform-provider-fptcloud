@@ -82,13 +82,14 @@ func newSnapshotApi(t *testing.T, tags string, tagsReply string) (*common.Client
 	return client, api
 }
 
-func snapshotState(tagIds []string, includeRam bool) *terraform.InstanceState {
+// snapshotState is a snapshot taken without RAM.
+func snapshotState(tagIds []string) *terraform.InstanceState {
 	attrs := map[string]string{
 		"id":          "snapshot-1",
 		"vpc_id":      "vpc-1",
 		"instance_id": "instance-1",
 		"name":        "before-upgrade",
-		"include_ram": fmt.Sprint(includeRam),
+		"include_ram": "false",
 		"tag_ids.#":   fmt.Sprint(len(tagIds)),
 	}
 	for _, id := range tagIds {
@@ -111,10 +112,10 @@ func snapshotConfig(tagIds []string, includeRam bool) *terraform.ResourceConfig 
 	})
 }
 
-func planSnapshot(t *testing.T, r *schema.Resource, oldTags, newTags []string, oldRam, newRam bool) (*terraform.InstanceDiff, *schema.ResourceData) {
+func planSnapshot(t *testing.T, r *schema.Resource, oldTags, newTags []string, newRam bool) (*terraform.InstanceDiff, *schema.ResourceData) {
 	t.Helper()
 
-	state := snapshotState(oldTags, oldRam)
+	state := snapshotState(oldTags)
 	diff, err := schema.InternalMap(r.Schema).Diff(context.Background(), state, snapshotConfig(newTags, newRam), nil, nil, true)
 	assert.NoError(t, err)
 
@@ -125,14 +126,14 @@ func planSnapshot(t *testing.T, r *schema.Resource, oldTags, newTags []string, o
 }
 
 func TestResourceSnapshot_ChangingIncludeRamReplacesTheSnapshot(t *testing.T) {
-	diff, _ := planSnapshot(t, fptcloud_snapshot.ResourceSnapshot(), nil, nil, false, true)
+	diff, _ := planSnapshot(t, fptcloud_snapshot.ResourceSnapshot(), nil, nil, true)
 
 	assert.True(t, diff.RequiresNew())
 	assert.True(t, diff.Attributes["include_ram"].RequiresNew)
 }
 
 func TestResourceSnapshot_ChangingTagIdsDoesNotReplaceTheSnapshot(t *testing.T) {
-	diff, _ := planSnapshot(t, fptcloud_snapshot.ResourceSnapshot(), []string{"tag-1"}, []string{"tag-2"}, false, false)
+	diff, _ := planSnapshot(t, fptcloud_snapshot.ResourceSnapshot(), []string{"tag-1"}, []string{"tag-2"}, false)
 
 	assert.False(t, diff.RequiresNew())
 }
@@ -144,7 +145,7 @@ func TestResourceSnapshot_UpdateSendsTheNewTags(t *testing.T) {
 	defer api.server.Close()
 
 	r := fptcloud_snapshot.ResourceSnapshot()
-	_, d := planSnapshot(t, r, []string{"tag-1", "tag-2"}, []string{"tag-2", "tag-3"}, false, false)
+	_, d := planSnapshot(t, r, []string{"tag-1", "tag-2"}, []string{"tag-2", "tag-3"}, false)
 
 	diags := r.UpdateContext(context.Background(), d, client)
 
@@ -162,7 +163,7 @@ func TestResourceSnapshot_UpdateClearsEveryTag(t *testing.T) {
 	defer api.server.Close()
 
 	r := fptcloud_snapshot.ResourceSnapshot()
-	_, d := planSnapshot(t, r, []string{"tag-1"}, nil, false, false)
+	_, d := planSnapshot(t, r, []string{"tag-1"}, nil, false)
 
 	diags := r.UpdateContext(context.Background(), d, client)
 
@@ -177,7 +178,7 @@ func TestResourceSnapshot_UpdateWithoutTagChangeDoesNotCallTagging(t *testing.T)
 	defer api.server.Close()
 
 	r := fptcloud_snapshot.ResourceSnapshot()
-	_, d := planSnapshot(t, r, []string{"tag-1"}, []string{"tag-1"}, false, false)
+	_, d := planSnapshot(t, r, []string{"tag-1"}, []string{"tag-1"}, false)
 
 	diags := r.UpdateContext(context.Background(), d, client)
 
@@ -190,7 +191,7 @@ func TestResourceSnapshot_UpdateFailsWhenTaggingIsRefused(t *testing.T) {
 	defer api.server.Close()
 
 	r := fptcloud_snapshot.ResourceSnapshot()
-	_, d := planSnapshot(t, r, nil, []string{"tag-x"}, false, false)
+	_, d := planSnapshot(t, r, nil, []string{"tag-x"}, false)
 
 	diags := r.UpdateContext(context.Background(), d, client)
 
@@ -204,7 +205,7 @@ func TestResourceSnapshot_ReadSetsTagIdsFromThePlatform(t *testing.T) {
 	defer api.server.Close()
 
 	r := fptcloud_snapshot.ResourceSnapshot()
-	d := r.Data(snapshotState([]string{"tag-1"}, false))
+	d := r.Data(snapshotState([]string{"tag-1"}))
 
 	diags := r.ReadContext(context.Background(), d, client)
 
