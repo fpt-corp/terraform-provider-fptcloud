@@ -113,21 +113,25 @@ func (s *SubnetServiceImpl) CreateSubnet(createDto CreateSubnetDTO) (*Subnet, er
 
 // FindSubnetByName find a subnet name
 func (s *SubnetServiceImpl) FindSubnetByName(findDto FindSubnetDTO) (*Subnet, error) {
-	var apiPath = common.ApiPath.FindSubnetByName(findDto.VpcId) + utils.ToQueryParams(findDto)
-	resp, err := s.client.SendGetRequest(apiPath)
+	resp, err := s.client.SendGetRequest(findSubnetByNamePath(findDto))
 	if err != nil {
 		return nil, common.DecodeError(err)
 	}
+	return decodeSubnetResponse(resp)
+}
 
+func findSubnetByNamePath(findDto FindSubnetDTO) string {
+	return common.ApiPath.FindSubnetByName(findDto.VpcId) + utils.ToQueryParams(findDto)
+}
+
+func decodeSubnetResponse(resp []byte) (*Subnet, error) {
 	response := SubnetResponseDto{}
-	err = json.Unmarshal(resp, &response)
-	if err != nil {
+	if err := json.Unmarshal(resp, &response); err != nil {
 		return nil, err
 	}
 	if !response.Status {
 		return nil, errors.New(response.Message)
 	}
-
 	return &response.Data, nil
 }
 

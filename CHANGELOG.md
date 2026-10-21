@@ -1,3 +1,16 @@
+## [0.3.83] - 2026-10-21
+
+### Resource
+
+- Fix: changing `tag_ids` on `fptcloud_snapshot` updates the tags in place instead of destroying and recreating the snapshot. Changing `vpc_id`, `instance_id`, `name` or `include_ram` still replaces it
+- Feat: `tag_ids` on `fptcloud_snapshot` is read back from the API, so tags changed outside Terraform show up as drift, and `tag_ids = []` removes every tag
+- Feat: `tag_ids` on `fptcloud_security_group` and `fptcloud_subnet` is sent on create and applied in place on update
+- Fix: `fptcloud_subnet` keeps waiting while the portal is still creating the subnet, instead of failing with `UnknownError: System error, please try again !` when the create task takes longer than the first check (10 seconds). The subnet was created anyway and was left out of the state, so the next apply failed on the CIDR. Other errors still stop the wait, with the API message
+- Feat: `color` on `fptcloud_tagging` accepts the full portal palette of twelve hex colors: `#00bfff`, `#35994b`, `#e7a600`, `#db4646`, `#4b5563`, `#c81e1e`, `#d03801`, `#dc6803`, `#057a55`, `#047481`, `#5850ec`, `#6c2bd9`. Leaving `color` unset or empty still creates a tag without a color
+- Fix: `color` on `fptcloud_tagging` is validated at plan time, so a color name or a hex outside the palette fails before apply instead of with `Data does not match the required format`, and an uppercase hex no longer shows a diff on every plan
+- Known limitation: the portal API must be updated for these to work end to end. Until then, `tag_ids` on `fptcloud_security_group`, `fptcloud_subnet` and `fptcloud_storage` reads back empty, so a plan keeps showing a diff on `tag_ids`, and the API accepts only `#e7a600`, `#db4646` and `#35994b` as a tag `color`
+- Known limitation: as on `fptcloud_storage`, `tag_ids = []` on `fptcloud_security_group` and `fptcloud_subnet` leaves the existing tags in place
+
 ## [0.3.82] - 2026-10-20
 
 ### Docs

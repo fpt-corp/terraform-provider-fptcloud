@@ -115,6 +115,17 @@ type snapshotResponse struct {
 	Data    Snapshot `json:"data"`
 }
 
+// updateTagsDTO always sends tag_ids, so an empty list removes every tag.
+type updateTagsDTO struct {
+	TagIds []string `json:"tag_ids"`
+}
+
+// updateTagsResponse is the envelope of the manage-tags endpoint, whose status is an HTTP code.
+type updateTagsResponse struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+}
+
 // apiError is the envelope the API returns for a refusal.
 type apiError struct {
 	Status    bool   `json:"status"`

@@ -3,18 +3,19 @@
 page_title: "fptcloud_snapshot Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Snapshots every volume attached to an instance at a point in time. The snapshot is crash-consistent: the disks are captured as they are, without quiescing the guest filesystem. A snapshot cannot be renamed, so changing any argument replaces it.
+  Snapshots every volume attached to an instance at a point in time. The snapshot is crash-consistent: the disks are captured as they are, without quiescing the guest filesystem. A snapshot cannot be renamed or moved, so changing vpc_id, instance_id, name or include_ram replaces it. tag_ids can be changed in place.
 ---
 
 # fptcloud_snapshot (Resource)
 
-Snapshots every volume attached to an instance at a point in time. The snapshot is crash-consistent: the disks are captured as they are, without quiescing the guest filesystem. A snapshot cannot be renamed, so changing any argument replaces it.
+Snapshots every volume attached to an instance at a point in time. The snapshot is crash-consistent: the disks are captured as they are, without quiescing the guest filesystem. A snapshot cannot be renamed or moved, so changing vpc_id, instance_id, name or include_ram replaces it. tag_ids can be changed in place.
 
 ## Example Usage
 
 ```terraform
 # Each resource is one snapshot. To keep several, declare several: editing an
-# argument does not add a snapshot, it replaces the one this resource owns.
+# argument other than tag_ids does not add a snapshot, it replaces the one this
+# resource owns.
 # To retake a snapshot without changing anything:
 #   terraform apply -replace='fptcloud_snapshot.before_upgrade'
 resource "fptcloud_snapshot" "instance_snapshot" {
@@ -44,7 +45,7 @@ output "snapshot_id" {
 
 - `include_ram` (Boolean) Capture the guest's memory alongside its disks, where the platform supports it
 - `name` (String) Name for the snapshot, unique within the vpc. Up to 30 characters of letters, digits, underscores, dashes, dots and spaces. Left unset, the platform names it
-- `tag_ids` (Set of String) Tag ids to apply to the snapshot, applied when it is created
+- `tag_ids` (Set of String) Tag ids to apply to the snapshot
 
 ### Read-Only
 

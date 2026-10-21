@@ -1,5 +1,6 @@
 # Each resource is one snapshot. To keep several, declare several: editing an
-# argument does not add a snapshot, it replaces the one this resource owns.
+# argument other than tag_ids does not add a snapshot, it replaces the one this
+# resource owns.
 # To retake a snapshot without changing anything:
 #   terraform apply -replace='fptcloud_snapshot.before_upgrade'
 resource "fptcloud_snapshot" "before_upgrade" {
