@@ -70,30 +70,42 @@ func resourceSubnetCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	createStateConf := &retry.StateChangeConf{
 		Pending: []string{"PENDING"},
 		Target:  []string{"COMPLETE"},
-		Refresh: func() (interface{}, string, error) {
-			findModel := FindSubnetDTO{
-				NetworkName: result.NetworkName,
-				VpcId:       vpcId.(string),
-			}
-			resp, err := service.FindSubnetByName(findModel)
-			if err != nil {
-				return 0, "", common.DecodeError(err)
-			}
-
-			d.SetId(resp.ID)
-			return resp, "COMPLETE", nil
-		},
+		Refresh: subnetCreateRefresh(apiClient.SendGetRequest, FindSubnetDTO{
+			NetworkName: result.NetworkName,
+			VpcId:       vpcId.(string),
+		}),
 		Timeout:        time.Duration(apiClient.Timeout) * time.Minute,
 		Delay:          10 * time.Second,
 		MinTimeout:     30 * time.Second,
 		NotFoundChecks: 20,
 	}
-	_, err = createStateConf.WaitForStateContext(ctx)
+	created, err := createStateConf.WaitForStateContext(ctx)
 	if err != nil {
 		return diag.Errorf("[Error] Waiting for subnet (%s) to be created: %s", createModel.Name, err)
 	}
+	d.SetId(created.(*Subnet).ID)
 
 	return resourceSubnetRead(ctx, d, m)
+}
+
+// subnetNotFoundCode is what network-by-name answers until the create task has written the subnet
+const subnetNotFoundCode = "101006"
+
+func subnetCreateRefresh(get func(string) ([]byte, error), findDto FindSubnetDTO) retry.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		resp, err := get(findSubnetByNamePath(findDto))
+		if common.IsApiErrorCode(err, subnetNotFoundCode) {
+			return 0, "PENDING", nil
+		}
+		if err != nil {
+			return 0, "", common.DecodeError(err)
+		}
+		subnet, err := decodeSubnetResponse(resp)
+		if err != nil {
+			return 0, "", err
+		}
+		return subnet, "COMPLETE", nil
+	}
 }
 
 func resourceSubnetRead(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
