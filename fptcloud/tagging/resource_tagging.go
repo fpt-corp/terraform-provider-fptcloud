@@ -4,10 +4,24 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"log"
 	"strings"
 	common "terraform-provider-fptcloud/commons"
 )
+
+// AllowedColors is the tag palette the platform accepts, in lowercase.
+var AllowedColors = []string{
+	"#00bfff", "#35994b", "#e7a600", "#db4646",
+	"#4b5563", // gray
+	"#c81e1e", // red
+	"#d03801", // orange
+	"#dc6803", // yellow
+	"#057a55", // green
+	"#047481", // teal
+	"#5850ec", // indigo
+	"#6c2bd9", // purple
+}
 
 // CreateTagInput represents input parameters for creating a tag
 type CreateTagInput struct {
@@ -55,9 +69,16 @@ func ResourceTagging() *schema.Resource {
 				Description: "The value of the tag. This field is optional.",
 			},
 			"color": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "The color of the tag. This field is optional. Valid values are: red, green, blue, etc.",
+				Type:     schema.TypeString,
+				Optional: true,
+				// "" keeps the tag without a color.
+				ValidateFunc: validation.StringInSlice(append([]string{""}, AllowedColors...), true),
+				// The API stores the color in lowercase.
+				DiffSuppressFunc: func(_, old, new string, _ *schema.ResourceData) bool {
+					return strings.EqualFold(old, new)
+				},
+				Description: "Hex color of the tag, case-insensitive. One of " + strings.Join(AllowedColors, ", ") +
+					", or empty for no color",
 			},
 			"scope_type": {
 				Type:        schema.TypeString,

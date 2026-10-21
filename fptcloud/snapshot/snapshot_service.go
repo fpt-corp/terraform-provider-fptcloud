@@ -16,6 +16,8 @@ type SnapshotService interface {
 	GetSnapshot(vpcId string, snapshotId string) (*Snapshot, error)
 	// DeleteSnapshot is a no-op when the snapshot is already gone.
 	DeleteSnapshot(vpcId string, snapshotId string) error
+	// UpdateTags replaces the snapshot's tags with tagIds; the platform works out what to add and remove.
+	UpdateTags(vpcId string, snapshotId string, tagIds []string) error
 }
 
 // SnapshotServiceImpl is the implementation of SnapshotService
@@ -105,4 +107,24 @@ func decodeApiError(err error) error {
 	}
 
 	return common.DecodeError(err)
+}
+
+// UpdateTags sets the tags attached to a snapshot
+func (s *SnapshotServiceImpl) UpdateTags(vpcId string, snapshotId string, tagIds []string) error {
+	apiPath := common.ApiPath.SnapshotTags(vpcId, snapshotId)
+	resp, err := s.client.SendPostRequest(apiPath, updateTagsDTO{TagIds: tagIds})
+	if err != nil {
+		return decodeApiError(err)
+	}
+
+	// The endpoint answers 200 even when it refuses, with the outcome in the body.
+	var result updateTagsResponse
+	if err = json.Unmarshal(resp, &result); err != nil {
+		return common.DecodeError(err)
+	}
+	if result.Status >= http.StatusBadRequest {
+		return fmt.Errorf("the platform refused to update the tags: %s", result.Message)
+	}
+
+	return nil
 }

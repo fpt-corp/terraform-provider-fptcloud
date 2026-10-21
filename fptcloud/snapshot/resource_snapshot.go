@@ -21,7 +21,8 @@ func ResourceSnapshot() *schema.Resource {
 	return &schema.Resource{
 		Description: "Snapshots every volume attached to an instance at a point in time. The snapshot is " +
 			"crash-consistent: the disks are captured as they are, without quiescing the guest filesystem. " +
-			"A snapshot cannot be renamed, so changing any argument replaces it.",
+			"A snapshot cannot be renamed or moved, so changing vpc_id, instance_id, name or include_ram " +
+			"replaces it. tag_ids can be changed in place.",
 		Schema: map[string]*schema.Schema{
 			"vpc_id": {
 				Type:         schema.TypeString,
@@ -55,9 +56,8 @@ func ResourceSnapshot() *schema.Resource {
 			"tag_ids": {
 				Type:        schema.TypeSet,
 				Optional:    true,
-				ForceNew:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Tag ids to apply to the snapshot, applied when it is created",
+				Description: "Tag ids to apply to the snapshot",
 			},
 			"status": {
 				Type:        schema.TypeString,
@@ -104,7 +104,7 @@ func ResourceSnapshot() *schema.Resource {
 		},
 		CreateContext: resourceSnapshotCreate,
 		ReadContext:   resourceSnapshotRead,
-		UpdateContext: nil,
+		UpdateContext: resourceSnapshotUpdate,
 		DeleteContext: resourceSnapshotDelete,
 		Importer: &schema.ResourceImporter{
 			StateContext: func(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
@@ -260,8 +260,25 @@ func resourceSnapshotRead(_ context.Context, d *schema.ResourceData, m interface
 	if err := d.Set("tags", flattenTags(snapshot.Tags)); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("tag_ids", tagIDs(snapshot.Tags)); err != nil {
+		return diag.FromErr(err)
+	}
 
 	return nil
+}
+
+func resourceSnapshotUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	if d.HasChange("tag_ids") {
+		service := NewSnapshotService(m.(*common.Client))
+		vpcId := d.Get("vpc_id").(string)
+		tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
+
+		if err := service.UpdateTags(vpcId, d.Id(), tagIds); err != nil {
+			return diag.Errorf("[ERR] Failed to update the tags of snapshot %s: %s", d.Id(), err)
+		}
+	}
+
+	return resourceSnapshotRead(ctx, d, m)
 }
 
 func resourceSnapshotDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
@@ -318,6 +335,14 @@ func flattenTags(tags []Tag) []interface{} {
 		})
 	}
 	return flattened
+}
+
+func tagIDs(tags []Tag) []string {
+	ids := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		ids = append(ids, tag.Id)
+	}
+	return ids
 }
 
 func expandTagIDs(tagSet *schema.Set) []string {

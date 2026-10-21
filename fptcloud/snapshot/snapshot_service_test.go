@@ -20,6 +20,7 @@ const (
 
 	collectionPath = "/v2/vmware/vpc/vpc-1/instance-snapshots"
 	detailPath     = "/v2/vmware/vpc/vpc-1/instance-snapshots/snapshot-1"
+	tagsPath       = "/v1/vmware/vpc/vpc-1/compute/snapshot/snapshot-1/manage-tags"
 
 	pendingSnapshot = `{"status": true, "data": {
 		"id": "snapshot-1",
@@ -301,4 +302,62 @@ func TestGetSnapshot_ReturnsErrorOnAnEmptyBody(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, snapshot)
+}
+
+func TestUpdateTags_PostsTheWholeSet(t *testing.T) {
+	var method, path string
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		method, path = req.Method, req.URL.Path
+		body, _ = io.ReadAll(req.Body)
+		_, _ = rw.Write([]byte(`{"status": 200, "message": "ok"}`))
+	}))
+	defer server.Close()
+
+	client, err := common.NewClientForTestingWithServer(server)
+	assert.NoError(t, err)
+
+	err = fptcloud_snapshot.NewSnapshotService(client).UpdateTags(vpcId, snapshotId, []string{"tag-1", "tag-2"})
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.MethodPost, method)
+	assert.Equal(t, tagsPath, path)
+	assert.JSONEq(t, `{"tag_ids": ["tag-1", "tag-2"]}`, string(body))
+}
+
+// Removing every tag must send an empty list, not drop the field.
+func TestUpdateTags_SendsAnEmptyListToClearTags(t *testing.T) {
+	var body []byte
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		body, _ = io.ReadAll(req.Body)
+		_, _ = rw.Write([]byte(`{"status": 200}`))
+	}))
+	defer server.Close()
+
+	client, err := common.NewClientForTestingWithServer(server)
+	assert.NoError(t, err)
+
+	err = fptcloud_snapshot.NewSnapshotService(client).UpdateTags(vpcId, snapshotId, []string{})
+
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"tag_ids": []}`, string(body))
+}
+
+// The endpoint answers HTTP 200 with the refusal in the body.
+func TestUpdateTags_ReturnsErrorWhenTheBodyReportsARefusal(t *testing.T) {
+	client, server := newClientWithStatus(t, http.StatusOK, `{"status": 400, "message": "Tag not found"}`)
+	defer server.Close()
+
+	err := fptcloud_snapshot.NewSnapshotService(client).UpdateTags(vpcId, snapshotId, []string{"tag-x"})
+
+	assert.ErrorContains(t, err, "Tag not found")
+}
+
+func TestUpdateTags_ReturnsErrorOnHttpFailure(t *testing.T) {
+	client, server := newClientWithStatus(t, http.StatusForbidden, `{"status": false, "error_code": "FORBIDDEN", "message": "denied"}`)
+	defer server.Close()
+
+	err := fptcloud_snapshot.NewSnapshotService(client).UpdateTags(vpcId, snapshotId, []string{"tag-1"})
+
+	assert.Error(t, err)
 }

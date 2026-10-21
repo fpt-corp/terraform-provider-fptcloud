@@ -44,9 +44,9 @@ func resourceSubnetCreate(ctx context.Context, d *schema.ResourceData, m interfa
 		PrimaryDNSIp:   d.Get("primary_dns_ip").(string),
 		SecondaryDNSIp: d.Get("secondary_dns_ip").(string),
 	}
-	//if tags, ok := d.GetOk("tag_ids"); ok {
-	//	createModel.TagIds = expandTagIDs(tags.(*schema.Set))
-	//}
+	if tags, ok := d.GetOk("tag_ids"); ok {
+		createModel.TagIds = expandTagIDs(tags.(*schema.Set))
+	}
 	if okVpcId {
 		createModel.VpcId = vpcId.(string)
 	}
@@ -176,6 +176,14 @@ func resourceSubnetUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 		}
 	}
 
+	if d.HasChange("tag_ids") {
+		tagIds := expandTagIDs(d.Get("tag_ids").(*schema.Set))
+		_, err := service.UpdateTags(vpcId, d.Id(), tagIds)
+		if err != nil {
+			return diag.Errorf("[ERR] An error occurred while updating subnet tags %s", err)
+		}
+	}
+
 	return resourceSubnetRead(ctx, d, m)
 }
 
@@ -196,4 +204,12 @@ func resourceSubnetDelete(_ context.Context, d *schema.ResourceData, m interface
 		return diag.Errorf("[ERR] An error occurred while trying to delete the subnet %s", err)
 	}
 	return nil
+}
+
+func expandTagIDs(tagSet *schema.Set) []string {
+	tagIds := make([]string, 0, tagSet.Len())
+	for _, tag := range tagSet.List() {
+		tagIds = append(tagIds, tag.(string))
+	}
+	return tagIds
 }

@@ -2,7 +2,9 @@ package fptcloud_snapshot_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,20 +29,187 @@ func TestResourceSnapshot_SchemaIsValid(t *testing.T) {
 	assert.NoError(t, r.InternalValidate(nil, true))
 }
 
-// The snapshot cannot be renamed or re-pointed at another instance, so every
-// configurable attribute must force a new resource and Update must not exist.
-func TestResourceSnapshot_ConfigurableFieldsForceNew(t *testing.T) {
+// The snapshot cannot be renamed, re-pointed at another instance or re-taken
+// with memory, so those attributes must force a new resource.
+func TestResourceSnapshot_IdentityFieldsForceNew(t *testing.T) {
 	r := fptcloud_snapshot.ResourceSnapshot()
 
-	for _, field := range []string{"vpc_id", "instance_id", "name", "tag_ids", "include_ram"} {
+	for _, field := range []string{"vpc_id", "instance_id", "name", "include_ram"} {
 		t.Run(field, func(t *testing.T) {
 			s, ok := r.Schema[field]
 			assert.True(t, ok, "field %s is missing", field)
 			assert.True(t, s.ForceNew, "field %s must be ForceNew", field)
 		})
 	}
+}
 
-	assert.Nil(t, r.UpdateContext, "snapshots are immutable, there must be no Update")
+func TestResourceSnapshot_TagIdsAreUpdatedInPlace(t *testing.T) {
+	r := fptcloud_snapshot.ResourceSnapshot()
+
+	assert.False(t, r.Schema["tag_ids"].ForceNew)
+	assert.NotNil(t, r.UpdateContext)
+}
+
+type snapshotApi struct {
+	server   *httptest.Server
+	tagCalls int
+	tagBody  string
+}
+
+// newSnapshotApi serves the detail with tags and records manage-tags calls.
+func newSnapshotApi(t *testing.T, tags string, tagsReply string) (*common.Client, *snapshotApi) {
+	t.Helper()
+
+	api := &snapshotApi{}
+	api.server = httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		switch {
+		case req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/compute/snapshot/snapshot-1/manage-tags"):
+			api.tagCalls++
+			body, _ := io.ReadAll(req.Body)
+			api.tagBody = string(body)
+			_, _ = rw.Write([]byte(tagsReply))
+		case req.Method == http.MethodGet && req.URL.Path == detailPath:
+			_, _ = rw.Write([]byte(`{"status": true, "data": {"id": "snapshot-1", "vpc_id": "vpc-1", "vm_id": "instance-1",
+				"name": "before-upgrade", "status": "ACTIVE", "tags": ` + tags + `}}`))
+		default:
+			rw.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	client, err := common.NewClientForTestingWithServer(api.server)
+	assert.NoError(t, err)
+
+	return client, api
+}
+
+func snapshotState(tagIds []string, includeRam bool) *terraform.InstanceState {
+	attrs := map[string]string{
+		"id":          "snapshot-1",
+		"vpc_id":      "vpc-1",
+		"instance_id": "instance-1",
+		"name":        "before-upgrade",
+		"include_ram": fmt.Sprint(includeRam),
+		"tag_ids.#":   fmt.Sprint(len(tagIds)),
+	}
+	for _, id := range tagIds {
+		attrs[fmt.Sprintf("tag_ids.%d", tagHash(id))] = id
+	}
+	return &terraform.InstanceState{ID: "snapshot-1", Attributes: attrs}
+}
+
+func snapshotConfig(tagIds []string, includeRam bool) *terraform.ResourceConfig {
+	tags := make([]interface{}, 0, len(tagIds))
+	for _, id := range tagIds {
+		tags = append(tags, id)
+	}
+	return terraform.NewResourceConfigRaw(map[string]interface{}{
+		"vpc_id":      "vpc-1",
+		"instance_id": "instance-1",
+		"name":        "before-upgrade",
+		"include_ram": includeRam,
+		"tag_ids":     tags,
+	})
+}
+
+func planSnapshot(t *testing.T, r *schema.Resource, oldTags, newTags []string, oldRam, newRam bool) (*terraform.InstanceDiff, *schema.ResourceData) {
+	t.Helper()
+
+	state := snapshotState(oldTags, oldRam)
+	diff, err := schema.InternalMap(r.Schema).Diff(context.Background(), state, snapshotConfig(newTags, newRam), nil, nil, true)
+	assert.NoError(t, err)
+
+	d, err := schema.InternalMap(r.Schema).Data(state, diff)
+	assert.NoError(t, err)
+
+	return diff, d
+}
+
+func TestResourceSnapshot_ChangingIncludeRamReplacesTheSnapshot(t *testing.T) {
+	diff, _ := planSnapshot(t, fptcloud_snapshot.ResourceSnapshot(), nil, nil, false, true)
+
+	assert.True(t, diff.RequiresNew())
+	assert.True(t, diff.Attributes["include_ram"].RequiresNew)
+}
+
+func TestResourceSnapshot_ChangingTagIdsDoesNotReplaceTheSnapshot(t *testing.T) {
+	diff, _ := planSnapshot(t, fptcloud_snapshot.ResourceSnapshot(), []string{"tag-1"}, []string{"tag-2"}, false, false)
+
+	assert.False(t, diff.RequiresNew())
+}
+
+func TestResourceSnapshot_UpdateSendsTheNewTags(t *testing.T) {
+	client, api := newSnapshotApi(t,
+		`[{"id": "tag-2", "key": "env", "value": "prod"}, {"id": "tag-3", "key": "team", "value": "bss"}]`,
+		`{"status": 200, "message": "ok"}`)
+	defer api.server.Close()
+
+	r := fptcloud_snapshot.ResourceSnapshot()
+	_, d := planSnapshot(t, r, []string{"tag-1", "tag-2"}, []string{"tag-2", "tag-3"}, false, false)
+
+	diags := r.UpdateContext(context.Background(), d, client)
+
+	assert.False(t, diags.HasError(), "update reported: %v", diags)
+	assert.Equal(t, 1, api.tagCalls)
+	var sent map[string][]string
+	assert.NoError(t, json.Unmarshal([]byte(api.tagBody), &sent))
+	assert.ElementsMatch(t, []string{"tag-2", "tag-3"}, sent["tag_ids"])
+	assert.ElementsMatch(t, []interface{}{"tag-2", "tag-3"}, d.Get("tag_ids").(*schema.Set).List())
+	assert.Len(t, d.Get("tags").([]interface{}), 2)
+}
+
+func TestResourceSnapshot_UpdateClearsEveryTag(t *testing.T) {
+	client, api := newSnapshotApi(t, `[]`, `{"status": 200}`)
+	defer api.server.Close()
+
+	r := fptcloud_snapshot.ResourceSnapshot()
+	_, d := planSnapshot(t, r, []string{"tag-1"}, nil, false, false)
+
+	diags := r.UpdateContext(context.Background(), d, client)
+
+	assert.False(t, diags.HasError(), "update reported: %v", diags)
+	assert.Equal(t, 1, api.tagCalls)
+	assert.JSONEq(t, `{"tag_ids": []}`, api.tagBody)
+	assert.Equal(t, 0, d.Get("tag_ids").(*schema.Set).Len())
+}
+
+func TestResourceSnapshot_UpdateWithoutTagChangeDoesNotCallTagging(t *testing.T) {
+	client, api := newSnapshotApi(t, `[{"id": "tag-1", "key": "env", "value": "prod"}]`, `{"status": 200}`)
+	defer api.server.Close()
+
+	r := fptcloud_snapshot.ResourceSnapshot()
+	_, d := planSnapshot(t, r, []string{"tag-1"}, []string{"tag-1"}, false, false)
+
+	diags := r.UpdateContext(context.Background(), d, client)
+
+	assert.False(t, diags.HasError(), "update reported: %v", diags)
+	assert.Equal(t, 0, api.tagCalls)
+}
+
+func TestResourceSnapshot_UpdateFailsWhenTaggingIsRefused(t *testing.T) {
+	client, api := newSnapshotApi(t, `[]`, `{"status": 400, "message": "Tag not found"}`)
+	defer api.server.Close()
+
+	r := fptcloud_snapshot.ResourceSnapshot()
+	_, d := planSnapshot(t, r, nil, []string{"tag-x"}, false, false)
+
+	diags := r.UpdateContext(context.Background(), d, client)
+
+	assert.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Tag not found")
+}
+
+// tag_ids follows the platform, so tags changed outside Terraform show as drift.
+func TestResourceSnapshot_ReadSetsTagIdsFromThePlatform(t *testing.T) {
+	client, api := newSnapshotApi(t, `[{"id": "tag-9", "key": "env", "value": "dev"}]`, `{"status": 200}`)
+	defer api.server.Close()
+
+	r := fptcloud_snapshot.ResourceSnapshot()
+	d := r.Data(snapshotState([]string{"tag-1"}, false))
+
+	diags := r.ReadContext(context.Background(), d, client)
+
+	assert.False(t, diags.HasError(), "read reported: %v", diags)
+	assert.Equal(t, []interface{}{"tag-9"}, d.Get("tag_ids").(*schema.Set).List())
 }
 
 func TestResourceSnapshot_RequiredAndComputedFields(t *testing.T) {
@@ -56,7 +225,6 @@ func TestResourceSnapshot_RequiredAndComputedFields(t *testing.T) {
 	assert.True(t, r.Schema["name"].Optional)
 	// include_ram is the mirror image: VMware only.
 	assert.True(t, r.Schema["include_ram"].Optional)
-	assert.True(t, r.Schema["include_ram"].ForceNew)
 
 	for _, field := range []string{"status", "created_at", "created_by", "size_gb", "snapshot_type"} {
 		s, ok := r.Schema[field]
@@ -658,4 +826,8 @@ func TestResourceSnapshot_ReadTakesInstanceIdWhenApiReportsIt(t *testing.T) {
 
 	assert.False(t, diags.HasError(), "read reported: %v", diags)
 	assert.Equal(t, "instance-9", d.Get("instance_id"))
+}
+
+func tagHash(id string) int {
+	return schema.HashSchema(&schema.Schema{Type: schema.TypeString})(id)
 }

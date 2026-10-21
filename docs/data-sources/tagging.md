@@ -65,7 +65,7 @@ resource "fptcloud_instance" "instance" {
 
 Read-Only:
 
-- `color` (String) The color of the tag
+- `color` (String) The hex color of the tag, in lowercase, or empty when the tag has no color. See the [`fptcloud_tagging` resource](../resources/tagging.md#colors) for the palette
 - `id` (String) The ID of the tag
 - `key` (String) The key of the tag
 - `resource_scopes` (List of String) List of resource scopes associated with the tag
