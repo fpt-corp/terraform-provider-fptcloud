@@ -93,6 +93,8 @@ func hintFor(code int, message string) string {
 		return "a volume can belong to only one backup job; the fptcloud_backup_native_volume_jobs data source shows which job holds it"
 	case strings.Contains(m, "invalid fke volume"):
 		return "only FKE persistent volumes (names starting with pv-fke) can be backed up"
+	case strings.Contains(m, "not available for delete"):
+		return "a backup or restore of the VM is running, or its backup job is still being set up; wait for it to end and apply again"
 	case strings.Contains(m, "unavailable") || strings.Contains(m, "busy"):
 		return "the job or restore point is busy; wait for the running operation to finish and apply again. A volume restore point that stays busy may be stuck after a failed restore; use another restore point"
 	case code >= 500:

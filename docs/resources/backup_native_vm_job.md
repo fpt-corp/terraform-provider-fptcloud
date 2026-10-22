@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_vm_job Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Manages a VM backup job of the Backup Native service. Destroying the resource deletes the job through the user API. The API currently also deletes the restore points of the job's instances when the job is deleted.
+  Manages a VM backup job of the Backup Native service. Destroying the resource deletes the job through the user API. The API currently also deletes every restore point of the job's VMs when the job is deleted, including ones taken under earlier jobs. A VM removed from instance_ids keeps its restore points; delete them with fptcloud_backup_native_vm_restore_points_purge.
 ---
 
 # fptcloud_backup_native_vm_job (Resource)
 
-Manages a VM backup job of the Backup Native service. Destroying the resource deletes the job through the user API. The API currently also deletes the restore points of the job's instances when the job is deleted.
+Manages a VM backup job of the Backup Native service. Destroying the resource deletes the job through the user API. The API currently also deletes every restore point of the job's VMs when the job is deleted, including ones taken under earlier jobs. A VM removed from `instance_ids` keeps its restore points; delete them with `fptcloud_backup_native_vm_restore_points_purge`.
 
 ## Example Usage
 

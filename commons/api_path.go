@@ -314,19 +314,20 @@ var ApiPath = struct {
 	AlertNotificationMethods func(vpcId string, level string) string
 
 	// Backup Native - v1 OSP native backup (VM jobs). User API only.
-	BackupNativeVmList           func(vpcId string, page int, pageSize int) string
-	BackupNativeVmCreate         func(vpcId string) string
-	BackupNativeVmDetail         func(vpcId string, jobId string) string
-	BackupNativeVmUpdate         func(vpcId string, jobId string) string
-	BackupNativeVmDelete         func(vpcId string, jobId string) string
-	BackupNativeVmSwitchSchedule func(vpcId string) string
-	BackupNativeVmStartBackup    func(vpcId string) string
-	BackupNativeVmTaskProgress   func(vpcId string, taskId string) string
-	BackupNativeVmRestorePoints  func(vpcId string, vmId string) string
-	BackupNativeVmHistories      func(vpcId string, historyType string, page int, pageSize int) string
-	BackupNativeVmRestore        func(vpcId string) string
-	BackupNativeVmRestoreKeep    func(vpcId string) string
-	BackupNativeFloatingIps      func(vpcId string, page int, pageSize int) string
+	BackupNativeVmList                func(vpcId string, page int, pageSize int) string
+	BackupNativeVmCreate              func(vpcId string) string
+	BackupNativeVmDetail              func(vpcId string, jobId string) string
+	BackupNativeVmUpdate              func(vpcId string, jobId string) string
+	BackupNativeVmDelete              func(vpcId string, jobId string) string
+	BackupNativeVmSwitchSchedule      func(vpcId string) string
+	BackupNativeVmStartBackup         func(vpcId string) string
+	BackupNativeVmTaskProgress        func(vpcId string, taskId string) string
+	BackupNativeVmRestorePoints       func(vpcId string, vmId string) string
+	BackupNativeVmDeleteRestorePoints func(vpcId string, vmId string) string
+	BackupNativeVmHistories           func(vpcId string, historyType string, page int, pageSize int) string
+	BackupNativeVmRestore             func(vpcId string) string
+	BackupNativeVmRestoreKeep         func(vpcId string) string
+	BackupNativeFloatingIps           func(vpcId string, page int, pageSize int) string
 
 	// Backup Native - v2 Backup Volume (volume jobs). User API only.
 	BackupNativeVolumeJobs          func(vpcId string, page int, pageSize int) string
@@ -1405,6 +1406,10 @@ var ApiPath = struct {
 	},
 	BackupNativeVmRestorePoints: func(vpcId string, vmId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/restore_points/list?vm_id=%s", vpcId, url.QueryEscape(vmId))
+	},
+	// Deletes every restore point of the VM, under any job (blueprint.py:1350).
+	BackupNativeVmDeleteRestorePoints: func(vpcId string, vmId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/instance/%s/restore_points", vpcId, vmId)
 	},
 	// Rows come back newest first only when both page and page_size are set
 	// (ListHistoryController.py:17-73).

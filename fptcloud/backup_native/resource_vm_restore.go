@@ -151,7 +151,7 @@ func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{})
 		historyType = "Restore keep"
 	}
 	// Rows already in the history belong to earlier restores of this VM.
-	seen, err := vmRestoreRowsSeen(svc, vpcId, vmId, historyType, submitted)
+	seen, err := vmHistoryRowsSeen(svc, vpcId, vmId, historyType, submitted)
 	if err != nil {
 		return diag.FromErr(err)
 	}

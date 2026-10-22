@@ -3,6 +3,7 @@ package fptcloud_backup_native
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	common "terraform-provider-fptcloud/commons"
@@ -23,6 +24,9 @@ type VmService interface {
 	StartVmJobBackup(vpcId string, jobId string) error
 	GetTaskProgress(vpcId string, taskId string) (*TaskProgress, error)
 	ListVmRestorePoints(vpcId string, vmId string) ([]VmRestorePoint, error)
+	// DeleteAllVmRestorePoints starts deleting every restore point of the VM.
+	// It returns a restorePointsBusy error while the API refuses the request.
+	DeleteAllVmRestorePoints(vpcId string, vmId string) error
 	// ListVmHistories returns the rows of historyType that started at or after
 	// cutoff, newest first, plus at most one page of older rows.
 	ListVmHistories(vpcId string, historyType string, cutoff time.Time) ([]VmHistory, error)
@@ -203,6 +207,27 @@ func (s *service) ListVmRestorePoints(vpcId string, vmId string) ([]VmRestorePoi
 		return nil, fmt.Errorf("%s: could not parse the response: %w", action, err)
 	}
 	return data.RestorePoints, nil
+}
+
+// restorePointsBusy is the API refusing to delete restore points while a
+// backup or restore of the VM runs, or while the job's AWX template or
+// inventory is not ready (DeleteBackupController.py:513-522).
+type restorePointsBusy struct{ error }
+
+func (e restorePointsBusy) Unwrap() error { return e.error }
+
+func (s *service) DeleteAllVmRestorePoints(vpcId string, vmId string) error {
+	const action = "deleting the VM's restore points"
+	raw, err := s.client.SendDeleteRequest(common.ApiPath.BackupNativeVmDeleteRestorePoints(vpcId, vmId))
+	if err != nil {
+		wrapped := wrapAPIError(action, err)
+		if apiErr := asAPIError(err); apiErr != nil && apiErr.Code == 400 && strings.Contains(strings.ToLower(apiErr.Message), "not available for delete") {
+			return restorePointsBusy{wrapped}
+		}
+		return wrapped
+	}
+	_, err = decodeEnvelope(raw, action)
+	return err
 }
 
 func (s *service) ListVmHistories(vpcId string, historyType string, cutoff time.Time) ([]VmHistory, error) {

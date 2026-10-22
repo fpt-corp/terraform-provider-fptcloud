@@ -20,6 +20,7 @@ func TestBackupNativePaths(t *testing.T) {
 		p.BackupNativeVmStartBackup("v"):                      "/v1/vmware/vpc/v/osp_native_backup/start_backup",
 		p.BackupNativeVmTaskProgress("v", "t"):                "/v1/vmware/vpc/v/osp_native_backup/task/t/progress",
 		p.BackupNativeVmRestorePoints("v", "m"):               "/v1/vmware/vpc/v/osp_native_backup/restore_points/list?vm_id=m",
+		p.BackupNativeVmDeleteRestorePoints("v", "m"):         "/v1/vmware/vpc/v/osp_native_backup/instance/m/restore_points",
 		p.BackupNativeVmHistories("v", "Restore keep", 1, 50): "/v1/vmware/vpc/v/osp_native_backup/histories/list?type=Restore+keep&page=1&page_size=50",
 		p.BackupNativeVmRestore("v"):                          "/v1/vmware/vpc/v/osp_native_backup/restore",
 		p.BackupNativeVmRestoreKeep("v"):                      "/v1/vmware/vpc/v/osp_native_backup/restore-new",

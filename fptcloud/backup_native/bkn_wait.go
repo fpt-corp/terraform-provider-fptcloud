@@ -263,12 +263,12 @@ func waitVolumeJobGone(ctx context.Context, svc VolumeService, vpcId, jobId stri
 	return nil
 }
 
-// findVmRestoreRow returns the newest history row of a restore submitted at
+// findVmHistoryRow returns the newest history row of an action submitted at
 // since, or nil. History rows carry no id, so a row matches on VM, type and
 // a start time no earlier than since minus historyClockSkew. seen holds the
-// start times of matching rows read before the restore was submitted; they
-// belong to earlier restores.
-func findVmRestoreRow(rows []VmHistory, vmId, historyType string, since time.Time, seen map[string]bool) *VmHistory {
+// start times of matching rows read before the action was submitted; they
+// belong to earlier actions.
+func findVmHistoryRow(rows []VmHistory, vmId, historyType string, since time.Time, seen map[string]bool) *VmHistory {
 	cutoff := since.Add(-historyClockSkew)
 	var best *VmHistory
 	var bestStart time.Time
@@ -288,16 +288,16 @@ func findVmRestoreRow(rows []VmHistory, vmId, historyType string, since time.Tim
 	return best
 }
 
-// vmRestoreRowsSeen returns the start times of the rows findVmRestoreRow
-// would match before a restore is submitted.
-func vmRestoreRowsSeen(svc VmService, vpcId, vmId, historyType string, since time.Time) (map[string]bool, error) {
+// vmHistoryRowsSeen returns the start times of the rows findVmHistoryRow
+// would match before an action is submitted.
+func vmHistoryRowsSeen(svc VmService, vpcId, vmId, historyType string, since time.Time) (map[string]bool, error) {
 	rows, err := svc.ListVmHistories(vpcId, historyType, since.Add(-historyClockSkew))
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
 	for {
-		row := findVmRestoreRow(rows, vmId, historyType, since, seen)
+		row := findVmHistoryRow(rows, vmId, historyType, since, seen)
 		if row == nil {
 			return seen, nil
 		}
@@ -311,7 +311,7 @@ func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType 
 		if err != nil {
 			return nil, "", readFailed(err)
 		}
-		row := findVmRestoreRow(rows, vmId, historyType, since, seen)
+		row := findVmHistoryRow(rows, vmId, historyType, since, seen)
 		if row == nil {
 			return struct{}{}, "waiting", nil
 		}
@@ -331,7 +331,7 @@ func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType 
 }
 
 // findVolumeRestoreRow returns the newest "Restore keep" row of this volume
-// that is not in seen, or nil. seen works as in findVmRestoreRow.
+// that is not in seen, or nil. seen works as in findVmHistoryRow.
 func findVolumeRestoreRow(svc VolumeService, vpcId, volumeId string, since time.Time, seen map[string]bool) (*VolumeHistoryItem, error) {
 	var found *VolumeHistoryItem
 	err := scanVolumeRestoreRows(svc, vpcId, volumeId, since, func(item *VolumeHistoryItem) bool {

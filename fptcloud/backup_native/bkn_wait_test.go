@@ -132,17 +132,17 @@ func TestWaitVolumeJobGone(t *testing.T) {
 }
 
 // Review focus 5.
-func TestFindVmRestoreRowIgnoresOlderRows(t *testing.T) {
+func TestFindVmHistoryRowIgnoresOlderRows(t *testing.T) {
 	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
 	rows := []VmHistory{
 		{VmId: "vm-1", Type: "Restore", Status: "Success", StartTime: "2026-10-13T07:00:00"},
 		{VmId: "vm-2", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T08:00:30"},
 		{VmId: "vm-1", Type: "Restore keep", Status: "Restoring keep", StartTime: "2026-10-13T08:00:30"},
 	}
-	assert.Nil(t, findVmRestoreRow(rows, "vm-1", "Restore", since, nil))
+	assert.Nil(t, findVmHistoryRow(rows, "vm-1", "Restore", since, nil))
 
 	rows = append(rows, VmHistory{VmId: "vm-1", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T07:59:00"})
-	row := findVmRestoreRow(rows, "vm-1", "Restore", since, nil)
+	row := findVmHistoryRow(rows, "vm-1", "Restore", since, nil)
 	require.NotNil(t, row, "a row inside the clock-skew window counts")
 	assert.Equal(t, "Restoring", row.Status)
 }
@@ -171,14 +171,14 @@ func TestWaitVmRestoreSuccessAndFailure(t *testing.T) {
 
 // A restore that finished just before this one was submitted can still sit
 // inside the clock-skew window; rows seen before submitting never match.
-func TestFindVmRestoreRowSkipsRowsSeenBeforeSubmit(t *testing.T) {
+func TestFindVmHistoryRowSkipsRowsSeenBeforeSubmit(t *testing.T) {
 	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
 	rows := []VmHistory{{VmId: "vm-1", Type: "Restore", Status: "Success", StartTime: "2026-10-13T07:59:30"}}
 	seen := map[string]bool{"2026-10-13T07:59:30": true}
-	assert.Nil(t, findVmRestoreRow(rows, "vm-1", "Restore", since, seen))
+	assert.Nil(t, findVmHistoryRow(rows, "vm-1", "Restore", since, seen))
 
 	rows = append(rows, VmHistory{VmId: "vm-1", Type: "Restore", Status: "Restoring", StartTime: "2026-10-13T08:00:10"})
-	row := findVmRestoreRow(rows, "vm-1", "Restore", since, seen)
+	row := findVmHistoryRow(rows, "vm-1", "Restore", since, seen)
 	require.NotNil(t, row)
 	assert.Equal(t, "Restoring", row.Status)
 }
