@@ -8,6 +8,8 @@ import (
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"strconv"
@@ -20,6 +22,11 @@ var (
 	_ resource.ResourceWithConfigure   = &resourceDatabaseStatus{}
 	_ resource.ResourceWithImportState = &resourceDatabaseStatus{}
 )
+
+// Changing an argument of fptcloud_database_status still replaces it: its Update is not implemented yet.
+var statusReplacePlanModifiers = []planmodifier.String{
+	stringplanmodifier.RequiresReplace(),
+}
 
 type resourceDatabaseStatus struct {
 	client         *common.Client
@@ -153,12 +160,12 @@ func (r *resourceDatabaseStatus) Schema(ctx context.Context, request resource.Sc
 			},
 			"status": schema.StringAttribute{
 				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
+				PlanModifiers: statusReplacePlanModifiers,
 				Description:   "The status of the database cluster, must be 'running' or 'stopped'.",
 			},
 			"vpc_id": schema.StringAttribute{
 				Optional:      true,
-				PlanModifiers: forceNewPlanModifiersString,
+				PlanModifiers: statusReplacePlanModifiers,
 				Description:   "The VPC Id of the database cluster. Provide it so that the cluster information is refreshed before its status is read.",
 			},
 		},

@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -30,17 +29,10 @@ var (
 	_ resource.ResourceWithConfigure   = &resourceDatabase{}
 	_ resource.ResourceWithImportState = &resourceDatabase{}
 	_ resource.ResourceWithModifyPlan  = &resourceDatabase{}
-
-	forceNewPlanModifiersString = []planmodifier.String{
-		stringplanmodifier.RequiresReplace(),
-	}
-
-	forceNewPlanModifiersInt = []planmodifier.Int64{
-		int64planmodifier.RequiresReplace(),
-	}
 )
 
 const (
+	maskedPassword     = "********"
 	errorCallingApi    = "Error calling API"
 	mixedChangeMessage = "cannot change compute/disk (node_cpu, node_ram, data_disk_size, flavor, flavor_id) and storage_profile in the same apply; apply them separately"
 )
@@ -172,6 +164,13 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		return
 	}
 	currentState.Id = types.StringValue(clusterId)
+	currentState.Nodes = emptyNodesList()
+
+	// Save the state as soon as the cluster exists, so a failure in a later step does not lose track of it.
+	response.Diagnostics.Append(response.State.Set(ctx, &currentState)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
 
 	// ===== APPLY TAG AFTER CREATE =====
 	if !currentState.TagIds.IsNull() && !currentState.TagIds.IsUnknown() {
@@ -194,10 +193,7 @@ func (r *resourceDatabase) Create(ctx context.Context, request resource.CreateRe
 		}
 	}
 
-	currentState.Nodes = emptyNodesList()
-
-	diags = response.State.Set(ctx, &currentState)
-	response.Diagnostics.Append(diags...)
+	response.Diagnostics.Append(saveDriftSnapshot(ctx, response.Private, databaseSnapshot(&currentState))...)
 }
 
 func clusterIdFromCreateResponse(ctx context.Context, body []byte) (string, *diag2.ErrorDiagnostic) {
@@ -273,6 +269,9 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 	originalAdminPassword := state.AdminPassword
 	tflog.Info(ctx, "Original FlavorId: "+originalFlavorId.ValueString())
 
+	applied, snapshotDiags := loadDriftSnapshot(ctx, request.Private)
+	response.Diagnostics.Append(snapshotDiags...)
+
 	var timeStart = time.Now()
 	var timeout = 10 * time.Minute
 	var err2 = errors.New("init error (read)")
@@ -305,6 +304,10 @@ func (r *resourceDatabase) Read(ctx context.Context, request resource.ReadReques
 
 			state.AdminPassword = originalAdminPassword
 		}
+	}
+
+	if err2 == nil {
+		addDriftWarnings(&response.Diagnostics, applied, databaseSnapshot(&state))
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("READING: number of node is %d (%d master, %d worker)", state.NumberOfNode, state.MasterCount, state.WorkerCount))
@@ -350,10 +353,6 @@ func (r *resourceDatabase) Update(ctx context.Context, request resource.UpdateRe
 		}
 	}
 
-	plan.MaintenanceEmail = state.MaintenanceEmail
-	plan.DayOfWeekMaintenance = state.DayOfWeekMaintenance
-	plan.TimeMaintenance = state.TimeMaintenance
-
 	plan.Id = state.Id
 	plan.Nodes = state.Nodes
 	if plan.Nodes.IsNull() || plan.Nodes.IsUnknown() {
@@ -367,6 +366,7 @@ func (r *resourceDatabase) Update(ctx context.Context, request resource.UpdateRe
 	}
 
 	response.Diagnostics.Append(response.State.Set(ctx, &plan)...)
+	response.Diagnostics.Append(saveDriftSnapshot(ctx, response.Private, databaseSnapshot(&plan))...)
 }
 
 func (r *resourceDatabase) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) {
@@ -397,63 +397,52 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description:   "The Id of the database cluster.",
 			},
 			"vpc_id": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The VPC Id of the database cluster.",
+				Required:    true,
+				Description: "The VPC Id of the database cluster.",
 			},
 			"network_id": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The network Id of the database cluster.",
+				Required:    true,
+				Description: "The network Id of the database cluster.",
 			},
 			"vm_network": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The VM network of the database cluster.",
+				Required:    true,
+				Description: "The VM network of the database cluster.",
 			},
 			"type_config": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The type of configuration of the database cluster (short-config or custom-config).",
+				Required:    true,
+				Description: "The type of configuration of the database cluster (short-config or custom-config).",
 			},
 			"type_db": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The type of database of the database cluster",
+				Required:    true,
+				Description: "The type of database of the database cluster",
 			},
 			"version": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The version of the database cluster.",
+				Required:    true,
+				Description: "The version of the database cluster.",
 			},
 			"vdc_name": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The VDC name of the database cluster.",
+				Required:    true,
+				Description: "The VDC name of the database cluster.",
 			},
 			"is_cluster": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The cluster status of the database cluster.",
+				Required:    true,
+				Description: "The cluster status of the database cluster.",
 			},
 			"master_count": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The number of master nodes in the database cluster.",
+				Required:    true,
+				Description: "The number of master nodes in the database cluster.",
 			},
 			"worker_count": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The number of worker nodes in the database cluster.",
+				Required:    true,
+				Description: "The number of worker nodes in the database cluster.",
 			},
 			"node_cpu": schema.Int64Attribute{
 				Required:    true,
 				Description: "The number of CPUs in each node of the database cluster.",
 			},
 			"node_core": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The number of cores in each node of the database cluster.",
+				Required:    true,
+				Description: "The number of cores in each node of the database cluster.",
 			},
 			"node_ram": schema.Int64Attribute{
 				Required:    true,
@@ -464,24 +453,20 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description: "The size of the data disk in each node of the database cluster.",
 			},
 			"cluster_name": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The name of the database cluster.",
+				Required:    true,
+				Description: "The name of the database cluster.",
 			},
 			"database_name": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The name of the database in the database cluster.",
+				Required:    true,
+				Description: "The name of the database in the database cluster.",
 			},
 			"vhost_name": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The name of the RabbitMQ database.",
+				Required:    true,
+				Description: "The name of the RabbitMQ database.",
 			},
 			"is_public": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "Whether the database is public or not.",
+				Required:    true,
+				Description: "Whether the database is public or not.",
 			},
 			"admin_password": schema.StringAttribute{
 				Required:    true,
@@ -493,42 +478,36 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 				Description: "The storage profile of the database cluster.",
 			},
 			"edge_id": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The edge Id of the database cluster.",
+				Required:    true,
+				Description: "The edge Id of the database cluster.",
 			},
 			"edition": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The edition of the database cluster.",
+				Required:    true,
+				Description: "The edition of the database cluster.",
 			},
 			"flavor_id": schema.StringAttribute{
 				Required:    true,
 				Description: "The flavor_id of the database cluster.",
 			},
 			"is_ops": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "Whether the database is OpenStack or VMware",
+				Required:    true,
+				Description: "Whether the database is OpenStack or VMware",
 			},
 			"flavor": schema.StringAttribute{
 				Required:    true,
 				Description: "The flavor of the database cluster.",
 			},
 			"number_of_node": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The number of nodes in the database cluster.",
+				Required:    true,
+				Description: "The number of nodes in the database cluster.",
 			},
 			"number_of_shard": schema.Int64Attribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersInt,
-				Description:   "The number of shards in the database cluster.",
+				Required:    true,
+				Description: "The number of shards in the database cluster.",
 			},
 			"domain_name": schema.StringAttribute{
-				Required:      true,
-				PlanModifiers: forceNewPlanModifiersString,
-				Description:   "The domain name of the database cluster.",
+				Required:    true,
+				Description: "The domain name of the database cluster.",
 			},
 			"maintenance_email": schema.StringAttribute{
 				Optional:    true,
@@ -688,12 +667,17 @@ func (r *resourceDatabase) internalRead(ctx context.Context, databaseId string, 
 		state.DataDiskSize = types.Int64Value(int64(cluster.DataDiskSize))
 		state.ClusterName = types.StringValue(cluster.ClusterName)
 		state.DatabaseName = types.StringValue(cluster.DatabaseName)
-		state.AdminPassword = types.StringValue(cluster.AdminPassword)
+		// The API only returns a masked password: keep the one recorded in the state.
+		if masked := cluster.AdminPassword == "" || cluster.AdminPassword == maskedPassword; !masked || state.AdminPassword.IsNull() || state.AdminPassword.IsUnknown() {
+			state.AdminPassword = types.StringValue(cluster.AdminPassword)
+		}
 		state.StorageProfile = types.StringValue(cluster.StorageProfile)
 		state.EdgeId = types.StringValue(cluster.EdgeId)
-		state.Edition = types.StringValue(cluster.EngineEdition)
-		state.DomainName = types.StringValue("")
-		state.VdcName = types.StringValue(node.Items[0].VdcName)
+		// The server does not return domain_name, so the state value is kept.
+		state.Edition = keepIfSameText(state.Edition, cluster.EngineEdition)
+		if len(node.Items) > 0 {
+			state.VdcName = keepIfSameText(state.VdcName, node.Items[0].VdcName)
+		}
 
 		// Build nodes list (returns empty list if data is null or parsing fails)
 		state.Nodes = r.buildNodesList(ctx, node.Items)
@@ -1198,13 +1182,29 @@ func (r *resourceDatabase) resolveStoragePolicyId(vpcId, name string) (string, e
 	return "", fmt.Errorf("storage policy %q not found in VPC %s. Supported policies: %s", name, vpcId, strings.Join(names, ", "))
 }
 
-// waitForCluster polls the cluster until it is settled (running or stopped)
-// and applied reports that the requested change is visible, or fails on
-// "failed" status or timeout.
+// clusterPollInterval is how long waitForCluster waits between two reads. It is a variable so tests do not wait.
+var clusterPollInterval = 10 * time.Second
+
+// clusterSettled says whether a status is one a cluster rests in, as opposed to one it passes through
+// (resizing, updating, ...).
+func clusterSettled(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running", "stopped", "warning":
+		return true
+	}
+	return false
+}
+
+// waitForCluster polls the cluster until the requested change is visible on a settled cluster
+// (running, stopped or warning). It fails on "failed" status, on timeout, and when the cluster went through
+// a busy status (resizing...) and came back settled twice in a row without the change being visible:
+// the portal finished without applying it.
 func (r *resourceDatabase) waitForCluster(ctx context.Context, clusterId string, applied func(databaseData) bool) error {
 	start := time.Now()
+	sawBusy := false
+	settledWithoutChange := 0
 	for time.Since(start) < timeout {
-		time.Sleep(10 * time.Second)
+		time.Sleep(clusterPollInterval)
 		a, err := r.dataBaseClient.sendGet(common.ApiPath.DatabaseGet(clusterId))
 		if err != nil {
 			tflog.Warn(ctx, "Error polling cluster, retrying: "+err.Error())
@@ -1219,14 +1219,28 @@ func (r *resourceDatabase) waitForCluster(ctx context.Context, clusterId string,
 		if c.Status == "failed" {
 			return fmt.Errorf("cluster %s entered failed status while updating", clusterId)
 		}
-		if (c.Status == "running" || c.Status == "stopped") && applied(c) {
+		if !clusterSettled(c.Status) {
+			if strings.TrimSpace(c.Status) != "" {
+				sawBusy = true
+			}
+			settledWithoutChange = 0
+			continue
+		}
+		if applied(c) {
 			return nil
+		}
+		if sawBusy {
+			settledWithoutChange++
+			if settledWithoutChange >= 2 {
+				return fmt.Errorf("cluster %s is %s again after the change, but the new values are not on the cluster: the portal did not apply it. "+
+					"Check the cluster in the portal, then apply again", clusterId, c.Status)
+			}
 		}
 	}
 	return fmt.Errorf("timed out waiting for cluster %s update to finish", clusterId)
 }
 
-// ModifyPlan rejects, at plan time, an update that changes both compute/disk and the storage policy.
+// ModifyPlan rejects, at plan time, a change to an attribute that is fixed after creation and an update that changes both compute/disk and the storage policy.
 func (r *resourceDatabase) ModifyPlan(ctx context.Context, request resource.ModifyPlanRequest, response *resource.ModifyPlanResponse) {
 	if request.State.Raw.IsNull() || request.Plan.Raw.IsNull() {
 		return
@@ -1234,6 +1248,43 @@ func (r *resourceDatabase) ModifyPlan(ctx context.Context, request resource.Modi
 	var plan, state databaseResourceModel
 	response.Diagnostics.Append(request.Plan.Get(ctx, &plan)...)
 	response.Diagnostics.Append(request.State.Get(ctx, &state)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
+
+	// Nothing here can be changed after creation. The state holds what the portal returned on the last
+	// Read, so the message tells the user which value to put in the configuration.
+	for _, c := range immutableChecks(&plan, &state) {
+		if c.changed() {
+			response.Diagnostics.AddAttributeError(path.Root(c.name),
+				"Cannot change "+c.name,
+				fmt.Sprintf("`%s` cannot be changed after creation; it may have been changed on the portal. Set it to `%s`. To create the cluster again, use `terraform apply -replace=...`.",
+					c.name, attrText(c.state)))
+		}
+	}
+	// The portal has no call Terraform uses to change these. The state holds what was set at creation (the portal
+	// does not return them), so the message gives that value, except for the password.
+	for _, c := range []struct {
+		immutableCheck
+		secret bool
+	}{
+		{immutableCheck{name: "maintenance_email", plan: plan.MaintenanceEmail, state: state.MaintenanceEmail}, false},
+		{immutableCheck{name: "day_of_week_maintenance", plan: plan.DayOfWeekMaintenance, state: state.DayOfWeekMaintenance}, false},
+		{immutableCheck{name: "time_maintenance", plan: plan.TimeMaintenance, state: state.TimeMaintenance}, false},
+		{immutableCheck{name: "admin_password", plan: plan.AdminPassword, state: state.AdminPassword}, true},
+	} {
+		// After an import the state only has the masked password: there is nothing recorded to compare with.
+		if !c.changed() || c.secret && state.AdminPassword.ValueString() == maskedPassword {
+			continue
+		}
+		detail := fmt.Sprintf("`%s` cannot be changed by Terraform after the cluster is created: change it on the portal, then set it back to `%s` here, "+
+			"which is the value Terraform recorded. To create the cluster again, use `terraform apply -replace=...`.", c.name, attrText(c.state))
+		if c.secret {
+			detail = "`admin_password` cannot be changed by Terraform after the cluster is created: change the password on the portal, " +
+				"then set it back to the value Terraform recorded. To create the cluster again, use `terraform apply -replace=...`."
+		}
+		response.Diagnostics.AddAttributeError(path.Root(c.name), "Cannot change "+c.name, detail)
+	}
 	if response.Diagnostics.HasError() {
 		return
 	}
@@ -1256,4 +1307,87 @@ func (r *resourceDatabase) ModifyPlan(ctx context.Context, request resource.Modi
 			response.Diagnostics.AddAttributeError(path.Root("storage_profile"), "Invalid storage policy", err.Error())
 		}
 	}
+}
+
+// keepIfSameText returns the state value when the server value only differs in
+// letter case or is empty, so a harmless format difference does not show up as
+// a change on every plan.
+func keepIfSameText(current types.String, fromServer string) types.String {
+	if !current.IsNull() && !current.IsUnknown() &&
+		(fromServer == "" || strings.EqualFold(current.ValueString(), fromServer)) {
+		return current
+	}
+	return types.StringValue(fromServer)
+}
+
+// databaseSnapshot is the set of in-place values compared against the portal on every Read.
+// Attributes that cannot be changed after creation are not tracked here: ModifyPlan fails the plan for them.
+func databaseSnapshot(m *databaseResourceModel) driftSnapshot {
+	return driftSnapshot{
+		"node_cpu":        strconv.FormatInt(m.NodeCpu.ValueInt64(), 10),
+		"node_ram":        strconv.FormatInt(m.NodeRam.ValueInt64(), 10),
+		"data_disk_size":  strconv.FormatInt(m.DataDiskSize.ValueInt64(), 10),
+		"storage_profile": m.StorageProfile.ValueString(),
+	}
+}
+
+// immutableCheck pairs the planned and the stored value of an attribute that
+// cannot be changed after the cluster is created.
+type immutableCheck struct {
+	name  string
+	plan  attr.Value
+	state attr.Value
+	// ignoreCase is set for values the server may return in another letter case.
+	ignoreCase bool
+}
+
+// changed reports whether the plan asks for a different value than the state.
+// A null or unknown state (after an import) and an unknown plan are not changes.
+func (c immutableCheck) changed() bool {
+	if c.state.IsNull() || c.state.IsUnknown() || c.plan.IsUnknown() {
+		return false
+	}
+	if c.ignoreCase {
+		p, pok := c.plan.(types.String)
+		s, sok := c.state.(types.String)
+		if pok && sok {
+			return !strings.EqualFold(p.ValueString(), s.ValueString())
+		}
+	}
+	return !c.plan.Equal(c.state)
+}
+
+// immutableChecks lists the 21 attributes that cannot be changed after creation.
+func immutableChecks(plan, state *databaseResourceModel) []immutableCheck {
+	return []immutableCheck{
+		{name: "vpc_id", plan: plan.VpcId, state: state.VpcId},
+		{name: "network_id", plan: plan.NetworkId, state: state.NetworkId},
+		{name: "vm_network", plan: plan.VmNetwork, state: state.VmNetwork},
+		{name: "type_config", plan: plan.TypeConfig, state: state.TypeConfig},
+		{name: "type_db", plan: plan.TypeDb, state: state.TypeDb},
+		{name: "version", plan: plan.Version, state: state.Version},
+		{name: "vdc_name", plan: plan.VdcName, state: state.VdcName, ignoreCase: true},
+		{name: "is_cluster", plan: plan.IsCluster, state: state.IsCluster},
+		{name: "master_count", plan: plan.MasterCount, state: state.MasterCount},
+		{name: "worker_count", plan: plan.WorkerCount, state: state.WorkerCount},
+		{name: "node_core", plan: plan.NodeCore, state: state.NodeCore},
+		{name: "cluster_name", plan: plan.ClusterName, state: state.ClusterName},
+		{name: "database_name", plan: plan.DatabaseName, state: state.DatabaseName},
+		{name: "vhost_name", plan: plan.VhostName, state: state.VhostName},
+		{name: "is_public", plan: plan.IsPublic, state: state.IsPublic},
+		{name: "edge_id", plan: plan.EdgeId, state: state.EdgeId},
+		{name: "edition", plan: plan.Edition, state: state.Edition, ignoreCase: true},
+		{name: "is_ops", plan: plan.IsOps, state: state.IsOps},
+		{name: "number_of_node", plan: plan.NumberOfNode, state: state.NumberOfNode},
+		{name: "number_of_shard", plan: plan.NumberOfShard, state: state.NumberOfShard},
+		{name: "domain_name", plan: plan.DomainName, state: state.DomainName},
+	}
+}
+
+// attrText renders a value for an error message without the quotes types.String adds.
+func attrText(v attr.Value) string {
+	if s, ok := v.(types.String); ok {
+		return s.ValueString()
+	}
+	return v.String()
 }

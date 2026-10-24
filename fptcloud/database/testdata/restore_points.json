@@ -1,0 +1,49 @@
+{
+  "code": "200",
+  "message": "Success",
+  "data": [
+    {
+      "start_time": "2026-10-23 02:00:02",
+      "cluster_id": "ckgdzwct",
+      "backup_type": "full",
+      "backup_part": "20261023-020002F",
+      "backup_log": "/backup/ckgdzwct/backup_logs/2026-10-23T02:00:01/ckgdzwct-backup.log",
+      "backup_os_disk_name": null,
+      "backup_disk_size_remain": 1,
+      "created_at": "2026-10-23 02:01:00",
+      "id": 2173174,
+      "finish_time": "2026-10-23 02:00:06",
+      "backup_size": "0",
+      "backup_path": "/backup/ckgdzwct/backup/ckgdzwct/20261023-020002F",
+      "backup_state": "successful",
+      "backup_vcd_disk_name": null,
+      "is_sync": false,
+      "archived": 1,
+      "task_id": 2173174
+    },
+    {
+      "start_time": "2026-10-22 02:00:02",
+      "cluster_id": "ckgdzwct",
+      "backup_type": "full",
+      "backup_part": "20261022-020002F",
+      "backup_log": "/backup/ckgdzwct/backup_logs/2026-10-22T02:00:01/ckgdzwct-backup.log",
+      "backup_os_disk_name": null,
+      "backup_disk_size_remain": 1,
+      "created_at": "2026-10-22 02:01:00",
+      "id": 2173030,
+      "finish_time": "2026-10-22 02:00:06",
+      "backup_size": "0",
+      "backup_path": "/backup/ckgdzwct/backup/ckgdzwct/20261022-020002F",
+      "backup_state": "successful",
+      "backup_vcd_disk_name": null,
+      "is_sync": false,
+      "archived": 1,
+      "task_id": 2173030
+    }
+  ],
+  "metadata": {
+    "current_page": 1,
+    "page_size": 10,
+    "total_items": 7
+  }
+}

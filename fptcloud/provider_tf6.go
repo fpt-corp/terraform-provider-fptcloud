@@ -170,6 +170,9 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		fptcloud_edge_gateway.NewDataSourceEdgeGateway,
 		fptcloud_edge_gateway.NewDataSourceEdgeGateways,
 		fptcloud_database.NewDataSourceDatabase,
+		fptcloud_database.NewDataSourceDatabaseBackup,
+		fptcloud_database.NewDataSourceDatabaseRestorePoints,
+		fptcloud_database.NewDataSourceDatabaseRestoredClusters,
 	}
 }
 
@@ -181,5 +184,8 @@ func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resourc
 		fptcloud_mgpu_cluster.NewResourceManagedGpuCluster,
 		fptcloud_database.NewResourceDatabase,
 		fptcloud_database.NewResourceDatabaseStatus,
+		fptcloud_database.NewResourceDatabaseBackup,
+		fptcloud_database.NewResourceDatabaseBackupRunNow,
+		fptcloud_database.NewResourceDatabaseRestore,
 	}
 }

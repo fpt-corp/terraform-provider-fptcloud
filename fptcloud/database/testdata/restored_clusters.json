@@ -1,0 +1,53 @@
+{
+  "code": "200",
+  "message": "Success",
+  "data": [
+    {
+      "cluster_id": "ofpqmzzp",
+      "cluster_name": "tfp0restore",
+      "version": "17",
+      "type_db": "psql_patroni",
+      "status": "failed",
+      "master_count": 1,
+      "worker_count": 0,
+      "created_at": "2026-10-23 15:53:00",
+      "vm_sync": false,
+      "node_count": 1,
+      "engine_name": "Postgres",
+      "restore_point": null
+    },
+    {
+      "cluster_id": "t12t6bkd",
+      "cluster_name": "Newrestore-pitr-ck",
+      "version": "17",
+      "type_db": "psql_patroni",
+      "status": "warning",
+      "master_count": 1,
+      "worker_count": 0,
+      "created_at": "2026-10-13 08:32:15",
+      "vm_sync": true,
+      "node_count": 1,
+      "engine_name": "Postgres",
+      "restore_point": "2026-10-11 00:00:06"
+    },
+    {
+      "cluster_id": "xh2iumzu",
+      "cluster_name": "Minhnt93TestRestore",
+      "version": "17",
+      "type_db": "psql_patroni",
+      "status": "running",
+      "master_count": 1,
+      "worker_count": 0,
+      "created_at": "2026-09-25 23:28:28",
+      "vm_sync": true,
+      "node_count": 1,
+      "engine_name": "Postgres",
+      "restore_point": "20260925-232710F"
+    }
+  ],
+  "metadata": {
+    "current_page": 1,
+    "page_size": 10,
+    "total_items": 3
+  }
+}

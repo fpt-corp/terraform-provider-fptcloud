@@ -1,3 +1,7 @@
+# Only node_cpu, node_ram, data_disk_size, flavor, flavor_id, storage_profile and tag_ids can be changed
+# after the cluster is created (change storage_profile in a separate apply from the others).
+# Changing any other argument makes `terraform plan` fail with the value currently on the portal;
+# to create the cluster again, use `terraform apply -replace=fptcloud_database.example`.
 resource "fptcloud_database" "example" {
   vpc_id = "your-vpc-id"
   network_id = "your-network-id"

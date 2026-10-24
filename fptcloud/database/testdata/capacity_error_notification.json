@@ -1,0 +1,5 @@
+{
+  "error_code": 160009,
+  "message": "The backup service notification is not fully configured. Please configure the notification and add at least one recipient.",
+  "type": "warning"
+}

@@ -1,0 +1,33 @@
+{
+  "code": "200",
+  "message": "Success",
+  "data": [
+    {
+      "backup_type": "full",
+      "backup_size": "0",
+      "backup_part": "20261023-153631F",
+      "backup_path": "/backup/d4ln5mv2/backup/d4ln5mv2/20261023-153631F",
+      "backup_log": "/backup/d4ln5mv2/backup_logs/2026-10-23T15:36:30/d4ln5mv2-backup.log",
+      "backup_state": "successful",
+      "start_time": "2026-10-23 15:36:31",
+      "finish_time": "2026-10-23 15:36:35",
+      "created_at": "2026-10-23 15:36:59"
+    },
+    {
+      "backup_type": "full",
+      "backup_size": "0",
+      "backup_part": "20261023-153548F",
+      "backup_path": "/backup/d4ln5mv2/backup/d4ln5mv2/20261023-153548F",
+      "backup_log": "/backup/d4ln5mv2/backup_logs/2026-10-23T15:35:47/d4ln5mv2-backup.log",
+      "backup_state": "successful",
+      "start_time": "2026-10-23 15:35:48",
+      "finish_time": "2026-10-23 15:35:52",
+      "created_at": "2026-10-23 15:35:59"
+    }
+  ],
+  "metadata": {
+    "current_page": 1,
+    "page_size": 5,
+    "total_items": 2
+  }
+}

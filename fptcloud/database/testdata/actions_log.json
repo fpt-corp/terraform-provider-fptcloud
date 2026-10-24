@@ -1,0 +1,35 @@
+{
+  "code": "200",
+  "message": "Success",
+  "data": [
+    {
+      "task_id": 469,
+      "task_name": "Enable Pitr",
+      "status": "successful",
+      "created_time": "2026-09-25 23:28:42"
+    },
+    {
+      "task_id": 468,
+      "task_name": "Run full backup",
+      "status": "successful",
+      "created_time": "2026-09-25 23:26:40"
+    },
+    {
+      "task_id": 467,
+      "task_name": "Config full backup job",
+      "status": "successful",
+      "created_time": "2026-09-25 23:25:02"
+    },
+    {
+      "task_id": 466,
+      "task_name": "Create Backup Service",
+      "status": "successful",
+      "created_time": "2026-09-25 23:22:57"
+    }
+  ],
+  "metadata": {
+    "current_page": 1,
+    "page_size": 10,
+    "total_items": 4
+  }
+}

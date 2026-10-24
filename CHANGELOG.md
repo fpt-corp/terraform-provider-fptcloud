@@ -1,3 +1,20 @@
+## [0.3.84] - 2026-10-24
+
+### Resource
+
+- Breaking: `fptcloud_database` no longer destroys and creates the cluster when an argument changes. `vpc_id`, `network_id`, `vm_network`, `type_config`, `type_db`, `version`, `vdc_name`, `is_cluster`, `master_count`, `worker_count`, `node_core`, `cluster_name`, `database_name`, `vhost_name`, `is_public`, `edge_id`, `edition`, `is_ops`, `number_of_node`, `number_of_shard` and `domain_name` cannot be changed after creation: `terraform plan` now fails with the value currently on the portal. To create the cluster again, use `terraform apply -replace=fptcloud_database.<name>`
+- Feat: `fptcloud_database` warns when `node_cpu`, `node_ram`, `data_disk_size` or `storage_profile` was changed outside of Terraform (applied value vs. value on the portal now)
+- Fix: changing `admin_password`, `maintenance_email`, `day_of_week_maintenance` or `time_maintenance` of `fptcloud_database` now fails `terraform plan` with a clear message (change it on the portal; use `-replace` to create the cluster again). Before, the apply ended with `Provider produced inconsistent result after apply`
+- Fix: `fptcloud_database` keeps `domain_name` from the state instead of reading it back as an empty string, and keeps `edition` and `vdc_name` when the portal returns the same text in another letter case
+- Fix: `fptcloud_database` saves the state as soon as the cluster is created, before the tags are applied, so a failure while applying tags no longer loses track of the cluster
+- Fix: after a resize or a storage policy change, `fptcloud_database` fails with a clear error when the cluster went through a busy status (for example `resizing`) and came back `running`, `stopped` or `warning` twice in a row without the new values, instead of waiting 30 minutes. `warning` with the new values now counts as done
+- Known limitation: `fptcloud_database_status` still replaces the resource when `status` or `vpc_id` changes
+- Feat: backup and restore for databases. New resources `fptcloud_database_backup` (backup service, capacity and the `full_job`/`diff_job` jobs, importable by cluster id), `fptcloud_database_backup_run_now` (runs a job once; run again by changing `triggers`) and `fptcloud_database_restore` (restores a restore point into a new cluster; the restored cluster is kept on destroy unless `delete_cluster_on_destroy = true`). New data sources `fptcloud_database_backup`, `fptcloud_database_restore_points` and `fptcloud_database_restored_clusters`
+- Feat: none of the new resources uses ForceNew. An argument that cannot be changed (`cluster_id`, `vpc_id`, a job `name`, a smaller `capacity_gb`) fails `terraform plan` with the value currently on the portal; changing an argument of `fptcloud_database_backup_run_now` or `fptcloud_database_restore` only updates the state and warns, use `terraform apply -replace=...` to run again
+- Feat: `fptcloud_database_backup` warns when `capacity_gb` or a job schedule was changed outside of Terraform, and when a job was deleted on the portal (the next apply creates it again)
+- Known limitation: `full_job` and `diff_job` are blocks (`full_job { ... }`), not attributes, because the provider is served over protocol 5; use `full_job[0].job_id` in expressions
+- Known limitation: point-in-time recovery, MongoDB Enterprise and MongoDB Sharding are not supported. Enabling backup needs an alert with `alert_service = "backup"` and a recipient on the cluster, otherwise the API answers `error_code 160009`
+
 ## [0.3.83] - 2026-10-21
 
 ### Resource

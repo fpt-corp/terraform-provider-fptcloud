@@ -47,6 +47,16 @@ func (m *databaseApiClient) sendPost(requestURL string, params interface{}) ([]b
 	return m.sendRequestWithHeader(req)
 }
 
+func (m *databaseApiClient) sendPut(requestURL string, params interface{}) ([]byte, error) {
+	u := m.Client.PrepareClientURL(requestURL)
+	jsonValue, _ := json.Marshal(params)
+	req, err := http.NewRequest("PUT", u.String(), bytes.NewBuffer(jsonValue))
+	if err != nil {
+		return nil, err
+	}
+	return m.sendRequestWithHeader(req)
+}
+
 type databaseApiAnswer struct {
 	StatusCode int
 	Body       []byte
@@ -61,6 +71,20 @@ func (a databaseApiAnswer) StatusText() string {
 
 func (m *databaseApiClient) sendPostForAnswer(requestURL string, params interface{}) (databaseApiAnswer, error) {
 	body, err := m.sendPost(requestURL, params)
+	if err == nil {
+		return databaseApiAnswer{Body: body}, nil
+	}
+
+	var httpErr common.HTTPError
+	if errors.As(err, &httpErr) {
+		return databaseApiAnswer{StatusCode: httpErr.Code, Body: []byte(httpErr.Reason)}, err
+	}
+
+	return databaseApiAnswer{}, err
+}
+
+func (m *databaseApiClient) sendPutForAnswer(requestURL string, params interface{}) (databaseApiAnswer, error) {
+	body, err := m.sendPut(requestURL, params)
 	if err == nil {
 		return databaseApiAnswer{Body: body}, nil
 	}

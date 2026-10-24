@@ -1,0 +1,15 @@
+{
+  "cluster_id": "d4ln5mv2",
+  "cluster_name": "Database",
+  "version": "17",
+  "type_db": "psql_patroni",
+  "status": "running",
+  "backup_enabled": 1,
+  "storage_policy": "Backup-Premium-SSD-4000_vsfshare01",
+  "capacity": 10,
+  "backup_service_id": 229,
+  "backup_retention_type": "quantity",
+  "is_archived": 0,
+  "percent_backup_used": 0,
+  "archived_usage": 0
+}
