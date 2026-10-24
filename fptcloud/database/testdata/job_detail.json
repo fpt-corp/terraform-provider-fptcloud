@@ -1,0 +1,17 @@
+{
+  "cluster_id": "ckgdzwct",
+  "cluster_name": "Minhnt93TestAll",
+  "type_db": "psql_patroni",
+  "version": "17",
+  "storage_policy": "Backup-Premium-SSD-4000_vsfshare01",
+  "capacity": 10,
+  "backup_enabled": 1,
+  "backup_job_name": "full_backup_daily",
+  "backup_retension": "7",
+  "backup_type": "full",
+  "backup_schedule": {
+    "minute": "0",
+    "hour": "2",
+    "day_of_week": "1,2,3,4,5,6,7"
+  }
+}

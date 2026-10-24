@@ -115,13 +115,64 @@ resource "fptcloud_database" "postgres" {
   đối chiếu với console trước khi dùng.
 - `admin_password` — API luôn trả về `********` khi đọc lại, provider giữ nguyên giá
   trị trong state nên không sinh diff. Đổi lại giá trị này trong config **không** đổi
-  mật khẩu trên server, chỉ đổi state.
+  mật khẩu trên server (plan báo lỗi, xem bên dưới).
 
-### Trường nào sửa được, trường nào phải tạo lại
+### Trường nào sửa được, trường nào không
 
-| Sửa tại chỗ (gọi API của cluster) | Chỉ đổi trong state | Tạo lại cluster (ForceNew) |
+Resource này **không bao giờ** destroy rồi tạo lại cluster khi bạn đổi một giá trị.
+
+| Sửa tại chỗ (gọi API của cluster) | Không đổi được bằng Terraform (plan báo lỗi, đổi trên portal) | Không đổi được sau khi tạo (plan báo lỗi) |
 |---|---|---|
-| `node_cpu`, `node_ram`, `data_disk_size`, `flavor`, `flavor_id` (resize)<br>`storage_profile` (đổi storage policy)<br>`tag_ids` | `admin_password`, `maintenance_email`, `day_of_week_maintenance`, `time_maintenance` | Tất cả các trường còn lại |
+| `node_cpu`, `node_ram`, `data_disk_size`, `flavor`, `flavor_id` (resize)<br>`storage_profile` (đổi storage policy)<br>`tag_ids` | `admin_password`, `maintenance_email`, `day_of_week_maintenance`, `time_maintenance` | `vpc_id`, `network_id`, `vm_network`, `type_config`, `type_db`, `version`, `vdc_name`, `is_cluster`, `master_count`, `worker_count`, `node_core`, `cluster_name`, `database_name`, `vhost_name`, `is_public`, `edge_id`, `edition`, `is_ops`, `number_of_node`, `number_of_shard`, `domain_name` |
+
+Đổi một trường ở cột thứ ba thì `terraform plan` báo lỗi, ví dụ:
+
+```text
+Error: Cannot change worker_count
+
+`worker_count` cannot be changed after creation; it may have been changed on the portal.
+Set it to `4`. To create the cluster again, use `terraform apply -replace=...`.
+```
+
+Giá trị trong lỗi là giá trị **thật** trên portal ở lần đọc gần nhất. Provider đọc lại các
+trường này từ portal mỗi lần refresh, nên nếu ai đó đổi trên portal (ví dụ scale thêm
+worker hoặc nâng version), hãy sửa file `.tf` cho khớp. Muốn tạo lại cluster thì dùng
+`terraform apply -replace=fptcloud_database.<tên>`.
+
+Với các trường không có trong response của API (như `domain_name`, `vhost_name`,
+`is_public`, `is_ops`, `flavor`, `number_of_node`, `number_of_shard`), provider giữ giá
+trị đang có trong state. `edition` và `vdc_name` chỉ khác chữ hoa/chữ thường so với portal
+thì cũng được giữ nguyên.
+
+### Cảnh báo khi có thay đổi ngoài Terraform
+
+Sau mỗi lần create/update, provider ghi lại giá trị đã áp dụng của `node_cpu`, `node_ram`,
+`data_disk_size` và `storage_profile`. Mỗi lần đọc lại, nếu portal đang có giá trị khác,
+`terraform plan`/`apply` hiện một cảnh báo cho từng trường:
+
+```text
+Warning: data_disk_size was changed outside of Terraform
+
+`data_disk_size` was changed outside of Terraform (applied: 10, on the portal now: 30).
+The next apply will set it back to 10.
+```
+
+Cảnh báo này chỉ là thông tin. Cluster đã tạo trước khi có tính năng này chưa có giá trị đã
+áp dụng, nên chưa có cảnh báo cho tới lần apply kế tiếp.
+
+Đổi `admin_password`, `maintenance_email`, `day_of_week_maintenance` hoặc `time_maintenance` trong config
+làm `terraform plan` báo lỗi, ví dụ:
+
+```text
+Error: Cannot change maintenance_email
+
+`maintenance_email` cannot be changed by Terraform after the cluster is created: change it
+on the portal, then set it back to `a@b.c` here, which is the value Terraform recorded.
+To create the cluster again, use `terraform apply -replace=...`.
+```
+
+Portal không trả các giá trị này nên Terraform không phát hiện được nếu bạn đổi chúng trên portal;
+giá trị trong lỗi là giá trị đã ghi lúc tạo (riêng mật khẩu không được in ra).
 
 ### Đổi cấu hình (resize) và storage policy
 
@@ -141,9 +192,37 @@ Hai loại thay đổi này **không** được làm cùng một lần apply. N�
 CPU/RAM/disk/flavor vừa đổi `storage_profile`, `terraform plan` báo lỗi
 `Unsupported combined change`. Hãy apply lần lượt từng loại.
 
-Sau khi gọi API, provider đợi cho tới khi cluster về trạng thái `running` hoặc `stopped`
-và giá trị mới đã có trên cluster (tối đa 30 phút), rồi mới kết thúc. Nếu cluster chuyển
-sang `failed` thì apply báo lỗi.
+Sau khi gọi API, provider đợi (tối đa 30 phút, đọc lại mỗi 10 giây) cho tới khi cluster về trạng thái
+`running`, `stopped` hoặc `warning` **và** giá trị mới đã có trên cluster, rồi mới kết thúc.
+
+- Cluster chuyển sang `failed` thì apply báo lỗi ngay.
+- Cluster đã đi qua trạng thái bận (ví dụ `resizing`) rồi về `running`, `stopped` hoặc `warning` **hai lần
+  đọc liên tiếp** mà giá trị mới vẫn chưa có thì apply báo lỗi ngay thay vì chờ hết 30 phút:
+  `cluster <id> is running again after the change, but the new values are not on the cluster: the portal did not apply it`.
+  Khi đó hãy kiểm tra cluster trên portal rồi apply lại.
+- Chỉ `node_cpu`, `node_ram`, `data_disk_size` (resize) hoặc `storage_profile` (đổi policy) được dùng để kiểm tra
+  "giá trị mới đã có"; `flavor` và `flavor_id` thì không.
+
+### Mật khẩu quản trị (`admin_password`)
+
+- Mật khẩu trong `.tf`/tfvars được gửi lên portal khi tạo cluster và ghi vào state. Trên màn hình nó hiện
+  `(sensitive value)`, nhưng trong file `terraform.tfstate` nó nằm dạng chữ thường: hãy bảo vệ state
+  (backend có mã hoá, hạn chế quyền truy cập).
+- API chỉ trả `********` khi đọc lại, nên provider giữ mật khẩu đã ghi và không phát hiện được nếu mật khẩu bị đổi
+  trên portal.
+- Đổi `admin_password` trong config làm `terraform plan` báo lỗi (xem trên). Muốn đổi mật khẩu thì đổi trên
+  portal; Terraform không gọi API đổi mật khẩu.
+
+### Cluster đã có và cluster được import
+
+- **Cluster tạo bằng phiên bản provider cũ:** nếu config khớp với portal thì `plan` vẫn "No changes". Điểm khác là
+  trước đây đổi một trường bất biến cho ra kế hoạch destroy/create, giờ là lỗi như trên. Cluster cũ chưa có giá trị
+  đã áp dụng nên chưa có cảnh báo "changed outside of Terraform" cho tới lần create/update kế tiếp.
+- **Cluster import:** API không trả `flavor`, `flavor_id`, `is_ops`, `is_public`, `vhost_name`, `number_of_node`,
+  `number_of_shard` và các giá trị bảo trì, nên sau `terraform import` các trường này trống trong state và `plan`
+  đề xuất update tại chỗ để ghi giá trị trong config vào state. Vì `flavor`/`flavor_id` đổi từ trống sang có giá
+  trị, lần apply đó có thể được coi là đổi cấu hình và **gọi API resize**. Hãy xem kỹ `plan` sau khi import và chỉ
+  apply khi chắc chắn.
 
 ## Example Usage
 

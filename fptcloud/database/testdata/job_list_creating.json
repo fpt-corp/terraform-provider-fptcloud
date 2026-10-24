@@ -1,0 +1,39 @@
+{
+  "jobs": [
+    {
+      "job_id": 206,
+      "backup_job_name": "tf-full-test",
+      "backup_type": "full",
+      "backup_retention": 7,
+      "backup_schedule": {
+        "minute": "30",
+        "hour": "3",
+        "day_of_week": "1,2,3,4,5,6,7"
+      },
+      "status": "ready",
+      "is_run_now": 0
+    },
+    {
+      "job_id": 207,
+      "backup_job_name": "tf-diff-test",
+      "backup_type": "diff",
+      "backup_retention": 7,
+      "backup_schedule": {
+        "minute": "0",
+        "hour": "5,9",
+        "day_of_week": "1,2,3,4,5"
+      },
+      "status": "creating",
+      "is_run_now": 0
+    }
+  ],
+  "total": 2,
+  "cluster_id": "d4ln5mv2",
+  "cluster_name": "Database",
+  "type_db": "psql_patroni",
+  "version": "17",
+  "status": "running",
+  "storage_policy": "Backup-Premium-SSD-4000_vsfshare01",
+  "capacity": 10,
+  "backup_enabled": 1
+}

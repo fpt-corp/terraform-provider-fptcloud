@@ -1,0 +1,5 @@
+{
+  "error_code": 160006,
+  "message": "The backup capacity must be greater than the current size. Please enter a larger value and try again.",
+  "type": "error"
+}

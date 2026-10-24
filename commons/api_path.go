@@ -73,6 +73,20 @@ var ApiPath = struct {
 	DatabaseStoragePolicies func(vpcId string) string
 	DatabaseChangeIops      func() string
 	DatabaseFlavor          func(vpcId string, isOSP string) string
+	DatabaseList            func(vpcId string, page, pageSize int) string
+
+	DatabaseBackupDetail     func(clusterId string) string
+	DatabaseBackupCapacity   func() string
+	DatabaseBackupDelete     func(clusterId string) string
+	DatabaseBackupJobList    func(clusterId string) string
+	DatabaseBackupJobCreate  func() string
+	DatabaseBackupJobUpdate  func() string
+	DatabaseBackupJobDelete  func(jobId int64) string
+	DatabaseBackupJobRunNow  func(jobId int64) string
+	DatabaseBackupActionsLog func(clusterId string, page, pageSize int) string
+	DatabaseRestorePoints    func(clusterId string, page, pageSize int) string
+	DatabaseRestoredClusters func(clusterId string, page, pageSize int) string
+	DatabaseRestoreCreate    func() string
 
 	VpcSyncInstances  func(vpcId string) string
 	VpcSyncStorages   func(vpcId string) string
@@ -485,6 +499,46 @@ var ApiPath = struct {
 	},
 	DatabaseFlavor: func(vpcId string, isOSP string) string {
 		return fmt.Sprintf("/v1/xplat/database/configure_management/get_list_flavor_v2?vpc_id=%s&is_ops=%s", vpcId, isOSP)
+	},
+	DatabaseList: func(vpcId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/xplat/database/management/cluster/list/%s?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+
+	DatabaseBackupDetail: func(clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/database/backup/detail/%s", clusterId)
+	},
+	DatabaseBackupCapacity: func() string {
+		return "/v1/xplat/database/backup/service/capacity"
+	},
+	DatabaseBackupDelete: func(clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/database/backup/service/delete/%s", clusterId)
+	},
+	DatabaseBackupJobList: func(clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/database/backup/service/job/list/%s", clusterId)
+	},
+	DatabaseBackupJobCreate: func() string {
+		return "/v1/xplat/database/backup/service/job/create"
+	},
+	DatabaseBackupJobUpdate: func() string {
+		return "/v1/xplat/database/backup/service/job/update"
+	},
+	DatabaseBackupJobDelete: func(jobId int64) string {
+		return fmt.Sprintf("/v1/xplat/database/backup/service/job/delete/%d", jobId)
+	},
+	DatabaseBackupJobRunNow: func(jobId int64) string {
+		return fmt.Sprintf("/v1/xplat/database/backup/service/job/runnow/%d", jobId)
+	},
+	DatabaseBackupActionsLog: func(clusterId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/xplat/database/restore/list-backup-request/%s?page=%d&page_size=%d&sort_by=created_time", clusterId, page, pageSize)
+	},
+	DatabaseRestorePoints: func(clusterId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/xplat/database/restore/list-restore-point/%s?page=%d&page_size=%d", clusterId, page, pageSize)
+	},
+	DatabaseRestoredClusters: func(clusterId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/xplat/database/restore/list-restore-cluster/%s?page=%d&page_size=%d", clusterId, page, pageSize)
+	},
+	DatabaseRestoreCreate: func() string {
+		return "/v1/xplat/database/restore/create"
 	},
 
 	VpcSyncInstances: func(vpcId string) string {
