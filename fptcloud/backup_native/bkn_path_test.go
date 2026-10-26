@@ -24,6 +24,7 @@ func TestBackupNativePaths(t *testing.T) {
 		p.BackupNativeVmHistories("v", "Restore keep", 1, 50): "/v1/vmware/vpc/v/osp_native_backup/histories/list?type=Restore+keep&page=1&page_size=50",
 		p.BackupNativeVmRestore("v"):                          "/v1/vmware/vpc/v/osp_native_backup/restore",
 		p.BackupNativeVmRestoreKeep("v"):                      "/v1/vmware/vpc/v/osp_native_backup/restore-new",
+		p.BackupNativeVmSync("v"):                             "/v1/vmware/vpc/v/osp_native_backup/sync",
 		p.BackupNativeFloatingIps("v", 2, 25):                 "/v1/vmware/vpc/v/ip-address?page=2&page_size=25&is_all=false",
 		p.BackupNativeVolumeJobs("v", 2, 100):                 "/v2/vpc/v/backup-volume/backup-jobs?page=2&page_size=100",
 		p.BackupNativeVolumeJobCreate("v"):                    "/v2/vpc/v/backup-volume/backup-jobs",

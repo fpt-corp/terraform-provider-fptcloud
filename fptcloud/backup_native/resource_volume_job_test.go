@@ -70,6 +70,22 @@ func TestCreateVolumeJobStoresDescriptionWithAnUpdate(t *testing.T) {
 	assert.Equal(t, []interface{}{"vol-1"}, d.Get("volume_ids").(*schema.Set).List())
 }
 
+func TestCreateVolumeJobSurvivesAPassingAPIErrorAfterCreate(t *testing.T) {
+	setFastPolling(t)
+	routes := volumeCreateRoutes(201, `{"message":"Backup job created successfully","data":[],"status":true}`)
+	routes["GET "+volBase+"/backup-jobs"] = []fakeResponse{
+		{Body: volumeJobsEmptyBody},
+		{Status: 401, Body: `{"message":"Unauthorized Access"}`},
+		{Body: volumeJobsWithPvcBody},
+	}
+	_, client := newFakeAPI(t, routes)
+	d := schema.TestResourceDataRaw(t, resourceVolumeJobSchema(), volumeJobConfig())
+
+	diags := createVolumeJob(context.Background(), d, client)
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, "job-9", d.Id())
+}
+
 // Review focus 2.
 func TestCreateVolumeJobRefusesExistingName(t *testing.T) {
 	_, client := newFakeAPI(t, map[string][]fakeResponse{

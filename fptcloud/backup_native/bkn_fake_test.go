@@ -39,6 +39,10 @@ type fakeAPI struct {
 
 func newFakeAPI(t *testing.T, routes map[string][]fakeResponse) (*fakeAPI, *common.Client) {
 	t.Helper()
+	// Every VM action ends with a sync; tests that check it count vmSyncRoute.
+	if _, ok := routes[vmSyncRoute]; !ok {
+		routes[vmSyncRoute] = []fakeResponse{{Status: 202, Body: vmSyncAccepted}}
+	}
 	api := &fakeAPI{t: t, routes: routes, calls: map[string]int{}}
 	server := httptest.NewServer(http.HandlerFunc(api.serve))
 	t.Cleanup(server.Close)

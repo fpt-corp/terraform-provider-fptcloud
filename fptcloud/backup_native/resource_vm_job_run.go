@@ -111,10 +111,16 @@ func createJobRun(ctx context.Context, d *schema.ResourceData, run jobRunSteps) 
 	})
 }
 
-func createVmJobRun(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func createVmJobRun(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
 	jobId := d.Get("job_id").(string)
+	started := false
+	defer func() {
+		if started {
+			syncVmJobs(svc, vpcId, &diags)
+		}
+	}()
 	return createJobRun(ctx, d, jobRunSteps{
 		check: func() error {
 			job, err := svc.GetVmJob(vpcId, jobId)
@@ -133,7 +139,13 @@ func createVmJobRun(ctx context.Context, d *schema.ResourceData, m interface{}) 
 			}
 			return nil
 		},
-		start: func() error { return svc.StartVmJobBackup(vpcId, jobId) },
+		start: func() error {
+			if err := svc.StartVmJobBackup(vpcId, jobId); err != nil {
+				return err
+			}
+			started = true
+			return nil
+		},
 		wait: func(ctx context.Context, timeout time.Duration) (string, error) {
 			return waitVmJobRun(ctx, svc, vpcId, jobId, timeout)
 		},

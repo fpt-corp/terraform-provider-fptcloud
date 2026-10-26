@@ -327,6 +327,7 @@ var ApiPath = struct {
 	BackupNativeVmHistories           func(vpcId string, historyType string, page int, pageSize int) string
 	BackupNativeVmRestore             func(vpcId string) string
 	BackupNativeVmRestoreKeep         func(vpcId string) string
+	BackupNativeVmSync                func(vpcId string) string
 	BackupNativeFloatingIps           func(vpcId string, page int, pageSize int) string
 
 	// Backup Native - v2 Backup Volume (volume jobs). User API only.
@@ -1423,6 +1424,11 @@ var ApiPath = struct {
 	// The portal calls this "Restore keep"; the route is restore-new.
 	BackupNativeVmRestoreKeep: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/restore-new", vpcId)
+	},
+	// The portal's backup list calls this every minute. Without full=true the
+	// sync updates and removes records but adds none.
+	BackupNativeVmSync: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/sync", vpcId)
 	},
 	// is_all=false leaves out floating IPs that are already in use, as the
 	// portal's restore dialog does.

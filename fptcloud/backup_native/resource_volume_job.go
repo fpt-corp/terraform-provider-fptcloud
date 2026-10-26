@@ -181,8 +181,16 @@ func createVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 		return diag.FromErr(err)
 	}
 
-	// The create response never carries the job id.
-	job, err := findVolumeJobByName(svc, vpcId, name)
+	// The create response never carries the job id. The job exists now, so a
+	// passing read error must not leave it out of the state.
+	var job *VolumeJobListItem
+	err = retryRead(ctx, func() error {
+		var err error
+		if job, err = findVolumeJobByName(svc, vpcId, name); err != nil {
+			return readFailed(err)
+		}
+		return nil
+	})
 	if err != nil {
 		return diag.FromErr(err)
 	}

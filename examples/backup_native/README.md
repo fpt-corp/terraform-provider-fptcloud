@@ -41,7 +41,7 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
 
    The `vm_jobs` and `volume_jobs` outputs show the new jobs. The restore point outputs stay empty until a job has run.
 
-5. To run a job now instead of waiting for its schedule, set `vm_backup_run` or `volume_backup_run` to any value, for example `"1"`, and apply. Apply waits for the run to end; the `vm_job_run` and `volume_job_run` outputs show its status. Set a new value to run it again.
+5. To run a job now instead of waiting for its schedule, set `vm_backup_run` or `volume_backup_run` to the time you ask for the run, for example `"2026-10-26 09:00:00"`, and apply. Apply waits for the run to end; the `vm_job_run` and `volume_job_run` outputs show its status. Set a new time to run it again; the state keeps the time of the last request. Use the same convention for every `triggers` value (runs, restores, purge), and write it as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
 6. After a backup has run, set `vm_restore = true` or `volume_restore = true` and apply again. The restore uses the newest restore point. The `vm_restore_status` and `volume_restore_status` outputs show the result.
 7. Run `terraform destroy` to delete the jobs. Destroying a restore only removes it from state; the restored VM or volume stays and must be deleted in the portal.
 

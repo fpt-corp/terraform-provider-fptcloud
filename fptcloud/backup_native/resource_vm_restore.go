@@ -138,7 +138,7 @@ func stringList(raw interface{}) []string {
 	return out
 }
 
-func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	client := m.(*common.Client)
 	svc := NewVmService(client)
 	vpcId := d.Get("vpc_id").(string)
@@ -186,6 +186,7 @@ func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{})
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	defer syncVmJobs(svc, vpcId, &diags)
 
 	row, err := waitVmRestore(ctx, svc, vpcId, vmId, historyType, submitted, seen, d.Timeout(schema.TimeoutCreate))
 	if err != nil {

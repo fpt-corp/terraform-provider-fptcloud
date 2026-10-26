@@ -58,6 +58,7 @@ func TestCreateVmRestorePointsPurgeWithNothingToDeleteSendsNoRequest(t *testing.
 	assert.Equal(t, 0, d.Get("restore_point_count"))
 	assert.Equal(t, "Success", d.Get("status"))
 	assert.Equal(t, 0, api.count(purgeRoute))
+	assert.Equal(t, 0, api.count(vmSyncRoute))
 }
 
 func TestCreateVmRestorePointsPurgeWaitsForTheSuccessRow(t *testing.T) {
@@ -80,6 +81,7 @@ func TestCreateVmRestorePointsPurgeWaitsForTheSuccessRow(t *testing.T) {
 	assert.Equal(t, "Success", d.Get("status"))
 	assert.Equal(t, 1, api.count(purgeRoute))
 	assert.Equal(t, purgeHistoryType, api.last(histories).Query.Get("type"))
+	assert.Equal(t, 1, api.count(vmSyncRoute))
 }
 
 // The worker writes no history row when it finds no restore point on the

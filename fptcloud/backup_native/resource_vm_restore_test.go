@@ -61,6 +61,7 @@ func TestCreateVmRestoreOverwrite(t *testing.T) {
 	assert.Equal(t, "2026-10-12T19:00:00", body["created_at"])
 	assert.Equal(t, true, body["power_on"])
 	assert.Equal(t, "Restore", api.last("GET "+vmBase+"/histories/list").Query.Get("type"))
+	assert.Equal(t, 1, api.count(vmSyncRoute))
 }
 
 // Review focus 5: the row of a restore that finished just before this one was
@@ -89,7 +90,7 @@ func TestCreateVmRestoreIgnoresTheRowOfAnEarlierRestore(t *testing.T) {
 func TestCreateVmRestoreFailureLeavesNoState(t *testing.T) {
 	setFastPolling(t)
 	start := time.Now().UTC().Format(apiTimeLayout)
-	_, client := newFakeAPI(t, map[string][]fakeResponse{
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"POST " + vmBase + "/restore": {{Status: 202, Body: `{"status":true}`}},
 		"GET " + vmBase + "/histories/list": {
 			{Body: `{"total":0,"data":[]}`},
@@ -103,4 +104,5 @@ func TestCreateVmRestoreFailureLeavesNoState(t *testing.T) {
 	require.True(t, diags.HasError())
 	assert.Contains(t, diags[0].Summary, "disk error")
 	assert.Equal(t, "", d.Id())
+	assert.Equal(t, 1, api.count(vmSyncRoute), "a restore that was sent syncs even when it fails")
 }

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	common "terraform-provider-fptcloud/commons"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
 // historyPageSize is the page size of the history lists. Rows come back
@@ -32,6 +34,9 @@ type VmService interface {
 	ListVmHistories(vpcId string, historyType string, cutoff time.Time) ([]VmHistory, error)
 	RestoreVm(vpcId string, p VmRestorePayload) error
 	RestoreVmKeep(vpcId string, p VmRestoreKeepPayload) error
+	// SyncVmJobs asks the API to bring its records of the VPC's VM backups in
+	// line with the platform. The sync runs in the background.
+	SyncVmJobs(vpcId string) error
 	ListFloatingIps(vpcId string) ([]FloatingIpItem, error)
 }
 
@@ -278,6 +283,31 @@ func (s *service) RestoreVmKeep(vpcId string, p VmRestoreKeepPayload) error {
 	}
 	_, err = decodeEnvelope(raw, action)
 	return err
+}
+
+// SyncVmJobs returns once the API has queued the sync; it does not wait for it.
+func (s *service) SyncVmJobs(vpcId string) error {
+	const action = "syncing the VM backups"
+	raw, err := s.client.SendGetRequest(common.ApiPath.BackupNativeVmSync(vpcId))
+	if err != nil {
+		return wrapAPIError(action, err)
+	}
+	_, err = decodeEnvelope(raw, action)
+	return err
+}
+
+// syncVmJobs syncs the VPC's VM backups once after an action the API
+// accepted, so that the portal and the next read see what the action changed.
+// The action itself is done, so a failed sync only warns. Defer it with the
+// action's named diagnostics.
+func syncVmJobs(svc VmService, vpcId string, diags *diag.Diagnostics) {
+	if err := svc.SyncVmJobs(vpcId); err != nil {
+		*diags = append(*diags, diag.Diagnostic{
+			Severity: diag.Warning,
+			Summary:  fmt.Sprintf("could not sync the VM backups of VPC %s", vpcId),
+			Detail:   err.Error() + ". The portal syncs them again while its backup list is open.",
+		})
+	}
 }
 
 func (s *service) ListFloatingIps(vpcId string) ([]FloatingIpItem, error) {

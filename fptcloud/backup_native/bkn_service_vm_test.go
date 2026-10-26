@@ -15,6 +15,9 @@ import (
 const (
 	vmBase = "/v1/vmware/vpc/vpc-1/osp_native_backup"
 
+	vmSyncRoute    = "GET " + vmBase + "/sync"
+	vmSyncAccepted = `{"message":"Sync successfully.","data":["task-9"],"status":null}`
+
 	vmJobDetailBody = `{"data":{"id":"job-1","name":"web","description":"nightly","interval":1,
 		"incremental_backup_freq":"","incremental_backup_date":null,"number_latest_backup":7,
 		"full_backup_freq":"daily","full_backup_date":null,"status":"Initiated",
@@ -34,6 +37,20 @@ func TestCreateVmJobReturnsTaskId(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "task-1", taskId)
 	assert.Equal(t, "web", api.last("POST " + vmBase + "/create").Body["name"])
+}
+
+func TestSyncVmJobsAsksForAnIncrementalSync(t *testing.T) {
+	api, client := newFakeAPI(t, map[string][]fakeResponse{})
+	require.NoError(t, NewVmService(client).SyncVmJobs("vpc-1"))
+	assert.Equal(t, 1, api.count(vmSyncRoute))
+	assert.Empty(t, api.last(vmSyncRoute).Query, "a full sync also creates jobs the portal does not know")
+}
+
+func TestSyncVmJobsStatusFalseIsAnError(t *testing.T) {
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		vmSyncRoute: {{Body: `{"status":false,"message":"Tenant or vpc service is disabled, please try again later."}`}},
+	})
+	assert.Error(t, NewVmService(client).SyncVmJobs("vpc-1"))
 }
 
 // v1 create reports a disabled service as HTTP 200 with status false.

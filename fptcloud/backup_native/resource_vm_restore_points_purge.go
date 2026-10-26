@@ -89,7 +89,7 @@ func listVmRestorePoints(ctx context.Context, svc VmService, vpcId, vmId string)
 	return points, err
 }
 
-func createVmRestorePointsPurge(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func createVmRestorePointsPurge(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
 	vmId := d.Get("vm_id").(string)
@@ -101,13 +101,15 @@ func createVmRestorePointsPurge(ctx context.Context, d *schema.ResourceData, m i
 		return diag.FromErr(err)
 	}
 	if len(points) > 0 {
+		// Synced even when the purge fails: it may have deleted some already.
+		defer syncVmJobs(svc, vpcId, &diags)
 		if err := purgeVmRestorePoints(ctx, svc, vpcId, vmId, deadline); err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
 	d.SetId(fmt.Sprintf("%s/%d", vmId, started.Unix()))
-	diags := setValues(d, map[string]interface{}{
+	diags = setValues(d, map[string]interface{}{
 		"restore_point_count": len(points),
 		"status":              "Success",
 		"started_at":          started.Format(time.RFC3339),

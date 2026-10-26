@@ -160,7 +160,7 @@ func switchVmJob(ctx context.Context, svc VmService, vpcId, jobId string, enable
 	return err
 }
 
-func createVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func createVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	client := m.(*common.Client)
 	svc := NewVmService(client)
 	vpcId := d.Get("vpc_id").(string)
@@ -186,13 +186,22 @@ func createVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	defer syncVmJobs(svc, vpcId, &diags)
 	message, err := waitForTask(ctx, svc, vpcId, taskId, "creating the VM backup job", timeout)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	// The create response carries a task id, never the job id.
-	job, err := findVmJobByName(svc, vpcId, name)
+	// The create response carries a task id, never the job id. The job exists
+	// now, so a passing read error must not leave it out of the state.
+	var job *VmJobListItem
+	err = retryRead(ctx, func() error {
+		var err error
+		if job, err = findVmJobByName(svc, vpcId, name); err != nil {
+			return readFailed(err)
+		}
+		return nil
+	})
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -201,7 +210,6 @@ func createVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	}
 	d.SetId(job.Id)
 
-	var diags diag.Diagnostics
 	if strings.Contains(strings.ToLower(message), "quota") {
 		diags = append(diags, diag.Diagnostic{
 			Severity: diag.Warning,
@@ -255,10 +263,17 @@ func readVmJob(_ context.Context, d *schema.ResourceData, m interface{}) diag.Di
 	})
 }
 
-func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
 	timeout := d.Timeout(schema.TimeoutUpdate)
+	// An update and a schedule switch sync once between them.
+	changed := false
+	defer func() {
+		if changed {
+			syncVmJobs(svc, vpcId, &diags)
+		}
+	}()
 
 	if vmJobNeedsUpdate(d) {
 		if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), settleToUpdate, timeout); err != nil {
@@ -272,6 +287,7 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 		if err != nil {
 			return diag.FromErr(err)
 		}
+		changed = true
 		if _, err := waitForTask(ctx, svc, vpcId, taskId, "updating the VM backup job", timeout); err != nil {
 			return diag.FromErr(err)
 		}
@@ -288,6 +304,7 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 		return diag.Errorf("VM backup job %s no longer exists", d.Id())
 	}
 	if want := d.Get("schedule_enabled").(bool); job.IsEnabled != want {
+		changed = true
 		if err := switchVmJob(ctx, svc, vpcId, d.Id(), want, timeout); err != nil {
 			return diag.FromErr(err)
 		}
@@ -295,7 +312,7 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	return readVmJob(ctx, d, m)
 }
 
-func deleteVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func deleteVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
 	// The API rejects a delete while a backup runs, so wait for it first.
@@ -316,6 +333,7 @@ func deleteVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	if err := svc.DeleteVmJob(vpcId, d.Id()); err != nil {
 		return diag.FromErr(err)
 	}
+	defer syncVmJobs(svc, vpcId, &diags)
 	if err := waitVmJobGone(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {
 		return diag.FromErr(err)
 	}
