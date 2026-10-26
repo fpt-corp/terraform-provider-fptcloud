@@ -16,6 +16,7 @@ func ResourceVolumeRestore() *schema.Resource {
 	return &schema.Resource{
 		Description: "Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. " +
 			"Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. " +
+			"Change a value in `triggers` to run the restore again. " +
 			"The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. " +
 			"Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.",
 		CreateContext: createVolumeRestore,
@@ -50,6 +51,7 @@ func resourceVolumeRestoreSchema() map[string]*schema.Schema {
 			ValidateFunc: validation.IntAtLeast(1),
 			Description:  "Size of the new volume in GB. The API requires at least the size of the source volume.",
 		},
+		"triggers":    triggersSchema("run the restore again"),
 		"status":      {Type: schema.TypeString, Computed: true, Description: "Result of the restore, `success` after a successful apply."},
 		"started_at":  {Type: schema.TypeString, Computed: true, Description: "Start of the restore, RFC 3339 UTC."},
 		"finished_at": {Type: schema.TypeString, Computed: true, Description: "End of the restore, RFC 3339 UTC."},

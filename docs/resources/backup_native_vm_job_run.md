@@ -14,11 +14,13 @@ Runs a Backup Native VM backup job once, outside its schedule, the same operatio
 
 ```terraform
 # Runs fptcloud_backup_native_vm_job.web once and waits for the run to end.
-# Change backup_run (for example to a date) to run the backup again.
+# Set run to the time you ask for the backup; a new time runs it again, and
+# the state records when each run was requested. Write the time as a literal:
+# timestamp() changes on every plan and runs a backup on every apply.
 resource "fptcloud_backup_native_vm_job_run" "web" {
   vpc_id   = var.vpc_id
   job_id   = fptcloud_backup_native_vm_job.web.id
-  triggers = { run = var.backup_run }
+  triggers = { run = "2026-10-26 09:00:00" }
 }
 ```
 
@@ -33,7 +35,7 @@ resource "fptcloud_backup_native_vm_job_run" "web" {
 ### Optional
 
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `triggers` (Map of String) Arbitrary values that run the backup again when they change. Use it to run the same job again, which no other argument can express because every other argument stays equal.
+- `triggers` (Map of String) Values that run the backup again when they change, which no other argument can express because every other argument stays equal. Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
 
 ### Read-Only
 

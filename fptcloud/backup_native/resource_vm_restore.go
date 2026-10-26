@@ -27,7 +27,7 @@ var (
 func ResourceVmRestore() *schema.Resource {
 	return &schema.Resource{
 		Description: "Restores a VM from a Backup Native restore point. Applying the resource runs the restore once and waits for it to finish. " +
-			"Destroying it only removes it from state; it never changes the VM. `overwrite` restores onto the original VM; `keep` creates a new VM and keeps the original. " +
+			"Destroying it only removes it from state; it never changes the VM. Change a value in `triggers` to run the restore again. `overwrite` restores onto the original VM; `keep` creates a new VM and keeps the original. " +
 			"The API does not return the new VM's id; find it by `instance_name` with the `fptcloud_instances` data source. " +
 			"Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row.",
 		CreateContext: createVmRestore,
@@ -82,6 +82,7 @@ func resourceVmRestoreSchema() map[string]*schema.Schema {
 			Description: "`keep` only. Omit for no floating IP, `new` to allocate one, or the ID of a floating IP that is not in use.",
 		},
 		"private_ip":  {Type: schema.TypeString, Optional: true, ForceNew: true, ValidateFunc: validation.IsIPv4Address, Description: "`keep` only. Private IP of the new VM."},
+		"triggers":    triggersSchema("run the restore again"),
 		"status":      {Type: schema.TypeString, Computed: true, Description: "Result of the restore, `Success` after a successful apply."},
 		"started_at":  {Type: schema.TypeString, Computed: true, Description: "Start of the restore, RFC 3339 UTC."},
 		"finished_at": {Type: schema.TypeString, Computed: true, Description: "End of the restore, RFC 3339 UTC."},

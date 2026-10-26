@@ -55,14 +55,7 @@ func jobRunSchema(jobResource string) map[string]*schema.Schema {
 			ValidateFunc: validation.NoZeroValues,
 			Description:  fmt.Sprintf("ID of the backup job to run, the `id` of a `%s`.", jobResource),
 		},
-		"triggers": {
-			Type:     schema.TypeMap,
-			Optional: true,
-			ForceNew: true,
-			Elem:     &schema.Schema{Type: schema.TypeString},
-			Description: "Arbitrary values that run the backup again when they change. Use it to run the same job again, " +
-				"which no other argument can express because every other argument stays equal.",
-		},
+		"triggers": triggersSchema("run the backup again"),
 		"status": {
 			Type:        schema.TypeString,
 			Computed:    true,

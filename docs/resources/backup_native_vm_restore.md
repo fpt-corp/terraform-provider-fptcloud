@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_vm_restore Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Restores a VM from a Backup Native restore point. Applying the resource runs the restore once and waits for it to finish. Destroying it only removes it from state; it never changes the VM. overwrite restores onto the original VM; keep creates a new VM and keeps the original. The API does not return the new VM's id; find it by instance_name with the fptcloud_instances data source. Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row.
+  Restores a VM from a Backup Native restore point. Applying the resource runs the restore once and waits for it to finish. Destroying it only removes it from state; it never changes the VM. Change a value in triggers to run the restore again. overwrite restores onto the original VM; keep creates a new VM and keeps the original. The API does not return the new VM's id; find it by instance_name with the fptcloud_instances data source. Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row.
 ---
 
 # fptcloud_backup_native_vm_restore (Resource)
 
-Restores a VM from a Backup Native restore point. Applying the resource runs the restore once and waits for it to finish. Destroying it only removes it from state; it never changes the VM. `overwrite` restores onto the original VM; `keep` creates a new VM and keeps the original. The API does not return the new VM's id; find it by `instance_name` with the `fptcloud_instances` data source. Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row.
+Restores a VM from a Backup Native restore point. Applying the resource runs the restore once and waits for it to finish. Destroying it only removes it from state; it never changes the VM. Change a value in `triggers` to run the restore again. `overwrite` restores onto the original VM; `keep` creates a new VM and keeps the original. The API does not return the new VM's id; find it by `instance_name` with the `fptcloud_instances` data source. Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row.
 
 ## Example Usage
 
@@ -19,6 +19,8 @@ data "fptcloud_backup_native_vm_restore_points" "web" {
 }
 
 # Restore the latest restore point into a new VM and keep the original.
+# Set restore to the time you ask for the restore; a new time runs it again,
+# and the state records when each restore was requested.
 resource "fptcloud_backup_native_vm_restore" "web_copy" {
   vpc_id                   = var.vpc_id
   vm_id                    = var.web_instance_id
@@ -29,6 +31,8 @@ resource "fptcloud_backup_native_vm_restore" "web_copy" {
   flavor_id          = var.flavor_id
   subnet_id          = var.subnet_id
   security_group_ids = [var.security_group_id]
+
+  triggers = { restore = "2026-10-26 09:00:00" }
 }
 
 # Find the new VM by name.
@@ -59,6 +63,7 @@ data "fptcloud_instances" "all" {
 - `security_group_ids` (List of String) `keep` only. IDs of security groups for the new VM.
 - `subnet_id` (String) `keep` only, required for `keep`. ID of the subnet (the `id` of `fptcloud_subnet`).
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- `triggers` (Map of String) Values that run the restore again when they change, which no other argument can express because every other argument stays equal. Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
 
 ### Read-Only
 

@@ -35,6 +35,22 @@ func jobDescriptionSchema() *schema.Schema {
 	}
 }
 
+// triggersSchema is the triggers argument of the one-shot resources. action
+// says what a changed value does, for example "run the backup again".
+func triggersSchema(action string) *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeMap,
+		Optional: true,
+		ForceNew: true,
+		Elem:     &schema.Schema{Type: schema.TypeString},
+		Description: fmt.Sprintf("Values that %s when they change, "+
+			"which no other argument can express because every other argument stays equal. "+
+			"Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, "+
+			"so the state records when each one was requested. "+
+			"Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.", action),
+	}
+}
+
 // importJob parses vpc/<vpc_id>/<kind>/<job_id>.
 func importJob(kind string) schema.StateContextFunc {
 	return func(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {

@@ -131,11 +131,14 @@ var vmJobStableStatuses = map[string]bool{"initiated": true, "available": true, 
 // settlePurpose says what a settle wait is for. A v1 job reads "Failed" after
 // a run in which any VM failed, and keeps it until another run starts. Update,
 // switch_schedule and a manual backup refuse that state, so waiting for it to
-// change would only run out the timeout; delete accepts it.
+// change would only run out the timeout; delete accepts it. An update waits
+// only for another update to finish: v1 also accepts it while a backup or a
+// restore runs (UpdateBackupJobController.py:79-100).
 type settlePurpose int
 
 const (
 	settleToChange settlePurpose = iota
+	settleToUpdate
 	settleToDelete
 )
 
@@ -170,6 +173,12 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, p
 				return job, "settled", nil
 			}
 			return nil, "", vmJobFailedError(jobId)
+		}
+		if purpose == settleToUpdate {
+			if status == "updating" {
+				return job, "busy", nil
+			}
+			return job, "settled", nil
 		}
 		if vmJobStableStatuses[status] {
 			return job, "settled", nil

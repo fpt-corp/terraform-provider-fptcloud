@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_volume_restore Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. The API does not return the new volume's id; find it by name with the fptcloud_storages data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
+  Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. Change a value in triggers to run the restore again. The API does not return the new volume's id; find it by name with the fptcloud_storages data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
 ---
 
 # fptcloud_backup_native_volume_restore (Resource)
 
-Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
+Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. Change a value in `triggers` to run the restore again. The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
 
 ## Example Usage
 
@@ -18,12 +18,15 @@ data "fptcloud_backup_native_volume_restore_points" "data" {
   volume_id = var.pv_volume_id
 }
 
+# Set restore to the time you ask for the restore; a new time runs it again,
+# and the state records when each restore was requested.
 resource "fptcloud_backup_native_volume_restore" "data_copy" {
   vpc_id           = var.vpc_id
   volume_id        = var.pv_volume_id
   restore_point_id = data.fptcloud_backup_native_volume_restore_points.data.restore_points[0].id
   name             = "pv-data-restored"
   size_gb          = 20
+  triggers         = { restore = "2026-10-26 09:00:00" }
 }
 ```
 
@@ -41,6 +44,7 @@ resource "fptcloud_backup_native_volume_restore" "data_copy" {
 ### Optional
 
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- `triggers` (Map of String) Values that run the restore again when they change, which no other argument can express because every other argument stays equal. Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
 
 ### Read-Only
 

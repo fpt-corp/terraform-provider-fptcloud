@@ -53,13 +53,7 @@ func resourceVmRestorePointsPurgeSchema() map[string]*schema.Schema {
 			ValidateFunc: validation.NoZeroValues,
 			Description:  "ID of the VM whose restore points are deleted. The VM does not need to be in a backup job.",
 		},
-		"triggers": {
-			Type:        schema.TypeMap,
-			Optional:    true,
-			ForceNew:    true,
-			Elem:        &schema.Schema{Type: schema.TypeString},
-			Description: "Arbitrary values that delete the restore points again when they change, for example after new backups were taken.",
-		},
+		"triggers": triggersSchema("delete the restore points again"),
 		"restore_point_count": {
 			Type:        schema.TypeInt,
 			Computed:    true,

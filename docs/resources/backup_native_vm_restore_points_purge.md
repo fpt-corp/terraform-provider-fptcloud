@@ -15,11 +15,14 @@ Deletes every Backup Native restore point of a VM. It deletes the restore points
 ```terraform
 # Deletes every restore point of the VM, under any backup job, and waits for
 # the deletion to end. The VM's next backup is a full backup.
-# Change purge (for example to a date) to delete the restore points again.
+# Set purge to the time you ask for the deletion; a new time deletes the
+# restore points again, and the state records when each purge was requested.
+# Write the time as a literal: timestamp() changes on every plan and deletes
+# the restore points on every apply.
 resource "fptcloud_backup_native_vm_restore_points_purge" "web" {
   vpc_id   = var.vpc_id
   vm_id    = var.web_instance_id
-  triggers = { purge = var.restore_points_purge }
+  triggers = { purge = "2026-10-26 09:00:00" }
 }
 ```
 
@@ -34,7 +37,7 @@ resource "fptcloud_backup_native_vm_restore_points_purge" "web" {
 ### Optional
 
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `triggers` (Map of String) Arbitrary values that delete the restore points again when they change, for example after new backups were taken.
+- `triggers` (Map of String) Values that delete the restore points again when they change, which no other argument can express because every other argument stays equal. Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
 
 ### Read-Only
 

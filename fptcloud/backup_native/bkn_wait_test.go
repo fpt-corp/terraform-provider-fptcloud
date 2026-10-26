@@ -319,6 +319,26 @@ func TestWaitVmJobSettledFailsAtOnceOnFailedBeforeAChange(t *testing.T) {
 	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"))
 }
 
+func TestWaitVmJobSettledBeforeAnUpdateWaitsOnlyForUpdating(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": jobStatuses("job-1", "Updating", "Backing up"),
+	})
+	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToUpdate, time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, "Backing up", job.Status)
+}
+
+func TestWaitVmJobSettledFailsAtOnceOnFailedBeforeAnUpdate(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Failed"}}`}},
+	})
+	_, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToUpdate, time.Minute)
+	assert.ErrorContains(t, err, "until another run starts")
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"))
+}
+
 func TestWaitVmJobSettledTreatsFailedAsSettledBeforeADelete(t *testing.T) {
 	setFastPolling(t)
 	_, client := newFakeAPI(t, map[string][]fakeResponse{

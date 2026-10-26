@@ -261,7 +261,7 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	timeout := d.Timeout(schema.TimeoutUpdate)
 
 	if vmJobNeedsUpdate(d) {
-		if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), settleToChange, timeout); err != nil {
+		if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), settleToUpdate, timeout); err != nil {
 			return diag.FromErr(err)
 		}
 		payload, err := expandVmJobUpdate(d, time.Now())
