@@ -226,7 +226,7 @@ func (s *service) DeleteAllVmRestorePoints(vpcId string, vmId string) error {
 	raw, err := s.client.SendDeleteRequest(common.ApiPath.BackupNativeVmDeleteRestorePoints(vpcId, vmId))
 	if err != nil {
 		wrapped := wrapAPIError(action, err)
-		if apiErr := asAPIError(err); apiErr != nil && apiErr.Code == 400 && strings.Contains(strings.ToLower(apiErr.Message), "not available for delete") {
+		if apiErr := asAPIError(err); apiErr != nil && apiErr.Code == 400 && strings.Contains(strings.ToLower(apiErr.Message), msgNotAvailableForDelete) {
 			return restorePointsBusy{wrapped}
 		}
 		return wrapped

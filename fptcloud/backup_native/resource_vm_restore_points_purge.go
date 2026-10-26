@@ -14,9 +14,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
-// purgeHistoryType is the history type of a delete-all request
-// (HistoryActionType.BACKUP_RESTORE_POINTS_DELETION).
-const purgeHistoryType = "Delete all backup restore point"
+// purgeStatusSuccess is the status a successful purge stores, in the case
+// the v1 history uses.
+const purgeStatusSuccess = "Success"
 
 func ResourceVmRestorePointsPurge() *schema.Resource {
 	return &schema.Resource{
@@ -111,7 +111,7 @@ func createVmRestorePointsPurge(ctx context.Context, d *schema.ResourceData, m i
 	d.SetId(fmt.Sprintf("%s/%d", vmId, started.Unix()))
 	diags = setValues(d, map[string]interface{}{
 		"restore_point_count": len(points),
-		"status":              "Success",
+		"status":              purgeStatusSuccess,
 		"started_at":          started.Format(time.RFC3339),
 		"finished_at":         time.Now().UTC().Format(time.RFC3339),
 	})
@@ -141,7 +141,7 @@ func createVmRestorePointsPurge(ctx context.Context, d *schema.ResourceData, m i
 func purgeVmRestorePoints(ctx context.Context, svc VmService, vpcId, vmId string, deadline time.Time) error {
 	submitted := time.Now().UTC()
 	// Rows already in the history belong to earlier purges of this VM.
-	seen, err := vmHistoryRowsSeen(svc, vpcId, vmId, purgeHistoryType, submitted)
+	seen, err := vmHistoryRowsSeen(svc, vpcId, vmId, historyTypePurge, submitted)
 	if err != nil {
 		return err
 	}
@@ -168,15 +168,15 @@ func purgeVmRestorePoints(ctx context.Context, svc VmService, vpcId, vmId string
 	}
 
 	wait := newStateConf([]string{"deleting"}, []string{"done"}, func() (interface{}, string, error) {
-		rows, err := svc.ListVmHistories(vpcId, purgeHistoryType, submitted.Add(-historyClockSkew))
+		rows, err := svc.ListVmHistories(vpcId, historyTypePurge, submitted.Add(-historyClockSkew))
 		if err != nil {
 			return nil, "", readFailed(err)
 		}
-		if row := findVmHistoryRow(rows, vmId, purgeHistoryType, submitted, seen); row != nil {
+		if row := findVmHistoryRow(rows, vmId, historyTypePurge, submitted, seen); row != nil {
 			switch strings.ToLower(row.Status) {
-			case "success":
+			case historyStatusSuccess:
 				return row, "done", nil
-			case "failed":
+			case historyStatusFailed:
 				return nil, "", fmt.Errorf("deleting the restore points of VM %s failed: %s. Some restore points may already be deleted; apply again to delete the rest",
 					vmId, row.Reason)
 			}

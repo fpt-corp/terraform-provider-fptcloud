@@ -29,7 +29,7 @@ func ResourceVmJob() *schema.Resource {
 			Update: schema.DefaultTimeout(30 * time.Minute),
 			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
-		Importer: &schema.ResourceImporter{StateContext: importJob("backup_native_vm_job")},
+		Importer: &schema.ResourceImporter{StateContext: importJob(vmJobImportKind)},
 	}
 }
 
@@ -172,8 +172,8 @@ func createVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (di
 		return diag.FromErr(err)
 	}
 	if existing != nil {
-		return diag.Errorf("a VM backup job named %q already exists in VPC %s; import it with the id vpc/%s/backup_native_vm_job/%s or choose another name",
-			name, vpcId, vpcId, existing.Id)
+		return diag.Errorf("a VM backup job named %q already exists in VPC %s; import it with the id %s or choose another name",
+			name, vpcId, importId(vpcId, vmJobImportKind, existing.Id))
 	}
 
 	// Without tenant_user_id the backend reports the service as disabled.

@@ -104,12 +104,12 @@ func waitForTask(ctx context.Context, svc VmService, vpcId, taskId, action strin
 			return nil, "", readFailed(err)
 		}
 		switch strings.ToUpper(progress.State) {
-		case "SUCCESS":
+		case taskStateSuccess:
 			if progress.StatusCode >= 400 {
 				return nil, "", fmt.Errorf("%s failed (status %d): %s", action, progress.StatusCode, describe(progress.StatusCode, progress.Message))
 			}
 			return progress, "done", nil
-		case "FAILURE", "REVOKED":
+		case taskStateFailure, taskStateRevoked:
 			return nil, "", fmt.Errorf("%s failed: the task ended in state %s: %s", action, progress.State, progress.Message)
 		default:
 			return progress, "running", nil
@@ -121,12 +121,6 @@ func waitForTask(ctx context.Context, svc VmService, vpcId, taskId, action strin
 	}
 	return raw.(*TaskProgress).Message, nil
 }
-
-// Statuses in which a v1 job accepts update, switch_schedule and a manual
-// backup (SwitchScheduleController.py:50). Anything else, including a
-// percentage while a backup runs, means busy, except "failed": see
-// settlePurpose.
-var vmJobStableStatuses = map[string]bool{"initiated": true, "available": true, "success": true, "error": true}
 
 // settlePurpose says what a settle wait is for. A v1 job reads "Failed" after
 // a run in which any VM failed, and keeps it until another run starts. Update,
@@ -168,19 +162,19 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, p
 			return nil, "", fmt.Errorf("VM backup job %s no longer exists", jobId)
 		}
 		status := strings.ToLower(job.Status)
-		if status == "failed" {
+		if status == jobStatusFailed {
 			if purpose == settleToDelete {
 				return job, "settled", nil
 			}
 			return nil, "", vmJobFailedError(jobId)
 		}
 		if purpose == settleToUpdate {
-			if status == "updating" {
+			if status == jobStatusUpdating {
 				return job, "busy", nil
 			}
 			return job, "settled", nil
 		}
-		if vmJobStableStatuses[status] {
+		if jobStableStatuses[status] {
 			return job, "settled", nil
 		}
 		return job, "busy", nil
@@ -200,7 +194,7 @@ func deleteFailed(status, failedStatus string, sawOther *bool) bool {
 	if status == failedStatus {
 		return true
 	}
-	if status == "error" {
+	if status == jobStatusError {
 		return *sawOther
 	}
 	*sawOther = true
@@ -217,7 +211,7 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 		if job == nil {
 			return struct{}{}, "gone", nil
 		}
-		if deleteFailed(job.Status, "error_deleting", &sawOther) {
+		if deleteFailed(job.Status, vmJobStatusDeleteFailed, &sawOther) {
 			return nil, "", fmt.Errorf("deleting VM backup job %s failed: the job is in state %s", jobId, job.Status)
 		}
 		return job, "deleting", nil
@@ -228,9 +222,6 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 	return nil
 }
 
-// Statuses in which a v2 job accepts update, actions and executions.
-var volumeJobStableStatuses = map[string]bool{"initiated": true, "available": true, "success": true, "error": true}
-
 func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) error {
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVolumeJob(vpcId, jobId)
@@ -240,7 +231,7 @@ func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId s
 		if job == nil {
 			return nil, "", fmt.Errorf("volume backup job %s no longer exists", jobId)
 		}
-		if volumeJobStableStatuses[strings.ToLower(job.Status)] {
+		if jobStableStatuses[strings.ToLower(job.Status)] {
 			return job, "settled", nil
 		}
 		return job, "busy", nil
@@ -261,7 +252,7 @@ func waitVolumeJobGone(ctx context.Context, svc VolumeService, vpcId, jobId stri
 		if job == nil {
 			return struct{}{}, "gone", nil
 		}
-		if deleteFailed(job.Status, "deleting error", &sawOther) {
+		if deleteFailed(job.Status, volumeJobStatusDeleteFailed, &sawOther) {
 			return nil, "", fmt.Errorf("deleting volume backup job %s failed: the job is in state %s", jobId, job.Status)
 		}
 		return job, "deleting", nil
@@ -325,9 +316,9 @@ func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType 
 			return struct{}{}, "waiting", nil
 		}
 		switch strings.ToLower(row.Status) {
-		case "success":
+		case historyStatusSuccess:
 			return row, "done", nil
-		case "failed":
+		case historyStatusFailed:
 			return nil, "", fmt.Errorf("restoring VM %s failed: %s", vmId, row.Reason)
 		}
 		return row, "waiting", nil
@@ -384,7 +375,7 @@ func scanVolumeRestoreRows(svc VolumeService, vpcId, volumeId string, since time
 			if start.Before(cutoff) {
 				return nil
 			}
-			if item.SourceType == "volume" && item.ObjectId == volumeId && item.Type == "Restore keep" && visit(item) {
+			if item.SourceType == historySourceVolume && item.ObjectId == volumeId && item.Type == historyTypeRestoreKeep && visit(item) {
 				return nil
 			}
 		}
@@ -405,9 +396,9 @@ func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId s
 			return struct{}{}, "waiting", nil
 		}
 		switch strings.ToLower(row.Status) {
-		case "success":
+		case historyStatusSuccess:
 			return row, "done", nil
-		case "failed":
+		case historyStatusFailed:
 			reason := fmt.Sprint(row.HistoryMetadata.ExtractInfo["status"])
 			return nil, "", fmt.Errorf("restoring volume %s failed: %s", volumeId, reason)
 		}
@@ -434,7 +425,7 @@ func waitVmJobRun(ctx context.Context, svc VmService, vpcId, jobId string, timeo
 			return "", false, err
 		}
 		return job.Status, true, nil
-	}, map[string]bool{"failed": true, "error": true}, timeout)
+	}, map[string]bool{jobStatusFailed: true, jobStatusError: true}, timeout)
 }
 
 func waitVolumeJobRun(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) (string, error) {
@@ -444,7 +435,7 @@ func waitVolumeJobRun(ctx context.Context, svc VolumeService, vpcId, jobId strin
 			return "", false, err
 		}
 		return job.Status, true, nil
-	}, map[string]bool{"error": true}, timeout)
+	}, map[string]bool{jobStatusError: true}, timeout)
 }
 
 // waitJobRun polls a job whose manual backup was just started and returns the
@@ -454,7 +445,7 @@ func waitVolumeJobRun(ctx context.Context, svc VolumeService, vpcId, jobId strin
 func waitJobRun(ctx context.Context, kind, jobId string, read func() (status string, found bool, err error), failed map[string]bool, timeout time.Duration) (string, error) {
 	var outcome error
 	var failingSince time.Time
-	lastStatus := "Pending"
+	lastStatus := jobStatusPending
 	conf := newStateConf([]string{"running"}, []string{"done"}, func() (interface{}, string, error) {
 		status, found, err := read()
 		if err != nil {
@@ -468,7 +459,7 @@ func waitJobRun(ctx context.Context, kind, jobId string, read func() (status str
 			return nil, "", outcome
 		}
 		s := strings.ToLower(status)
-		if s == "success" {
+		if s == jobStatusSuccess {
 			return status, "done", nil
 		}
 		if !failed[s] {
@@ -491,7 +482,7 @@ func waitJobRun(ctx context.Context, kind, jobId string, read func() (status str
 	}
 	var timeoutErr *retry.TimeoutError
 	if errors.As(err, &timeoutErr) {
-		if strings.EqualFold(lastStatus, "pending") {
+		if strings.EqualFold(lastStatus, jobStatusPending) {
 			return "", fmt.Errorf("waiting for the backup of %s backup job %s to finish: %w. "+
 				"The job may be stuck in Pending; the API refuses a new run until the job settles", kind, jobId, err)
 		}

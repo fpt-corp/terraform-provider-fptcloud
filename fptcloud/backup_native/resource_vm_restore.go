@@ -147,9 +147,9 @@ func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{})
 	mode := d.Get("mode").(string)
 	submitted := time.Now().UTC()
 
-	historyType := "Restore"
+	historyType := historyTypeRestore
 	if mode != modeOverwrite {
-		historyType = "Restore keep"
+		historyType = historyTypeRestoreKeep
 	}
 	// Rows already in the history belong to earlier restores of this VM.
 	seen, err := vmHistoryRowsSeen(svc, vpcId, vmId, historyType, submitted)

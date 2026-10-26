@@ -18,6 +18,13 @@ const (
 	frequencyMonthly = "monthly"
 )
 
+// v2 backup_mode values. Only weekly and monthly use full_backup_date.
+const (
+	volumeModeDaily   = 0
+	volumeModeWeekly  = 1
+	volumeModeMonthly = 2
+)
+
 var scheduleTimePattern = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
 
 // Schedule is the schedule block both job resources share.
@@ -235,18 +242,18 @@ func vmScheduleFromDetail(job *VmJobDetail, zone string) (Schedule, error) {
 func volumeBackupMode(frequency string) int {
 	switch frequency {
 	case frequencyWeekly:
-		return 1
+		return volumeModeWeekly
 	case frequencyMonthly:
-		return 2
+		return volumeModeMonthly
 	}
-	return 0
+	return volumeModeDaily
 }
 
 func volumeFrequency(mode int) string {
 	switch mode {
-	case 1:
+	case volumeModeWeekly:
 		return frequencyWeekly
-	case 2:
+	case volumeModeMonthly:
 		return frequencyMonthly
 	}
 	return frequencyDaily
@@ -258,7 +265,7 @@ func applyVolumeSchedule(p *VolumeJobPayload, s Schedule) {
 	p.BackupTime = s.Time + ":00"
 	p.BackupTimeZone = s.TimeZone
 	p.FullBackupDate = nil
-	if p.BackupMode != 0 {
+	if p.BackupMode != volumeModeDaily {
 		day := s.FullBackupDay
 		p.FullBackupDate = &day
 	}
@@ -266,7 +273,7 @@ func applyVolumeSchedule(p *VolumeJobPayload, s Schedule) {
 
 // volumeScheduleFromDetail rebuilds the schedule block from a v2 job. A daily
 // job ignores the stored day: v2 keeps the previous day when a job changes to
-// daily, and mode 0 does not use it (spec, volume job schedule mapping).
+// daily, and the daily mode does not use it (spec, volume job schedule mapping).
 func volumeScheduleFromDetail(job *VolumeJobDetail) Schedule {
 	s := Schedule{FullBackupFrequency: volumeFrequency(job.BackupMode), Time: job.BackupTime, TimeZone: job.BackupTimeZone}
 	if len(s.Time) >= 5 {
@@ -275,7 +282,7 @@ func volumeScheduleFromDetail(job *VolumeJobDetail) Schedule {
 	if s.TimeZone == "" {
 		s.TimeZone = "UTC"
 	}
-	if job.BackupMode != 0 && job.FullBackupDate != nil {
+	if job.BackupMode != volumeModeDaily && job.FullBackupDate != nil {
 		s.FullBackupDay = *job.FullBackupDate
 	}
 	return s

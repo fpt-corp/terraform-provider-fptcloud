@@ -131,10 +131,10 @@ func createVmJobRun(ctx context.Context, d *schema.ResourceData, m interface{}) 
 				return fmt.Errorf("VM backup job %s no longer exists", jobId)
 			}
 			status := strings.ToLower(job.Status)
-			if status == "failed" {
+			if status == jobStatusFailed {
 				return vmJobFailedError(jobId)
 			}
-			if !vmJobStableStatuses[status] {
+			if !jobStableStatuses[status] {
 				return jobBusyError("VM", jobId, job.Status)
 			}
 			return nil

@@ -52,6 +52,17 @@ func triggersSchema(action string) *schema.Schema {
 	}
 }
 
+// The kinds in a job's import id, vpc/<vpc_id>/<kind>/<job_id>.
+const (
+	vmJobImportKind     = "backup_native_vm_job"
+	volumeJobImportKind = "backup_native_volume_job"
+)
+
+// importId builds the id that importJob(kind) parses.
+func importId(vpcId, kind, jobId string) string {
+	return fmt.Sprintf("vpc/%s/%s/%s", vpcId, kind, jobId)
+}
+
 // importJob parses vpc/<vpc_id>/<kind>/<job_id>.
 func importJob(kind string) schema.StateContextFunc {
 	return func(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {

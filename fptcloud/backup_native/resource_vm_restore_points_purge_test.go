@@ -80,7 +80,7 @@ func TestCreateVmRestorePointsPurgeWaitsForTheSuccessRow(t *testing.T) {
 	assert.Equal(t, 2, d.Get("restore_point_count"))
 	assert.Equal(t, "Success", d.Get("status"))
 	assert.Equal(t, 1, api.count(purgeRoute))
-	assert.Equal(t, purgeHistoryType, api.last(histories).Query.Get("type"))
+	assert.Equal(t, historyTypePurge, api.last(histories).Query.Get("type"))
 	assert.Equal(t, 1, api.count(vmSyncRoute))
 }
 
