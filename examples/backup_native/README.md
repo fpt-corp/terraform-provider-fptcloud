@@ -1,8 +1,8 @@
 # Backup Native example
 
-A runnable configuration that exercises every Backup Native resource and data source: a VM backup job, a volume backup job, a manual run of each, their restore point lists, and a VM and a volume restore. Use it to try the provider by hand against a real VPC.
+A runnable configuration that exercises every Backup Native resource and data source: a VM backup job, a volume backup job, a manual run of each, their restore point lists, a VM and a volume restore, and a purge of the VM's restore points. Use it to try the provider by hand against a real VPC.
 
-Applying it creates real jobs and restores, which may incur cost.
+Applying it creates real jobs and restores, which may incur cost. The purge deletes restore points for good.
 
 ## What you need
 
@@ -42,8 +42,9 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
    The `vm_jobs` and `volume_jobs` outputs show the new jobs. The restore point outputs stay empty until a job has run.
 
 5. To run a job now instead of waiting for its schedule, set `vm_backup_run` or `volume_backup_run` to the time you ask for the run, for example `"2026-10-26 09:00:00"`, and apply. Apply waits for the run to end; the `vm_job_run` and `volume_job_run` outputs show its status. Set a new time to run it again; the state keeps the time of the last request. Use the same convention for every `triggers` value (runs, restores, purge), and write it as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
-6. After a backup has run, set `vm_restore = true` or `volume_restore = true` and apply again. The restore uses the newest restore point. The `vm_restore_status` and `volume_restore_status` outputs show the result.
-7. Run `terraform destroy` to delete the jobs. Destroying a restore only removes it from state; the restored VM or volume stays and must be deleted in the portal.
+6. After a backup has run, set `vm_restore` or `volume_restore` to the time you ask for the restore and apply again. The restore uses the newest restore point. The `vm_restore_status` and `volume_restore_status` outputs show the result. Clear the variable before the next manual backup, or the apply after it restores again.
+7. To delete every restore point of `vm_id`, under any job, clear `vm_restore`, set `vm_restore_points_purge` to the time you ask for the purge, and apply. Apply waits for the deletion to end; the `vm_restore_points_purge` output shows how many restore points there were. A new time purges again.
+8. Run `terraform destroy` to delete the jobs. Destroying a restore only removes it from state; the restored VM or volume stays and must be deleted in the portal.
 
 ## Things to check
 
@@ -52,8 +53,9 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
 | Schedule change | Change `full_backup_frequency` in `backup_native.tf` (weekly needs `full_backup_day` 0-6 with 0 as Monday, monthly 1-31, daily none) and apply. The next plan shows no changes. |
 | Schedule off and on | Add `schedule_enabled = false` to a job and apply, then remove it and apply. |
 | Import | `terraform import 'fptcloud_backup_native_vm_job.example[0]' vpc/<vpc_id>/backup_native_vm_job/<job_id>` after `terraform state rm`. |
-| Manual backup while a restore is on | The restores use the newest restore point, so the apply after a manual backup runs them again; with `vm_restore_mode = "overwrite"` that overwrites `vm_id` again. Turn the restores off first, or apply only the backup: `terraform apply -target='fptcloud_backup_native_vm_job_run.example[0]'`. |
+| Manual backup while a restore is on | The restores use the newest restore point, so the apply after a manual backup runs them again; with `vm_restore_mode = "overwrite"` that overwrites `vm_id` again. Clear `vm_restore` and `volume_restore` first, or apply only the backup: `terraform apply -target='fptcloud_backup_native_vm_job_run.example[0]'`. |
 | Overwrite restore | Set `vm_restore_mode = "overwrite"`. This replaces the disk of `vm_id`. |
 | Requests sent | `TF_LOG=DEBUG terraform apply` logs every API call; all of them are user API paths. |
+| VM sync | After each VM action the API accepts (job create, update, delete, manual backup, restore, purge), the provider calls `GET .../osp_native_backup/sync` once, so the portal shows the change. It does not wait for the sync, and a failed sync is a warning, not an error. The volume API has no sync. |
 
 Run one restore per VM or volume at a time.
