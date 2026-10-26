@@ -14,9 +14,9 @@ Runs a Backup Native volume backup job once, outside its schedule, the same oper
 
 ```terraform
 # Runs fptcloud_backup_native_volume_job.data once and waits for the run to end.
-# Set run to the time you ask for the backup; a new time runs it again, and
-# the state records when each run was requested. Write the time as a literal:
-# timestamp() changes on every plan and runs a backup on every apply.
+# Any value works and a new value runs it again. A request time, as below, is
+# recommended so the state records when each run was requested. Avoid
+# timestamp(): it changes on every plan and runs a backup on every apply.
 resource "fptcloud_backup_native_volume_job_run" "data" {
   vpc_id   = var.vpc_id
   job_id   = fptcloud_backup_native_volume_job.data.id
@@ -35,7 +35,7 @@ resource "fptcloud_backup_native_volume_job_run" "data" {
 ### Optional
 
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `triggers` (Map of String) Values that run the backup again when they change, which no other argument can express because every other argument stays equal. Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
+- `triggers` (Map of String) Values that run the backup again when they change, which no other argument can express because every other argument stays equal. Any string works; only a change matters. We recommend the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Avoid `timestamp()`: it changes on every plan and repeats the action on every apply.
 
 ### Read-Only
 

@@ -18,8 +18,8 @@ data "fptcloud_backup_native_volume_restore_points" "data" {
   volume_id = var.pv_volume_id
 }
 
-# Set restore to the time you ask for the restore; a new time runs it again,
-# and the state records when each restore was requested.
+# Any triggers value works and a new value restores again. A request time, as
+# below, is recommended so the state records when each restore was requested.
 resource "fptcloud_backup_native_volume_restore" "data_copy" {
   vpc_id           = var.vpc_id
   volume_id        = var.pv_volume_id
@@ -44,7 +44,7 @@ resource "fptcloud_backup_native_volume_restore" "data_copy" {
 ### Optional
 
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `triggers` (Map of String) Values that run the restore again when they change, which no other argument can express because every other argument stays equal. Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
+- `triggers` (Map of String) Values that run the restore again when they change, which no other argument can express because every other argument stays equal. Any string works; only a change matters. We recommend the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Avoid `timestamp()`: it changes on every plan and repeats the action on every apply.
 
 ### Read-Only
 

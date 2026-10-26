@@ -45,9 +45,10 @@ func triggersSchema(action string) *schema.Schema {
 		Elem:     &schema.Schema{Type: schema.TypeString},
 		Description: fmt.Sprintf("Values that %s when they change, "+
 			"which no other argument can express because every other argument stays equal. "+
-			"Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, "+
+			"Any string works; only a change matters. "+
+			"We recommend the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, "+
 			"so the state records when each one was requested. "+
-			"Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.", action),
+			"Avoid `timestamp()`: it changes on every plan and repeats the action on every apply.", action),
 	}
 }
 

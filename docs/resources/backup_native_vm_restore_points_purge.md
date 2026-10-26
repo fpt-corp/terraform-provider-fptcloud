@@ -15,10 +15,10 @@ Deletes every Backup Native restore point of a VM. It deletes the restore points
 ```terraform
 # Deletes every restore point of the VM, under any backup job, and waits for
 # the deletion to end. The VM's next backup is a full backup.
-# Set purge to the time you ask for the deletion; a new time deletes the
-# restore points again, and the state records when each purge was requested.
-# Write the time as a literal: timestamp() changes on every plan and deletes
-# the restore points on every apply.
+# Any value works and a new value deletes the restore points again. A request
+# time, as below, is recommended so the state records when each purge was
+# requested. Avoid timestamp(): it changes on every plan and deletes the
+# restore points on every apply.
 resource "fptcloud_backup_native_vm_restore_points_purge" "web" {
   vpc_id   = var.vpc_id
   vm_id    = var.web_instance_id
@@ -37,7 +37,7 @@ resource "fptcloud_backup_native_vm_restore_points_purge" "web" {
 ### Optional
 
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `triggers` (Map of String) Values that delete the restore points again when they change, which no other argument can express because every other argument stays equal. Set each value to the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Write the time as a literal: `timestamp()` changes on every plan and repeats the action on every apply.
+- `triggers` (Map of String) Values that delete the restore points again when they change, which no other argument can express because every other argument stays equal. Any string works; only a change matters. We recommend the time you ask for the action, in the form `YYYY-MM-DD HH:mm:ss`, for example `2026-10-26 09:00:00`, so the state records when each one was requested. Avoid `timestamp()`: it changes on every plan and repeats the action on every apply.
 
 ### Read-Only
 

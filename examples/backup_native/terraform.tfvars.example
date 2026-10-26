@@ -7,8 +7,8 @@ notification_method_ids = ["your_notification_method_id"]
 vm_id     = "your_throwaway_vm_id"
 volume_id = "your_pv_fke_volume_id"
 
-# Runs, restores and the purge take the time you ask for them; a new time
-# repeats the action. Clear the restores before a run or a purge: they follow
+# Runs, restores and the purge take any value, a request time is recommended;
+# a new value repeats the action. Clear the restores before a run or a purge: they follow
 # the newest restore point.
 # vm_backup_run           = "2026-10-26 09:00:00"
 # volume_backup_run       = "2026-10-26 09:00:00"

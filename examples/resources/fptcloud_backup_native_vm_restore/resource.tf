@@ -4,8 +4,8 @@ data "fptcloud_backup_native_vm_restore_points" "web" {
 }
 
 # Restore the latest restore point into a new VM and keep the original.
-# Set restore to the time you ask for the restore; a new time runs it again,
-# and the state records when each restore was requested.
+# Any triggers value works and a new value restores again. A request time, as
+# below, is recommended so the state records when each restore was requested.
 resource "fptcloud_backup_native_vm_restore" "web_copy" {
   vpc_id                   = var.vpc_id
   vm_id                    = var.web_instance_id

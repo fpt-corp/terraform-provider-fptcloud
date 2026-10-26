@@ -3,8 +3,8 @@ data "fptcloud_backup_native_volume_restore_points" "data" {
   volume_id = var.pv_volume_id
 }
 
-# Set restore to the time you ask for the restore; a new time runs it again,
-# and the state records when each restore was requested.
+# Any triggers value works and a new value restores again. A request time, as
+# below, is recommended so the state records when each restore was requested.
 resource "fptcloud_backup_native_volume_restore" "data_copy" {
   vpc_id           = var.vpc_id
   volume_id        = var.pv_volume_id

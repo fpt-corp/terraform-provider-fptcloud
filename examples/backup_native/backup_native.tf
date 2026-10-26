@@ -31,12 +31,12 @@ variable "notification_method_ids" {
   default     = []
 }
 
-# The run, restore and purge variables below take the time you ask for the
-# action, for example "2026-10-26 09:00:00". Each one feeds a resource's
-# triggers: a new time repeats the action, and the state records when it was
-# last requested. Write the time as a literal: timestamp() changes on every
-# plan and repeats the action on every apply. Leave a variable empty to skip
-# its action.
+# The run, restore and purge variables below feed a resource's triggers: any
+# non-empty value turns the action on and a new value repeats it. The time you
+# ask for the action, for example "2026-10-26 09:00:00", is recommended so the
+# state records when it was last requested. Avoid timestamp(): it changes on
+# every plan and repeats the action on every apply. Leave a variable empty to
+# skip its action.
 
 # VM backup (v1)
 
@@ -47,13 +47,13 @@ variable "vm_id" {
 }
 
 variable "vm_backup_run" {
-  description = "Time you ask for a manual backup of the VM job. Leave empty to skip."
+  description = "Any value runs a manual backup of the VM job, and a new value runs it again; the request time is recommended. Leave empty to skip."
   type        = string
   default     = ""
 }
 
 variable "vm_restore" {
-  description = "Time you ask for a restore of the newest restore point of vm_id. Leave empty to skip."
+  description = "Any value restores the newest restore point of vm_id, and a new value restores again; the request time is recommended. Leave empty to skip."
   type        = string
   default     = ""
 }
@@ -83,7 +83,7 @@ variable "vm_restore_security_group_ids" {
 }
 
 variable "vm_restore_points_purge" {
-  description = "Time you ask for deleting every restore point of vm_id, under any job. Leave empty to skip."
+  description = "Any value deletes every restore point of vm_id, under any job, and a new value deletes them again; the request time is recommended. Leave empty to skip."
   type        = string
   default     = ""
 }
@@ -205,13 +205,13 @@ variable "volume_id" {
 }
 
 variable "volume_backup_run" {
-  description = "Time you ask for a manual backup of the volume job. Leave empty to skip."
+  description = "Any value runs a manual backup of the volume job, and a new value runs it again; the request time is recommended. Leave empty to skip."
   type        = string
   default     = ""
 }
 
 variable "volume_restore" {
-  description = "Time you ask for a restore of the newest restore point of volume_id into a new volume. Leave empty to skip."
+  description = "Any value restores the newest restore point of volume_id into a new volume, and a new value restores again; the request time is recommended. Leave empty to skip."
   type        = string
   default     = ""
 }
