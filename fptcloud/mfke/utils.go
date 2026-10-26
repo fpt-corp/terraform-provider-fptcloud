@@ -2077,6 +2077,13 @@ func internalReadClusterAutoscaler(ca managedKubernetesEngineDataClusterAutoscal
 }
 
 func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.Object, diag2.Diagnostics) {
+	return clusterEndpointAccessFrom(data.Metadata.Labels, data.Spec.Extensions)
+}
+
+// clusterEndpointAccessFrom reads cluster_endpoint_access from the shoot labels
+// and extensions. The cluster list endpoint returns both too, so the
+// fptcloud_managed_kubernetes_engines_v1 data source shares it.
+func clusterEndpointAccessFrom(labels map[string]string, extensions []ExtensionSpec) (types.Object, diag2.Diagnostics) {
 	accessMap := map[string]attr.Value{
 		"type": types.StringValue("public"),
 		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
@@ -2085,10 +2092,10 @@ func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.
 	}
 
 	// Determine cluster type from metadata labels
-	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
+	if _, hasACL := labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
 		accessMap["type"] = types.StringValue("public")
-	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
-		for _, extension := range data.Spec.Extensions {
+	} else if _, hasPrivateNetwork := labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
+		for _, extension := range extensions {
 			if extension.Type == "private-network" && extension.ProviderConfig != nil {
 				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
 					if privateCluster {
@@ -2103,7 +2110,7 @@ func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.
 	}
 
 	// Parse extensions field to get CIDR configuration
-	for _, extension := range data.Spec.Extensions {
+	for _, extension := range extensions {
 		if extension.ProviderConfig == nil {
 			continue
 		}

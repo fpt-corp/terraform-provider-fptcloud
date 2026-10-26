@@ -429,3 +429,92 @@ type ACLRule struct {
 	Cidrs  []string `json:"cidrs"`
 	Type   string   `json:"type"`
 }
+
+// managedKubernetesEngineListResponse is the response of
+// GET .../m-fke/{platform}/get-shoot-cluster/shoots. The endpoint returns v1
+// and v2 clusters alike.
+type managedKubernetesEngineListResponse struct {
+	Data struct {
+		Items []managedKubernetesEngineShoot `json:"items"`
+	} `json:"data"`
+	Mess  []string `json:"mess"`
+	Error bool     `json:"error"`
+}
+
+// managedKubernetesEngineShootResponse is the response of
+// GET .../m-fke/{platform}/get-shoot-specific/shoots/{name}.
+type managedKubernetesEngineShootResponse struct {
+	Data  managedKubernetesEngineShoot `json:"data"`
+	Mess  []string                     `json:"mess"`
+	Error bool                         `json:"error"`
+}
+
+// managedKubernetesEngineShoot keeps the shoot fields the
+// fptcloud_managed_kubernetes_engine_v1 and fptcloud_managed_kubernetes_engines_v1
+// data sources expose. The list and the detail endpoints return a shoot in the
+// same shape; fields only the detail endpoint fills, such as worker tags, are
+// empty in a list item.
+type managedKubernetesEngineShoot struct {
+	Id       string `json:"id"`
+	Metadata struct {
+		Name              string            `json:"name"`
+		CreationTimestamp string            `json:"creationTimestamp"`
+		Labels            map[string]string `json:"labels"`
+	} `json:"metadata"`
+	Spec struct {
+		Kubernetes struct {
+			Kubelet struct {
+				MaxPods int `json:"maxPods"`
+			} `json:"kubelet"`
+			Version string `json:"version"`
+		} `json:"kubernetes"`
+		Networking   managedKubernetesEngineDataNetworking `json:"networking"`
+		SeedSelector struct {
+			MatchLabels struct {
+				GardenerCloudPurpose string `json:"gardener_cloud_purpose"`
+			} `json:"matchLabels"`
+		} `json:"seedSelector"`
+		Hibernation *struct {
+			Enabled bool `json:"enabled"`
+		} `json:"hibernation"`
+		Extensions []ExtensionSpec `json:"extensions"`
+		Addons     *AddonsSpec     `json:"addons"`
+		Provider   struct {
+			InfrastructureConfig struct {
+				Networks struct {
+					Id string `json:"id"`
+				} `json:"networks"`
+			} `json:"infrastructureConfig"`
+			Workers []managedKubernetesEngineShootWorker `json:"workers"`
+		} `json:"provider"`
+	} `json:"spec"`
+	Tags []TagSpec `json:"tags"`
+}
+
+// managedKubernetesEngineShootWorker is a worker pool of a shoot. Worker labels
+// are not decoded: the API returns them as null, an array or an object.
+type managedKubernetesEngineShootWorker struct {
+	Name        string            `json:"name"`
+	Annotations map[string]string `json:"annotations"`
+	Tags        []TagSpec         `json:"tags"`
+	Machine     struct {
+		Type  string `json:"type"`
+		Image struct {
+			DriverInstallationType string `json:"driverInstallationType"`
+			GpuDriverVersion       string `json:"gpuDriverVersion"`
+		} `json:"image"`
+	} `json:"machine"`
+	Maximum        int `json:"maximum"`
+	Minimum        int `json:"minimum"`
+	ProviderConfig struct {
+		NetworkName string `json:"networkName"`
+		VGpuID      string `json:"vGpuId"`
+	} `json:"providerConfig"`
+	SystemComponents struct {
+		Allow bool `json:"allow"`
+	} `json:"systemComponents"`
+	Volume struct {
+		Size string `json:"size"`
+		Type string `json:"type"`
+	} `json:"volume"`
+}

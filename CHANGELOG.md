@@ -1,3 +1,12 @@
+## [0.3.85] - 2026-10-26
+
+### Datasource
+
+- Feat: add `fptcloud_managed_kubernetes_engines_v1` to list all managed FKE clusters in a VPC, v1 and v2 alike. Attribute names follow the `fptcloud_managed_kubernetes_engine_v1` resource
+- Fix: `fptcloud_managed_kubernetes_engine_v1` failed on every read with `Value Conversion Error: mismatch between struct and object`. It now reads the cluster from the API instead of echoing the configuration
+- Breaking: `fptcloud_managed_kubernetes_engine_v1` takes only `vpc_id` and `cluster_name` (the full name, e.g. `my-cluster-ab12cd34`). Every other attribute is read-only; remove them from the configuration. It reports the same attributes as one cluster of `fptcloud_managed_kubernetes_engines_v1`, plus `network_id`, `pool_tags`, `driver_installation_type`, `gpu_driver_version`, `max_client` and `gpu_sharing_client` on each pool. The autoscaler, auto-upgrade, edge gateway and internal load balancer attributes are no longer reported
+- Feat: `fptcloud_managed_kubernetes_engine_v1` reads clusters of the v1 and of the v2 API
+
 ## [0.3.84] - 2026-10-24
 
 ### Resource
