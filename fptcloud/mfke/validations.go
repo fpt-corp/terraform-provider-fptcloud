@@ -363,25 +363,6 @@ func validateNetworkOverlayWithType(networkOverlay, networkType string) *diag2.E
 	return validateNetworkOverlay(networkOverlay)
 }
 
-func validatePoolNames(pool []*managedKubernetesEnginePool) ([]string, error) {
-	var poolNames []string
-
-	if len(pool) != 0 {
-		existingPool := map[string]*managedKubernetesEnginePool{}
-		for _, pool := range pool {
-			name := pool.WorkerPoolID.ValueString()
-			if _, ok := existingPool[name]; ok {
-				return nil, fmt.Errorf("pool %s already exists", name)
-			}
-
-			existingPool[name] = pool
-			poolNames = append(poolNames, name)
-		}
-	}
-
-	return poolNames, nil
-}
-
 func validatePurpose(purpose string) *diag2.ErrorDiagnostic {
 	allowed := []string{"public", "private", "firewall"}
 	for _, v := range allowed {

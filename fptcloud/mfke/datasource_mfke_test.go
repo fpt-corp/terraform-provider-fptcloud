@@ -125,9 +125,8 @@ func TestPoolNetworkIds_OspUsesClusterNetwork(t *testing.T) {
 	d := &datasourceManagedKubernetesEngine{}
 	shoot := decodeShoot(t, shootResponseFixture)
 
-	ids, err := d.poolNetworkIds(context.Background(), "vpc-1", "osp", shoot)
+	ids := d.poolNetworkIds(context.Background(), "vpc-1", "osp", shoot)
 
-	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
 		"worker-pckhpezz": "d146b97f-caa7-45aa-96c8-8f9bb021fddf",
 		"worker-gpu":      "d146b97f-caa7-45aa-96c8-8f9bb021fddf",

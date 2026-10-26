@@ -207,13 +207,7 @@ func (d *datasourceManagedKubernetesEngine) Read(ctx context.Context, request da
 		return
 	}
 
-	networkIds, err := d.poolNetworkIds(ctx, vpcId, platform, shoot)
-	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error resolving the network of the worker pools", err.Error()))
-		return
-	}
-
-	detail, diags := toManagedKubernetesEngineDetail(shoot, networkIds)
+	detail, diags := toManagedKubernetesEngineDetail(shoot, d.poolNetworkIds(ctx, vpcId, platform, shoot))
 	response.Diagnostics.Append(diags...)
 	if response.Diagnostics.HasError() {
 		return
@@ -227,7 +221,7 @@ func (d *datasourceManagedKubernetesEngine) Read(ctx context.Context, request da
 // name. On OSP every pool sits on the cluster network. On VMW a pool names its
 // network, which is looked up once per name; a name that is not found leaves
 // the pool's network_id empty.
-func (d *datasourceManagedKubernetesEngine) poolNetworkIds(ctx context.Context, vpcId string, platform string, shoot managedKubernetesEngineShoot) (map[string]string, error) {
+func (d *datasourceManagedKubernetesEngine) poolNetworkIds(ctx context.Context, vpcId string, platform string, shoot managedKubernetesEngineShoot) map[string]string {
 	clusterNetworkId := shoot.Spec.Provider.InfrastructureConfig.Networks.Id
 	ids := make(map[string]string, len(shoot.Spec.Provider.Workers))
 	byName := map[string]string{}
@@ -252,7 +246,7 @@ func (d *datasourceManagedKubernetesEngine) poolNetworkIds(ctx context.Context, 
 		ids[w.Name] = id
 	}
 
-	return ids, nil
+	return ids
 }
 
 // toManagedKubernetesEngineDetail maps a shoot read from the detail endpoint.
