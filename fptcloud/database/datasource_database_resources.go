@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	_ datasource.DataSource							= &datasourceDatabaseResources{}
+	_ datasource.DataSource              = &datasourceDatabaseResources{}
 	_ datasource.DataSourceWithConfigure = &datasourceDatabaseResources{}
 )
 
