@@ -1,12 +1,12 @@
 package fptcloud_database
- 
+
 import (
   "net/http"
   "os"
   "strings"
   "testing"
 )
- 
+
 func TestGetVpcResources(t *testing.T) {
   body, err := os.ReadFile("testdata/vpc_resources.json")
   if err != nil {
@@ -19,7 +19,7 @@ func TestGetVpcResources(t *testing.T) {
     }
     _, _ = w.Write(body)
   }))
- 
+
   res, err := api.getVpcResources("vpc-1")
   if err != nil {
     t.Fatal(err)
@@ -46,7 +46,7 @@ func TestGetVpcResources(t *testing.T) {
     t.Fatalf("used_gb null must stay null, got %v", *res.Clusters[0].Backup.UsedGb)
   }
 }
- 
+
 func TestGetVpcResourcesBusinessError(t *testing.T) {
   api := newTestApi(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
     _, _ = w.Write([]byte(`{"message":"vpc not found","type":"error","error_code":404001}`))

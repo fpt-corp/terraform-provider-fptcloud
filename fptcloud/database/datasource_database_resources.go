@@ -1,32 +1,32 @@
 package fptcloud_database
- 
+
 import (
   "context"
   "encoding/json"
   "fmt"
   "strings"
- 
+
   "github.com/hashicorp/terraform-plugin-framework/attr"
   "github.com/hashicorp/terraform-plugin-framework/datasource"
   "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
   "github.com/hashicorp/terraform-plugin-framework/types"
- 
+
   common "terraform-provider-fptcloud/commons"
 )
- 
+
 var (
   _ datasource.DataSource              = &datasourceDatabaseResources{}
   _ datasource.DataSourceWithConfigure = &datasourceDatabaseResources{}
 )
- 
+
 type datasourceDatabaseResources struct {
   api *databaseApiClient
 }
- 
+
 func NewDataSourceDatabaseResources() datasource.DataSource {
   return &datasourceDatabaseResources{}
 }
- 
+
 // usage is the compute of a group of nodes.
 type usage struct {
   NodeCount int64   `tfsdk:"node_count" json:"node_count"`
@@ -34,17 +34,17 @@ type usage struct {
   RamGb     float64 `tfsdk:"ram_gb" json:"ram_gb"`
   DiskGb    int64   `tfsdk:"disk_gb" json:"disk_gb"`
 }
- 
+
 type backupUsage struct {
   CapacityGb int64    `tfsdk:"capacity_gb" json:"capacity_gb"`
   UsedGb     *float64 `tfsdk:"used_gb" json:"used_gb"`
 }
- 
+
 type pitrUsage struct {
   Enabled       bool    `tfsdk:"enabled" json:"enabled"`
   ArchiveSizeGb float64 `tfsdk:"archive_size_gb" json:"archive_size_gb"`
 }
- 
+
 type proxyItem struct {
   LbClusterId   string  `tfsdk:"lb_cluster_id" json:"lb_cluster_id"`
   LbClusterName string  `tfsdk:"lb_cluster_name" json:"lb_cluster_name"`
@@ -55,7 +55,7 @@ type proxyItem struct {
   RamGb         float64 `tfsdk:"ram_gb" json:"ram_gb"`
   DiskGb        int64   `tfsdk:"disk_gb" json:"disk_gb"`
 }
- 
+
 type proxyUsage struct {
   NodeCount int64       `tfsdk:"node_count" json:"node_count"`
   Cpu       int64       `tfsdk:"cpu" json:"cpu"`
@@ -63,7 +63,7 @@ type proxyUsage struct {
   DiskGb    int64       `tfsdk:"disk_gb" json:"disk_gb"`
   Items     []proxyItem `tfsdk:"items" json:"items"`
 }
- 
+
 type vpcCluster struct {
   ClusterId   string      `tfsdk:"cluster_id" json:"cluster_id"`
   ClusterName string      `tfsdk:"cluster_name" json:"cluster_name"`
@@ -74,7 +74,7 @@ type vpcCluster struct {
   Pitr        pitrUsage   `tfsdk:"pitr" json:"pitr"`
   Proxy       proxyUsage  `tfsdk:"proxy" json:"proxy"`
 }
- 
+
 type vpcTotal struct {
   ClusterCount     int64       `tfsdk:"cluster_count" json:"cluster_count"`
   PitrEnabledCount int64       `tfsdk:"pitr_enabled_count" json:"pitr_enabled_count"`
@@ -83,19 +83,19 @@ type vpcTotal struct {
   Pitr             pitrUsage   `tfsdk:"pitr" json:"pitr"`
   Proxy            usage       `tfsdk:"proxy" json:"proxy"`
 }
- 
+
 type vpcResources struct {
   Total    vpcTotal     `json:"total"`
   Clusters []vpcCluster `json:"clusters"`
 }
- 
+
 type databaseResourcesModel struct {
   Id       types.String `tfsdk:"id"`
   VpcId    types.String `tfsdk:"vpc_id"`
   Total    *vpcTotal    `tfsdk:"total"`
   Clusters []vpcCluster `tfsdk:"clusters"`
 }
- 
+
 // getVpcResources reads every database cluster and DB proxy of a VPC with their compute and backup usage.
 func (m *databaseApiClient) getVpcResources(vpcId string) (*vpcResources, error) {
   path := common.ApiPath.DatabaseVpcResources(vpcId)
@@ -122,15 +122,15 @@ func (m *databaseApiClient) getVpcResources(vpcId string) (*vpcResources, error)
   }
   return &resp.Data, nil
 }
- 
+
 func (d *datasourceDatabaseResources) Metadata(ctx context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
   response.TypeName = request.ProviderTypeName + "_database_resources"
 }
- 
+
 func (d *datasourceDatabaseResources) Configure(ctx context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) {
   d.api = configureDatabaseApi(request.ProviderData, &response.Diagnostics)
 }
- 
+
 var (
   usageTypes = map[string]attr.Type{
     "node_count": types.Int64Type,
@@ -147,7 +147,7 @@ var (
     "archive_size_gb": types.Float64Type,
   }
 )
- 
+
 func withTypes(base map[string]attr.Type, extra map[string]attr.Type) map[string]attr.Type {
   out := make(map[string]attr.Type, len(base)+len(extra))
   for k, v := range base {
@@ -158,7 +158,7 @@ func withTypes(base map[string]attr.Type, extra map[string]attr.Type) map[string
   }
   return out
 }
- 
+
 func vpcTotalTypes() map[string]attr.Type {
   return map[string]attr.Type{
     "cluster_count":      types.Int64Type,
@@ -169,7 +169,7 @@ func vpcTotalTypes() map[string]attr.Type {
     "proxy":              types.ObjectType{AttrTypes: usageTypes},
   }
 }
- 
+
 func vpcClusterTypes() map[string]attr.Type {
   proxyItemTypes := withTypes(usageTypes, map[string]attr.Type{
     "lb_cluster_id":   types.StringType,
@@ -190,7 +190,7 @@ func vpcClusterTypes() map[string]attr.Type {
     })},
   }
 }
- 
+
 func (d *datasourceDatabaseResources) Schema(ctx context.Context, request datasource.SchemaRequest, response *datasource.SchemaResponse) {
   response.Schema = schema.Schema{
     Description: "Lists every database cluster and DB proxy of a VPC, with the nodes, CPU, RAM, disk and backup they use, and the totals of the VPC.",
@@ -216,7 +216,7 @@ func (d *datasourceDatabaseResources) Schema(ctx context.Context, request dataso
     },
   }
 }
- 
+
 func (d *datasourceDatabaseResources) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) {
   var state databaseResourcesModel
   response.Diagnostics.Append(request.Config.Get(ctx, &state)...)
