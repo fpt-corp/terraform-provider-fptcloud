@@ -166,7 +166,7 @@ var (
 	}
 
 	pitrTypes = map[string]attr.Type{
-		"enabled":        types.BoolType,
+		"enabled":         types.BoolType,
 		"archive_size_gb": types.Float64Type,
 	}
 )
