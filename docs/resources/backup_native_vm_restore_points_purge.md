@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_vm_restore_points_purge Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Deletes every Backup Native restore point of a VM. It deletes the restore points taken under every job, past and current, and frees their backup quota; the VM's next backup is a full backup. Applying the resource waits while a backup or restore of the VM runs, starts the deletion and waits for it to end. Destroying the resource only removes it from state; deleted restore points cannot be recovered. Change a value in triggers to delete the restore points again. Run one purge per VM at a time; two concurrent purges of the same VM can be matched to the wrong history row.
+  Deletes every Backup Native restore point of a VM. It deletes the restore points taken under every job, past and current, and frees their backup quota; the VM's next backup is a full backup. Applying the resource waits while a backup or restore of the VM runs, starts the deletion and waits for it to end. Destroying the resource only removes it from state; deleted restore points cannot be recovered. Change a value in triggers to delete the restore points again. Run one purge per VM at a time; two concurrent purges of the same VM can be matched to the wrong history row. Once the API has accepted the purge, the resource is saved whatever the outcome, and the next apply does not purge again. A failed purge, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in status and message. The purge goes on without Terraform after a timeout or an interrupt; each later plan or apply checks the purge history and the restore points, and stores the outcome once the purge ends. Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the purge, and the next apply purges again.
 ---
 
 # fptcloud_backup_native_vm_restore_points_purge (Resource)
 
-Deletes every Backup Native restore point of a VM. It deletes the restore points taken under every job, past and current, and frees their backup quota; the VM's next backup is a full backup. Applying the resource waits while a backup or restore of the VM runs, starts the deletion and waits for it to end. Destroying the resource only removes it from state; deleted restore points cannot be recovered. Change a value in `triggers` to delete the restore points again. Run one purge per VM at a time; two concurrent purges of the same VM can be matched to the wrong history row.
+Deletes every Backup Native restore point of a VM. It deletes the restore points taken under every job, past and current, and frees their backup quota; the VM's next backup is a full backup. Applying the resource waits while a backup or restore of the VM runs, starts the deletion and waits for it to end. Destroying the resource only removes it from state; deleted restore points cannot be recovered. Change a value in `triggers` to delete the restore points again. Run one purge per VM at a time; two concurrent purges of the same VM can be matched to the wrong history row. Once the API has accepted the purge, the resource is saved whatever the outcome, and the next apply does not purge again. A failed purge, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in `status` and `message`. The purge goes on without Terraform after a timeout or an interrupt; each later plan or apply checks the purge history and the restore points, and stores the outcome once the purge ends. Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the purge, and the next apply purges again.
 
 ## Example Usage
 
@@ -41,11 +41,12 @@ resource "fptcloud_backup_native_vm_restore_points_purge" "web" {
 
 ### Read-Only
 
-- `finished_at` (String) When the provider saw the purge end, RFC 3339 UTC.
+- `finished_at` (String) When the provider saw the purge succeed, RFC 3339 UTC. Empty while the purge runs and after a failure.
 - `id` (String) The ID of this resource.
+- `message` (String) Why the action did not succeed, or why the provider stopped waiting for it. Empty after a success.
 - `restore_point_count` (Number) Number of restore points the VM had when the purge started. `0` means there was nothing to delete and no request was sent.
-- `started_at` (String) When the provider started the purge, RFC 3339 UTC.
-- `status` (String) Result of the purge, `Success` after a successful apply.
+- `started_at` (String) When the API accepted the purge, RFC 3339 UTC.
+- `status` (String) Result of the purge: `Success`, or the status of its history row when the purge failed, `Failed`. The provider stores its own value when the API has none to give: `tf_timeout` when the provider stopped waiting before the action ended, `tf_interrupted` when the apply was interrupted while it waited, `tf_failed` when the action failed without an API status. A plan or apply checks `tf_timeout` and `tf_interrupted` again and replaces them with the API's status once the action ends.
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`

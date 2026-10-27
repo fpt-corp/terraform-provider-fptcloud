@@ -19,11 +19,11 @@ func ResourceVmJobRun() *schema.Resource {
 			"Applying the resource checks the job's status, starts the run and waits for it to end. " +
 			"A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. " +
 			"Destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. " +
-			"A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. " +
+			jobRunOutcomeDescription +
 			"A job in state `Failed` refuses a new run until another run starts. " +
 			"When the job stays in `Pending`, the apply runs out its timeout; only a later run or the backend clears that state.",
 		CreateContext: createVmJobRun,
-		ReadContext:   readOneShot,
+		ReadContext:   readVmJobRun,
 		DeleteContext: deleteOneShot,
 		Schema:        jobRunSchema("fptcloud_backup_native_vm_job"),
 		// No UpdateContext: every argument is ForceNew, so any change runs the
@@ -36,6 +36,14 @@ func ResourceVmJobRun() *schema.Resource {
 		},
 	}
 }
+
+// jobRunOutcomeDescription is the part of both job run descriptions that says
+// what a run that does not succeed leaves in state.
+const jobRunOutcomeDescription = "Once the run has started, the resource is saved whatever the outcome, and the next apply does not run it again. " +
+	"A failed run, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in `status` and `message`. " +
+	"The backup goes on without Terraform after a timeout or an interrupt; each later plan or apply reads the job's status " +
+	"and stores the outcome once the run ends. That status may come from a later scheduled run of the same job. " +
+	"Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the run, and the next apply starts another. "
 
 // jobRunSchema is the schema of both job run resources.
 // jobResource names the job resource whose id job_id takes.
@@ -57,10 +65,13 @@ func jobRunSchema(jobResource string) map[string]*schema.Schema {
 		},
 		"triggers": triggersSchema("run the backup again"),
 		"status": {
-			Type:        schema.TypeString,
-			Computed:    true,
-			Description: "The job's status when the run ended, `Success` or `success` after a successful apply.",
+			Type:     schema.TypeString,
+			Computed: true,
+			Description: "The job's status when the run ended: `Success` or `success` after a successful run, " +
+				"the API's failure status (`Failed` or `error` for a VM job, `error` for a volume job) after a failed one. " +
+				runStatusesDescription,
 		},
+		"message": runMessageSchema(),
 		"started_at": {
 			Type:        schema.TypeString,
 			Computed:    true,
@@ -84,9 +95,8 @@ type jobRunSteps struct {
 
 // createJobRun checks that the job can start a run now, starts it and
 // waits for it to end. It does not wait for a busy job: only the run it
-// started is waited on. The id is set once the run has started, so a run that
-// fails or times out leaves the resource tainted and the next apply runs it
-// again.
+// started is waited on. The id is set once the run has started, and from then
+// on every outcome is saved, so the next apply does not run it again.
 func createJobRun(ctx context.Context, d *schema.ResourceData, run jobRunSteps) diag.Diagnostics {
 	begin := time.Now()
 	timeout := d.Timeout(schema.TimeoutCreate)
@@ -103,11 +113,51 @@ func createJobRun(ctx context.Context, d *schema.ResourceData, run jobRunSteps) 
 	}
 	status, err := run.wait(ctx, timeout-time.Since(begin))
 	if err != nil {
-		return diag.FromErr(err)
+		return saveRunOutcome(ctx, d, err)
 	}
 	return setValues(d, map[string]interface{}{
 		"status":      status,
+		"message":     "",
 		"finished_at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// jobRunResult returns the values to store for a run the provider stopped
+// watching, given the job's status now, or nil while the run goes on. found
+// is false when the job is gone.
+func jobRunResult(kind, jobId, status string, found bool, failed map[string]bool) map[string]interface{} {
+	var err error
+	switch s := strings.ToLower(status); {
+	case !found:
+		err = jobDeletedDuringRunError(kind, jobId)
+	case failed[s]:
+		err = jobRunFailedError(kind, jobId, status)
+	case s != jobStatusSuccess:
+		return nil
+	}
+	values := map[string]interface{}{
+		"status":      status,
+		"message":     "",
+		"finished_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	if err != nil {
+		values["status"], values["message"] = runOutcome(context.Background(), err)
+	}
+	return values
+}
+
+func readVmJobRun(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	svc := NewVmService(m.(*common.Client))
+	jobId := d.Get("job_id").(string)
+	return refreshRun(d, func() (map[string]interface{}, error) {
+		job, err := svc.GetVmJob(d.Get("vpc_id").(string), jobId)
+		if err != nil {
+			return nil, err
+		}
+		if job == nil {
+			return jobRunResult("VM", jobId, "", false, vmJobRunFailed), nil
+		}
+		return jobRunResult("VM", jobId, job.Status, true, vmJobRunFailed), nil
 	})
 }
 

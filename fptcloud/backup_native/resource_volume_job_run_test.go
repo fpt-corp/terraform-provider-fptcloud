@@ -85,3 +85,29 @@ func TestCreateVolumeJobRunCheckSurvivesAPassingAPIError(t *testing.T) {
 	require.False(t, diags.HasError(), "%v", diags)
 	assert.Equal(t, 1, api.servedBefore("GET "+volBase+"/backup-jobs/job-9", "POST "+volBase+"/backup-jobs/job-9/executions"))
 }
+
+func TestCreateVolumeJobRunJobDeletedWhileRunning(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9": append(jobStatuses("job-9", "success", "backing up"),
+			fakeResponse{Status: 404, Body: `{"message":"Backup job not found"}`}),
+		"POST " + volBase + "/backup-jobs/job-9/executions": {{Body: `{"message":"Backup job started successfully","status":true}`}},
+	})
+	d := volumeJobRunData(t)
+	diags := createVolumeJobRun(context.Background(), d, client)
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, runStatusFailed, d.Get("status"))
+	assert.Contains(t, d.Get("message"), "was deleted while its backup ran")
+	assert.NotEmpty(t, d.Id())
+}
+
+func TestReadVolumeJobRunSyncsATimedOutRun(t *testing.T) {
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9": jobStatuses("job-9", "error"),
+	})
+	d := volumeJobRunData(t)
+	d.SetId("job-9/1767225600")
+	require.NoError(t, d.Set("status", runStatusTimeout))
+	require.Empty(t, readVolumeJobRun(context.Background(), d, client))
+	assert.Equal(t, "error", d.Get("status"))
+}

@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_vm_job_run Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Runs a Backup Native VM backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource checks the job's status, starts the run and waits for it to end. A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. Destroying the resource only removes it from state. Change a value in triggers to run the backup again. A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. A job in state Failed refuses a new run until another run starts. When the job stays in Pending, the apply runs out its timeout; only a later run or the backend clears that state.
+  Runs a Backup Native VM backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource checks the job's status, starts the run and waits for it to end. A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. Destroying the resource only removes it from state. Change a value in triggers to run the backup again. Once the run has started, the resource is saved whatever the outcome, and the next apply does not run it again. A failed run, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in status and message. The backup goes on without Terraform after a timeout or an interrupt; each later plan or apply reads the job's status and stores the outcome once the run ends. That status may come from a later scheduled run of the same job. Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the run, and the next apply starts another. A job in state Failed refuses a new run until another run starts. When the job stays in Pending, the apply runs out its timeout; only a later run or the backend clears that state.
 ---
 
 # fptcloud_backup_native_vm_job_run (Resource)
 
-Runs a Backup Native VM backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource checks the job's status, starts the run and waits for it to end. A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. Destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. A job in state `Failed` refuses a new run until another run starts. When the job stays in `Pending`, the apply runs out its timeout; only a later run or the backend clears that state.
+Runs a Backup Native VM backup job once, outside its schedule, the same operation as "Start backup" in the portal. Applying the resource checks the job's status, starts the run and waits for it to end. A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. Destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. Once the run has started, the resource is saved whatever the outcome, and the next apply does not run it again. A failed run, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in `status` and `message`. The backup goes on without Terraform after a timeout or an interrupt; each later plan or apply reads the job's status and stores the outcome once the run ends. That status may come from a later scheduled run of the same job. Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the run, and the next apply starts another. A job in state `Failed` refuses a new run until another run starts. When the job stays in `Pending`, the apply runs out its timeout; only a later run or the backend clears that state.
 
 ## Example Usage
 
@@ -41,8 +41,9 @@ resource "fptcloud_backup_native_vm_job_run" "web" {
 
 - `finished_at` (String) When the provider saw the run end, RFC 3339 UTC.
 - `id` (String) The ID of this resource.
+- `message` (String) Why the action did not succeed, or why the provider stopped waiting for it. Empty after a success.
 - `started_at` (String) When the provider started the run, RFC 3339 UTC.
-- `status` (String) The job's status when the run ended, `Success` or `success` after a successful apply.
+- `status` (String) The job's status when the run ended: `Success` or `success` after a successful run, the API's failure status (`Failed` or `error` for a VM job, `error` for a volume job) after a failed one. The provider stores its own value when the API has none to give: `tf_timeout` when the provider stopped waiting before the action ended, `tf_interrupted` when the apply was interrupted while it waited, `tf_failed` when the action failed without an API status. A plan or apply checks `tf_timeout` and `tf_interrupted` again and replaces them with the API's status once the action ends.
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`

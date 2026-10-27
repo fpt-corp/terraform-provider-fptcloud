@@ -2,6 +2,7 @@ package fptcloud_backup_native
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -406,4 +407,28 @@ func TestWaitJobRunTimeoutNamesTheLastStatus(t *testing.T) {
 	_, err := waitVmRun(t, jobStatuses("job-1", "Backing up"), 200*time.Millisecond)
 	assert.ErrorContains(t, err, "last in state Backing up")
 	assert.NotContains(t, err.Error(), "stuck in Pending")
+}
+
+// The SDK returns on a cancelled context without waiting for the refresh in
+// flight. A refresh still reading the API would race the deferred sync and
+// the caller reading what the refresh set.
+func TestWaitForStateWaitsForTheRefreshInFlight(t *testing.T) {
+	setFastPolling(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	var calls, running int32
+	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
+		atomic.StoreInt32(&running, 1)
+		if atomic.AddInt32(&calls, 1) == 1 {
+			cancel()
+			time.Sleep(50 * time.Millisecond)
+		}
+		atomic.StoreInt32(&running, 0)
+		return struct{}{}, "waiting", nil
+	}, time.Minute)
+	_, err := waitForState(ctx, conf)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, int32(0), atomic.LoadInt32(&running), "the wait returned while a refresh ran")
+	after := atomic.LoadInt32(&calls)
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, after, atomic.LoadInt32(&calls), "a refresh ran after the wait returned")
 }

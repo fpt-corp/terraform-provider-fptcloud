@@ -18,9 +18,10 @@ func ResourceVolumeRestore() *schema.Resource {
 			"Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. " +
 			"Change a value in `triggers` to run the restore again. " +
 			"The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. " +
-			"Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.",
+			"Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row. " +
+			restoreOutcomeDescription,
 		CreateContext: createVolumeRestore,
-		ReadContext:   readOneShot,
+		ReadContext:   readVolumeRestore,
 		DeleteContext: deleteOneShot,
 		Schema:        resourceVolumeRestoreSchema(),
 		Timeouts: &schema.ResourceTimeout{
@@ -51,8 +52,14 @@ func resourceVolumeRestoreSchema() map[string]*schema.Schema {
 			ValidateFunc: validation.IntAtLeast(1),
 			Description:  "Size of the new volume in GB. The API requires at least the size of the source volume.",
 		},
-		"triggers":    triggersSchema("run the restore again"),
-		"status":      {Type: schema.TypeString, Computed: true, Description: "Result of the restore, `success` after a successful apply."},
+		"triggers": triggersSchema("run the restore again"),
+		"status": {
+			Type:     schema.TypeString,
+			Computed: true,
+			Description: "Result of the restore: the status of its history row once it ended, `success` or `failed`. " +
+				runStatusesDescription,
+		},
+		"message":     runMessageSchema(),
 		"started_at":  {Type: schema.TypeString, Computed: true, Description: "Start of the restore, RFC 3339 UTC."},
 		"finished_at": {Type: schema.TypeString, Computed: true, Description: "End of the restore, RFC 3339 UTC."},
 	}
@@ -77,15 +84,52 @@ func createVolumeRestore(ctx context.Context, d *schema.ResourceData, m interfac
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	// The restore has started: whatever happens next, it is saved so that the
+	// next apply does not restore again.
+	d.SetId(fmt.Sprintf("%s/%s/%d", volumeId, restorePointId, submitted.Unix()))
 
 	row, err := waitVolumeRestore(ctx, svc, vpcId, volumeId, submitted, seen, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
-		return diag.FromErr(err)
+		if row != nil {
+			// The row's start finds it again on refresh.
+			if diags := setValues(d, map[string]interface{}{"started_at": formatAPITime(row.StartTime), "finished_at": formatAPITime(row.EndTime)}); diags.HasError() {
+				return diags
+			}
+		}
+		return saveRunOutcome(ctx, d, err)
 	}
-	d.SetId(fmt.Sprintf("%s/%s/%d", volumeId, restorePointId, submitted.Unix()))
-	return setValues(d, map[string]interface{}{
-		"status":      row.Status,
-		"started_at":  formatAPITime(row.StartTime),
-		"finished_at": formatAPITime(row.EndTime),
+	return setValues(d, restoreRowValues(row.Status, row.StartTime, row.EndTime, true, nil))
+}
+
+// readVolumeRestore checks once on a restore the provider stopped watching,
+// as readVmRestore does.
+func readVolumeRestore(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	svc := NewVolumeService(m.(*common.Client))
+	volumeId := d.Get("volume_id").(string)
+	return refreshRun(d, func() (map[string]interface{}, error) {
+		submitted, err := idTime(d.Id())
+		if err != nil {
+			return nil, err
+		}
+		startedAt := d.Get("started_at").(string)
+		var row *VolumeHistoryItem
+		// Rows come newest first, so without a stored start the last one
+		// visited is the first restore after the submit.
+		err = scanVolumeRestoreRows(svc, d.Get("vpc_id").(string), volumeId, submitted, func(item *VolumeHistoryItem) bool {
+			if startedAt == "" {
+				row = item
+				return false
+			}
+			if formatAPITime(item.StartTime) == startedAt {
+				row = item
+				return true
+			}
+			return false
+		})
+		if err != nil || row == nil {
+			return nil, err
+		}
+		ended, failure := volumeRestoreEnded(volumeId, row)
+		return restoreRowValues(row.Status, row.StartTime, row.EndTime, ended, failure), nil
 	})
 }

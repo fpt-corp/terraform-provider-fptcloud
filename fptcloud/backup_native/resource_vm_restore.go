@@ -24,14 +24,23 @@ var (
 	keepOnlyArguments       = []string{"instance_name", "flavor_id", "subnet_id", "security_group_ids", "floating_ip", "private_ip"}
 )
 
+// restoreOutcomeDescription is the part of both restore descriptions that
+// says what is saved when the restore does not succeed.
+const restoreOutcomeDescription = "Once the restore has been sent, the resource is saved whatever the outcome, and the next apply does not restore again. " +
+	"A failed restore, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in `status` and `message`. " +
+	"The restore goes on without Terraform after a timeout or an interrupt; each later plan or apply reads the restore history and stores the outcome once the restore ends. " +
+	"A restore that timed out before its history row appeared is matched to the first restore of the same source after it was sent. " +
+	"Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the restore, and the next apply restores again."
+
 func ResourceVmRestore() *schema.Resource {
 	return &schema.Resource{
 		Description: "Restores a VM from a Backup Native restore point. Applying the resource runs the restore once and waits for it to finish. " +
 			"Destroying it only removes it from state; it never changes the VM. Change a value in `triggers` to run the restore again. `overwrite` restores onto the original VM; `keep` creates a new VM and keeps the original. " +
 			"The API does not return the new VM's id; find it by `instance_name` with the `fptcloud_instances` data source. " +
-			"Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row.",
+			"Run one restore per VM at a time; two concurrent restores of the same VM can be matched to the wrong history row. " +
+			restoreOutcomeDescription,
 		CreateContext: createVmRestore,
-		ReadContext:   readOneShot,
+		ReadContext:   readVmRestore,
 		DeleteContext: deleteOneShot,
 		CustomizeDiff: customizeVmRestore,
 		Schema:        resourceVmRestoreSchema(),
@@ -81,9 +90,15 @@ func resourceVmRestoreSchema() map[string]*schema.Schema {
 			ForceNew:    true,
 			Description: "`keep` only. Omit for no floating IP, `new` to allocate one, or the ID of a floating IP that is not in use.",
 		},
-		"private_ip":  {Type: schema.TypeString, Optional: true, ForceNew: true, ValidateFunc: validation.IsIPv4Address, Description: "`keep` only. Private IP of the new VM."},
-		"triggers":    triggersSchema("run the restore again"),
-		"status":      {Type: schema.TypeString, Computed: true, Description: "Result of the restore, `Success` after a successful apply."},
+		"private_ip": {Type: schema.TypeString, Optional: true, ForceNew: true, ValidateFunc: validation.IsIPv4Address, Description: "`keep` only. Private IP of the new VM."},
+		"triggers":   triggersSchema("run the restore again"),
+		"status": {
+			Type:     schema.TypeString,
+			Computed: true,
+			Description: "Result of the restore: the status of its history row once it ended, `Success` or `Failed`. " +
+				runStatusesDescription,
+		},
+		"message":     runMessageSchema(),
 		"started_at":  {Type: schema.TypeString, Computed: true, Description: "Start of the restore, RFC 3339 UTC."},
 		"finished_at": {Type: schema.TypeString, Computed: true, Description: "End of the restore, RFC 3339 UTC."},
 	}
@@ -186,23 +201,59 @@ func createVmRestore(ctx context.Context, d *schema.ResourceData, m interface{})
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	// The restore has started: whatever happens next, it is saved so that the
+	// next apply does not restore again.
+	d.SetId(fmt.Sprintf("%s/%s/%d", vmId, mode, submitted.Unix()))
 	defer syncVmJobs(svc, vpcId, &diags)
 
 	row, err := waitVmRestore(ctx, svc, vpcId, vmId, historyType, submitted, seen, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
-		return diag.FromErr(err)
+		if row != nil {
+			// The row's start finds it again on refresh.
+			if diags := setValues(d, map[string]interface{}{"started_at": formatAPITime(row.StartTime), "finished_at": formatAPITime(row.EndTime)}); diags.HasError() {
+				return diags
+			}
+		}
+		return saveRunOutcome(ctx, d, err)
 	}
-	d.SetId(fmt.Sprintf("%s/%s/%d", vmId, mode, submitted.Unix()))
-	return setValues(d, map[string]interface{}{
-		"status":      row.Status,
-		"started_at":  formatAPITime(row.StartTime),
-		"finished_at": formatAPITime(row.EndTime),
-	})
+	return setValues(d, restoreRowValues(row.Status, row.StartTime, row.EndTime, true, nil))
 }
 
-// readOneShot keeps state as it is: a finished restore has nothing to refresh.
-func readOneShot(_ context.Context, _ *schema.ResourceData, _ interface{}) diag.Diagnostics {
-	return nil
+// readVmRestore checks once on a restore the provider stopped watching. The
+// row is the one with the stored start, or else the first restore of the VM
+// after the id's submit time.
+func readVmRestore(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	svc := NewVmService(m.(*common.Client))
+	vmId := d.Get("vm_id").(string)
+	historyType := historyTypeRestore
+	if d.Get("mode").(string) != modeOverwrite {
+		historyType = historyTypeRestoreKeep
+	}
+	return refreshRun(d, func() (map[string]interface{}, error) {
+		submitted, err := idTime(d.Id())
+		if err != nil {
+			return nil, err
+		}
+		rows, err := svc.ListVmHistories(d.Get("vpc_id").(string), historyType, submitted.Add(-historyClockSkew))
+		if err != nil {
+			return nil, err
+		}
+		row := firstVmHistoryRow(rows, vmId, historyType, submitted)
+		if startedAt := d.Get("started_at").(string); startedAt != "" {
+			row = nil
+			for i := range rows {
+				if rows[i].VmId == vmId && rows[i].Type == historyType && formatAPITime(rows[i].StartTime) == startedAt {
+					row = &rows[i]
+					break
+				}
+			}
+		}
+		if row == nil {
+			return nil, nil
+		}
+		ended, failure := vmRestoreEnded(vmId, row)
+		return restoreRowValues(row.Status, row.StartTime, row.EndTime, ended, failure), nil
+	})
 }
 
 // deleteOneShot removes the resource from state and changes nothing in the cloud.

@@ -3,12 +3,12 @@
 page_title: "fptcloud_backup_native_volume_restore Resource - terraform-provider-fptcloud"
 subcategory: ""
 description: |-
-  Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. Change a value in triggers to run the restore again. The API does not return the new volume's id; find it by name with the fptcloud_storages data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
+  Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. Change a value in triggers to run the restore again. The API does not return the new volume's id; find it by name with the fptcloud_storages data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row. Once the restore has been sent, the resource is saved whatever the outcome, and the next apply does not restore again. A failed restore, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in status and message. The restore goes on without Terraform after a timeout or an interrupt; each later plan or apply reads the restore history and stores the outcome once the restore ends. A restore that timed out before its history row appeared is matched to the first restore of the same source after it was sent. Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the restore, and the next apply restores again.
 ---
 
 # fptcloud_backup_native_volume_restore (Resource)
 
-Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. Change a value in `triggers` to run the restore again. The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row.
+Restores a Backup Native volume restore point into a new volume. The API has no in-place restore for volumes. Applying the resource runs the restore once and waits for it to finish; destroying it only removes it from state. Change a value in `triggers` to run the restore again. The API does not return the new volume's id; find it by `name` with the `fptcloud_storages` data source. Run one restore per volume at a time; two concurrent restores of the same volume can be matched to the wrong history row. Once the restore has been sent, the resource is saved whatever the outcome, and the next apply does not restore again. A failed restore, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error, and stores the outcome in `status` and `message`. The restore goes on without Terraform after a timeout or an interrupt; each later plan or apply reads the restore history and stores the outcome once the restore ends. A restore that timed out before its history row appeared is matched to the first restore of the same source after it was sent. Only interrupt an apply once: a second Ctrl+C stops Terraform before it saves the restore, and the next apply restores again.
 
 ## Example Usage
 
@@ -50,8 +50,9 @@ resource "fptcloud_backup_native_volume_restore" "data_copy" {
 
 - `finished_at` (String) End of the restore, RFC 3339 UTC.
 - `id` (String) The ID of this resource.
+- `message` (String) Why the action did not succeed, or why the provider stopped waiting for it. Empty after a success.
 - `started_at` (String) Start of the restore, RFC 3339 UTC.
-- `status` (String) Result of the restore, `success` after a successful apply.
+- `status` (String) Result of the restore: the status of its history row once it ended, `success` or `failed`. The provider stores its own value when the API has none to give: `tf_timeout` when the provider stopped waiting before the action ended, `tf_interrupted` when the apply was interrupted while it waited, `tf_failed` when the action failed without an API status. A plan or apply checks `tf_timeout` and `tf_interrupted` again and replaces them with the API's status once the action ends.
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`

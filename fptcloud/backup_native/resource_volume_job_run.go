@@ -18,11 +18,11 @@ func ResourceVolumeJobRun() *schema.Resource {
 			"Applying the resource checks the job's status, starts the run and waits for it to end. " +
 			"A job that is still running a backup, a restore or a change fails the apply at once, without starting a run. " +
 			"Destroying the resource only removes it from state. Change a value in `triggers` to run the backup again. " +
-			"A failed run fails the apply and leaves the resource tainted, so the next apply runs it again. " +
+			jobRunOutcomeDescription +
 			"A job with one volume may be retried by the backend after a failed run. " +
 			"When the job stays in `pending`, the apply runs out its timeout; only a later run or the backend clears that state.",
 		CreateContext: createVolumeJobRun,
-		ReadContext:   readOneShot,
+		ReadContext:   readVolumeJobRun,
 		DeleteContext: deleteOneShot,
 		Schema:        jobRunSchema("fptcloud_backup_native_volume_job"),
 		// No UpdateContext and no Importer, for the reasons given on
@@ -55,5 +55,20 @@ func createVolumeJobRun(ctx context.Context, d *schema.ResourceData, m interface
 		wait: func(ctx context.Context, timeout time.Duration) (string, error) {
 			return waitVolumeJobRun(ctx, svc, vpcId, jobId, timeout)
 		},
+	})
+}
+
+func readVolumeJobRun(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	svc := NewVolumeService(m.(*common.Client))
+	jobId := d.Get("job_id").(string)
+	return refreshRun(d, func() (map[string]interface{}, error) {
+		job, err := svc.GetVolumeJob(d.Get("vpc_id").(string), jobId)
+		if err != nil {
+			return nil, err
+		}
+		if job == nil {
+			return jobRunResult("volume", jobId, "", false, volumeJobRunFailed), nil
+		}
+		return jobRunResult("volume", jobId, job.Status, true, volumeJobRunFailed), nil
 	})
 }

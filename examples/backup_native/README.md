@@ -55,6 +55,7 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
 | Import | `terraform import 'fptcloud_backup_native_vm_job.example[0]' vpc/<vpc_id>/backup_native_vm_job/<job_id>` after `terraform state rm`. |
 | Manual backup while a restore is on | The restores use the newest restore point, so the apply after a manual backup runs them again; with `vm_restore_mode = "overwrite"` that overwrites `vm_id` again. Clear `vm_restore` and `volume_restore` first, or apply only the backup: `terraform apply -target='fptcloud_backup_native_vm_job_run.example[0]'`. |
 | Overwrite restore | Set `vm_restore_mode = "overwrite"`. This replaces the disk of `vm_id`. |
+| Failure, timeout, Ctrl+C | Once a run, restore or purge has started, a failure, a timeout or a single Ctrl+C ends the apply with a warning and saves the resource; `status` and `message` show the outcome. The next apply does not run it again. `tf_timeout` and `tf_interrupted` mean the action went on without Terraform; the next `terraform plan` reads its outcome. Press Ctrl+C only once: a second one stops Terraform before it saves, and the next apply runs the action again. |
 | Requests sent | `TF_LOG=DEBUG terraform apply` logs every API call; all of them are user API paths. |
 | VM sync | After each VM action the API accepts (job create, update, delete, manual backup, restore, purge), the provider calls `GET .../osp_native_backup/sync` once, so the portal shows the change. It does not wait for the sync, and a failed sync is a warning, not an error. The volume API has no sync. |
 

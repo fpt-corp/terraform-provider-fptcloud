@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
@@ -94,6 +95,30 @@ func newStateConf(pending, target []string, refresh retry.StateRefreshFunc, time
 	}
 }
 
+// waitForState runs conf.WaitForStateContext. On a cancelled context the SDK
+// returns without waiting for the refresh in flight, and may start one more.
+// waitForState waits for that refresh and skips any later one, so that no API
+// call runs after the wait returned (an interrupted create still syncs) and
+// the caller can read what the refresh set.
+func waitForState(ctx context.Context, conf *retry.StateChangeConf) (interface{}, error) {
+	var mu sync.Mutex
+	stopped := false
+	refresh := conf.Refresh
+	conf.Refresh = func() (interface{}, string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if stopped {
+			return nil, "", context.Canceled
+		}
+		return refresh()
+	}
+	result, err := conf.WaitForStateContext(ctx)
+	mu.Lock()
+	stopped = true
+	mu.Unlock()
+	return result, err
+}
+
 // waitForTask polls a v1 Celery task and returns its final message.
 // status_code stays 200 until the task has a result (blueprint.py:644-656),
 // so both state and status_code decide.
@@ -115,7 +140,7 @@ func waitForTask(ctx context.Context, svc VmService, vpcId, taskId, action strin
 			return progress, "running", nil
 		}
 	}, timeout)
-	raw, err := conf.WaitForStateContext(ctx)
+	raw, err := waitForState(ctx, conf)
 	if err != nil {
 		return "", fmt.Errorf("waiting for %s (task %s): %w", action, taskId, err)
 	}
@@ -159,7 +184,7 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, t
 		}
 		return job, "busy", nil
 	}, timeout)
-	raw, err := conf.WaitForStateContext(ctx)
+	raw, err := waitForState(ctx, conf)
 	if err != nil {
 		return nil, fmt.Errorf("waiting for VM backup job %s to finish its running operation: %w", jobId, err)
 	}
@@ -196,7 +221,7 @@ func waitVmJobGone(ctx context.Context, svc VmService, vpcId, jobId string, time
 		}
 		return job, "deleting", nil
 	}, timeout)
-	if _, err := conf.WaitForStateContext(ctx); err != nil {
+	if _, err := waitForState(ctx, conf); err != nil {
 		return fmt.Errorf("waiting for VM backup job %s to be deleted: %w", jobId, err)
 	}
 	return nil
@@ -216,7 +241,7 @@ func waitVolumeJobSettled(ctx context.Context, svc VolumeService, vpcId, jobId s
 		}
 		return job, "busy", nil
 	}, timeout)
-	if _, err := conf.WaitForStateContext(ctx); err != nil {
+	if _, err := waitForState(ctx, conf); err != nil {
 		return fmt.Errorf("waiting for volume backup job %s to finish its running operation: %w", jobId, err)
 	}
 	return nil
@@ -237,7 +262,7 @@ func waitVolumeJobGone(ctx context.Context, svc VolumeService, vpcId, jobId stri
 		}
 		return job, "deleting", nil
 	}, timeout)
-	if _, err := conf.WaitForStateContext(ctx); err != nil {
+	if _, err := waitForState(ctx, conf); err != nil {
 		return fmt.Errorf("waiting for volume backup job %s to be deleted: %w", jobId, err)
 	}
 	return nil
@@ -285,7 +310,35 @@ func vmHistoryRowsSeen(svc VmService, vpcId, vmId, historyType string, since tim
 	}
 }
 
+// firstVmHistoryRow returns the oldest row findVmHistoryRow would match with
+// nothing seen: the first action after since. A refresh takes it for the
+// action whose row the create never saw.
+func firstVmHistoryRow(rows []VmHistory, vmId, historyType string, since time.Time) *VmHistory {
+	seen := map[string]bool{}
+	var first *VmHistory
+	for row := findVmHistoryRow(rows, vmId, historyType, since, seen); row != nil; row = findVmHistoryRow(rows, vmId, historyType, since, seen) {
+		first = row
+		seen[row.StartTime] = true
+	}
+	return first
+}
+
+// vmRestoreEnded reports whether row ends the restore of vmId, and the error a
+// failed row reports.
+func vmRestoreEnded(vmId string, row *VmHistory) (bool, error) {
+	switch strings.ToLower(row.Status) {
+	case historyStatusSuccess:
+		return true, nil
+	case historyStatusFailed:
+		return true, runFailed(row.Status, fmt.Errorf("restoring VM %s failed: %s", vmId, row.Reason))
+	}
+	return false, nil
+}
+
+// waitVmRestore waits for the restore's history row to end. It returns the
+// last row it saw even when the wait fails, or nil if none appeared.
 func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType string, since time.Time, seen map[string]bool, timeout time.Duration) (*VmHistory, error) {
+	var last *VmHistory
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
 		rows, err := svc.ListVmHistories(vpcId, historyType, since.Add(-historyClockSkew))
 		if err != nil {
@@ -295,19 +348,16 @@ func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType 
 		if row == nil {
 			return struct{}{}, "waiting", nil
 		}
-		switch strings.ToLower(row.Status) {
-		case historyStatusSuccess:
-			return row, "done", nil
-		case historyStatusFailed:
-			return nil, "", fmt.Errorf("restoring VM %s failed: %s", vmId, row.Reason)
+		last = row
+		if ended, err := vmRestoreEnded(vmId, row); err != nil || ended {
+			return row, "done", err
 		}
 		return row, "waiting", nil
 	}, timeout)
-	raw, err := conf.WaitForStateContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("waiting for the restore of VM %s: %w", vmId, err)
+	if _, err := waitForState(ctx, conf); err != nil {
+		return last, fmt.Errorf("waiting for the restore of VM %s: %w", vmId, err)
 	}
-	return raw.(*VmHistory), nil
+	return last, nil
 }
 
 // findVolumeRestoreRow returns the newest "Restore keep" row of this volume
@@ -366,7 +416,22 @@ func scanVolumeRestoreRows(svc VolumeService, vpcId, volumeId string, since time
 	return nil
 }
 
+// volumeRestoreEnded reports whether row ends the restore of volumeId, and
+// the error a failed row reports.
+func volumeRestoreEnded(volumeId string, row *VolumeHistoryItem) (bool, error) {
+	switch strings.ToLower(row.Status) {
+	case historyStatusSuccess:
+		return true, nil
+	case historyStatusFailed:
+		reason := fmt.Sprint(row.HistoryMetadata.ExtractInfo["status"])
+		return true, runFailed(row.Status, fmt.Errorf("restoring volume %s failed: %s", volumeId, reason))
+	}
+	return false, nil
+}
+
+// waitVolumeRestore waits as waitVmRestore does.
 func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId string, since time.Time, seen map[string]bool, timeout time.Duration) (*VolumeHistoryItem, error) {
+	var last *VolumeHistoryItem
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
 		row, err := findVolumeRestoreRow(svc, vpcId, volumeId, since, seen)
 		if err != nil {
@@ -375,20 +440,16 @@ func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId s
 		if row == nil {
 			return struct{}{}, "waiting", nil
 		}
-		switch strings.ToLower(row.Status) {
-		case historyStatusSuccess:
-			return row, "done", nil
-		case historyStatusFailed:
-			reason := fmt.Sprint(row.HistoryMetadata.ExtractInfo["status"])
-			return nil, "", fmt.Errorf("restoring volume %s failed: %s", volumeId, reason)
+		last = row
+		if ended, err := volumeRestoreEnded(volumeId, row); err != nil || ended {
+			return row, "done", err
 		}
 		return row, "waiting", nil
 	}, timeout)
-	raw, err := conf.WaitForStateContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("waiting for the restore of volume %s: %w", volumeId, err)
+	if _, err := waitForState(ctx, conf); err != nil {
+		return last, fmt.Errorf("waiting for the restore of volume %s: %w", volumeId, err)
 	}
-	return raw.(*VolumeHistoryItem), nil
+	return last, nil
 }
 
 // runFailureHold is how long a failed job status must hold before a manual
@@ -398,6 +459,23 @@ func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId s
 // shorten it.
 var runFailureHold = 60 * time.Second
 
+// The job statuses that end a manual backup in failure.
+var (
+	vmJobRunFailed     = map[string]bool{jobStatusFailed: true, jobStatusError: true}
+	volumeJobRunFailed = map[string]bool{jobStatusError: true}
+)
+
+// jobRunFailedError reports a run that ended with the job in a failed status.
+func jobRunFailedError(kind, jobId, status string) error {
+	return runFailed(status, fmt.Errorf("the backup of %s backup job %s failed: the job is in state %s. "+
+		"A job with one VM or volume may still be retried by the backend; check the backup history in the portal", kind, jobId, status))
+}
+
+// jobDeletedDuringRunError reports a job deleted while its backup ran.
+func jobDeletedDuringRunError(kind, jobId string) error {
+	return runFailed("", fmt.Errorf("the %s backup job %s was deleted while its backup ran", kind, jobId))
+}
+
 func waitVmJobRun(ctx context.Context, svc VmService, vpcId, jobId string, timeout time.Duration) (string, error) {
 	return waitJobRun(ctx, "VM", jobId, func() (string, bool, error) {
 		job, err := svc.GetVmJob(vpcId, jobId)
@@ -405,7 +483,7 @@ func waitVmJobRun(ctx context.Context, svc VmService, vpcId, jobId string, timeo
 			return "", false, err
 		}
 		return job.Status, true, nil
-	}, map[string]bool{jobStatusFailed: true, jobStatusError: true}, timeout)
+	}, vmJobRunFailed, timeout)
 }
 
 func waitVolumeJobRun(ctx context.Context, svc VolumeService, vpcId, jobId string, timeout time.Duration) (string, error) {
@@ -415,7 +493,7 @@ func waitVolumeJobRun(ctx context.Context, svc VolumeService, vpcId, jobId strin
 			return "", false, err
 		}
 		return job.Status, true, nil
-	}, map[string]bool{jobStatusError: true}, timeout)
+	}, volumeJobRunFailed, timeout)
 }
 
 // waitJobRun polls a job whose manual backup was just started and returns the
@@ -435,7 +513,7 @@ func waitJobRun(ctx context.Context, kind, jobId string, read func() (status str
 			lastStatus = status
 		}
 		if !found {
-			outcome = fmt.Errorf("the %s backup job %s was deleted while its backup ran", kind, jobId)
+			outcome = jobDeletedDuringRunError(kind, jobId)
 			return nil, "", outcome
 		}
 		s := strings.ToLower(status)
@@ -452,11 +530,10 @@ func waitJobRun(ctx context.Context, kind, jobId string, read func() (status str
 		if time.Since(failingSince) < runFailureHold {
 			return status, "running", nil
 		}
-		outcome = fmt.Errorf("the backup of %s backup job %s failed: the job is in state %s. "+
-			"A job with one VM or volume may still be retried by the backend; check the backup history in the portal", kind, jobId, status)
+		outcome = jobRunFailedError(kind, jobId, status)
 		return nil, "", outcome
 	}, timeout)
-	raw, err := conf.WaitForStateContext(ctx)
+	raw, err := waitForState(ctx, conf)
 	if outcome != nil {
 		return "", outcome
 	}

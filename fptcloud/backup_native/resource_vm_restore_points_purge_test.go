@@ -2,6 +2,7 @@ package fptcloud_backup_native
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -114,14 +115,14 @@ func TestCreateVmRestorePointsPurgeRetriesWhileBusy(t *testing.T) {
 	assert.Equal(t, 3, api.count(purgeRoute))
 }
 
-func TestPurgeVmRestorePointsReportsTheLastRefusalOnTimeout(t *testing.T) {
+func TestSubmitVmRestorePointsPurgeReportsTheLastRefusalOnTimeout(t *testing.T) {
 	setFastPolling(t)
 	_, client := newFakeAPI(t, map[string][]fakeResponse{
 		restorePoints: {{Body: twoRestorePoints}},
 		purgeRoute:    {{Status: 400, Body: `{"message":"Resource is not available for delete"}`}},
 		histories:     {{Body: `{"total":0,"data":[]}`}},
 	})
-	err := purgeVmRestorePoints(context.Background(), NewVmService(client), "vpc-1", "vm-1", time.Now().Add(200*time.Millisecond))
+	_, _, err := submitVmRestorePointsPurge(context.Background(), NewVmService(client), "vpc-1", "vm-1", time.Now().Add(200*time.Millisecond))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "waiting for the API to accept deleting the restore points of VM vm-1")
 	assert.Contains(t, err.Error(), "a backup or restore of the VM is running")
@@ -142,7 +143,8 @@ func TestCreateVmRestorePointsPurgeStopsOnOtherErrors(t *testing.T) {
 	assert.Equal(t, "", d.Id())
 }
 
-func TestCreateVmRestorePointsPurgeFailureLeavesNoState(t *testing.T) {
+// A purge the API accepted is saved whatever its outcome.
+func TestCreateVmRestorePointsPurgeFailureSavesTheAPIStatus(t *testing.T) {
 	setFastPolling(t)
 	start := time.Now().UTC().Format(apiTimeLayout)
 	_, client := newFakeAPI(t, map[string][]fakeResponse{
@@ -152,9 +154,98 @@ func TestCreateVmRestorePointsPurgeFailureLeavesNoState(t *testing.T) {
 	})
 	d := purgeData(t)
 	diags := createVmRestorePointsPurge(context.Background(), d, client)
-	require.True(t, diags.HasError())
+	require.False(t, diags.HasError(), "%v", diags)
 	assert.Contains(t, diags[0].Summary, "cinder error")
-	assert.Equal(t, "", d.Id())
+	assert.NotEmpty(t, d.Id())
+	assert.Equal(t, "Failed", d.Get("status"))
+	assert.Equal(t, 2, d.Get("restore_point_count"))
+	assert.Empty(t, d.Get("finished_at"))
+}
+
+func TestCreateVmRestorePointsPurgeTimeoutSavesThePurge(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		restorePoints: {{Body: twoRestorePoints}},
+		purgeRoute:    {{Body: purgeAccepted}},
+		histories:     {{Body: `{"total":0,"data":[]}`}},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	d := purgeData(t)
+	diags := createVmRestorePointsPurge(ctx, d, client)
+	require.False(t, diags.HasError(), "%v", diags)
+	assert.NotEmpty(t, d.Id())
+	assert.Equal(t, runStatusTimeout, d.Get("status"))
+}
+
+// While the API refuses the purge as busy, nothing has started yet.
+func TestCreateVmRestorePointsPurgeNeverAcceptedLeavesNoState(t *testing.T) {
+	setFastPolling(t)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		restorePoints: {{Body: twoRestorePoints}},
+		purgeRoute:    {{Status: 400, Body: `{"message":"Resource is not available for delete"}`}},
+		histories:     {{Body: `{"total":0,"data":[]}`}},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	d := purgeData(t)
+	diags := createVmRestorePointsPurge(ctx, d, client)
+	require.True(t, diags.HasError())
+	assert.Empty(t, d.Id())
+}
+
+func purgeState(t *testing.T, started time.Time) *schema.ResourceData {
+	d := purgeData(t)
+	d.SetId(fmt.Sprintf("vm-1/%d", started.Unix()))
+	require.NoError(t, d.Set("status", runStatusTimeout))
+	return d
+}
+
+func TestReadVmRestorePointsPurgeSyncsFromTheRow(t *testing.T) {
+	started := time.Now().UTC().Add(-time.Hour)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		histories:     {{Body: purgeRow("Success", started.Add(5*time.Second).Format(apiTimeLayout))}},
+		restorePoints: {{Body: twoRestorePoints}},
+	})
+	d := purgeState(t, started)
+	require.Empty(t, readVmRestorePointsPurge(context.Background(), d, client))
+	assert.Equal(t, "Success", d.Get("status"))
+	assert.NotEmpty(t, d.Get("finished_at"))
+}
+
+func TestReadVmRestorePointsPurgeSyncsFromAnEmptyList(t *testing.T) {
+	started := time.Now().UTC().Add(-time.Hour)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		histories:     {{Body: `{"total":0,"data":[]}`}},
+		restorePoints: {{Body: noRestorePoints}},
+	})
+	d := purgeState(t, started)
+	require.Empty(t, readVmRestorePointsPurge(context.Background(), d, client))
+	assert.Equal(t, purgeStatusSuccess, d.Get("status"))
+}
+
+func TestReadVmRestorePointsPurgeStoresAFailedPurge(t *testing.T) {
+	started := time.Now().UTC().Add(-time.Hour)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		histories:     {{Body: purgeRow("Failed", started.Add(5*time.Second).Format(apiTimeLayout))}},
+		restorePoints: {{Body: twoRestorePoints}},
+	})
+	d := purgeState(t, started)
+	require.Empty(t, readVmRestorePointsPurge(context.Background(), d, client))
+	assert.Equal(t, "Failed", d.Get("status"))
+	assert.Contains(t, d.Get("message"), "cinder error")
+	assert.Empty(t, d.Get("finished_at"))
+}
+
+func TestReadVmRestorePointsPurgeKeepsARunningPurge(t *testing.T) {
+	started := time.Now().UTC().Add(-time.Hour)
+	_, client := newFakeAPI(t, map[string][]fakeResponse{
+		histories:     {{Body: purgeRow("Deleting", started.Add(5*time.Second).Format(apiTimeLayout))}},
+		restorePoints: {{Body: twoRestorePoints}},
+	})
+	d := purgeState(t, started)
+	require.Empty(t, readVmRestorePointsPurge(context.Background(), d, client))
+	assert.Equal(t, runStatusTimeout, d.Get("status"))
 }
 
 // The row of a purge that finished just before this one was submitted is
