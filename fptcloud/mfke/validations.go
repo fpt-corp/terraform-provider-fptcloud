@@ -1,6 +1,7 @@
 package fptcloud_mfke
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -873,4 +875,43 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 
 	// Add other update-time validations here as needed
 	return true
+}
+
+// autoUpgradeTimezones are the only auto_upgrade_timezone values the
+// config-auto-upgrade-version endpoint accepts; anything else is rejected with
+// "Auto upgrade timezone is not support".
+var autoUpgradeTimezones = []string{
+	"UTC", "Asia/Saigon", "Asia/Singapore", "Asia/Seoul", "Asia/Qatar",
+	"America/New_York", "Europe/London", "Europe/Berlin",
+}
+
+// autoUpgradeTimezoneValidator rejects an auto_upgrade_timezone the API does
+// not support, so the mistake shows up at plan time rather than during apply.
+type autoUpgradeTimezoneValidator struct{}
+
+func (v autoUpgradeTimezoneValidator) Description(_ context.Context) string {
+	return "must be one of: " + strings.Join(autoUpgradeTimezones, ", ")
+}
+
+func (v autoUpgradeTimezoneValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v autoUpgradeTimezoneValidator) ValidateString(ctx context.Context, request validator.StringRequest, response *validator.StringResponse) {
+	if request.ConfigValue.IsNull() || request.ConfigValue.IsUnknown() || request.ConfigValue.ValueString() == "" {
+		return
+	}
+
+	timezone := request.ConfigValue.ValueString()
+	for _, supported := range autoUpgradeTimezones {
+		if timezone == supported {
+			return
+		}
+	}
+
+	response.Diagnostics.AddAttributeError(
+		request.Path,
+		"Unsupported auto_upgrade_timezone",
+		fmt.Sprintf("%q is not supported for auto-upgrade; %s.", timezone, v.Description(ctx)),
+	)
 }

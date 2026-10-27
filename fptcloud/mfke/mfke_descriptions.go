@@ -1,5 +1,7 @@
 package fptcloud_mfke
 
+import "strings"
+
 var descriptions = map[string]string{
 	"vpc_id":          "VPC ID",
 	"cluster_name":    "Cluster name",
@@ -38,7 +40,7 @@ var descriptions = map[string]string{
 	"allowCidr":                "Allowed CIDR blocks for cluster endpoint access (optional)",
 	"is_enable_auto_upgrade":   "Whether to enable auto-upgrade (optional)",
 	"auto_upgrade_expression":  "Auto-upgrade cron expressions (optional)",
-	"auto_upgrade_timezone":    "Timezone for auto-upgrade (optional)",
+	"auto_upgrade_timezone":    "Timezone for auto-upgrade (optional). One of: " + strings.Join(autoUpgradeTimezones, ", "),
 	"cluster_autoscaler":       "Cluster autoscaler configuration block (optional)",
 	"is_running":               "Whether the cluster is running (optional)",
 	// cluster_autoscaler subfields

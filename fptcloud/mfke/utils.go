@@ -21,6 +21,7 @@ import (
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -186,6 +187,15 @@ func TopFields() map[string]schema.Attribute {
 			ElementType: types.StringType,
 			Description: descriptions[attribute],
 		}
+	}
+
+	// The API accepts only a fixed list of timezones; checking it here makes a
+	// wrong value fail at plan time instead of during apply.
+	topLevelAttributes["auto_upgrade_timezone"] = schema.StringAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: descriptions["auto_upgrade_timezone"],
+		Validators:  []validator.String{autoUpgradeTimezoneValidator{}},
 	}
 
 	// tags is a Set, not a List: the API returns a cluster's tags in its own
