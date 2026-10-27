@@ -336,7 +336,7 @@ resource "fptcloud_database" "mysql_ha" {
 - `edition` (String) The edition of the database cluster.
 - `flavor` (String) The flavor of the database cluster.
 - `flavor_id` (String) The flavor_id of the database cluster.
-- `is_cluster` (String) The cluster status of the database cluster.
+- `is_cluster` (String) Whether the database is a cluster. Must be `yes` or `no`.
 - `is_ops` (String) Whether the database is OpenStack or VMware
 - `is_public` (String) Whether the database is public or not.
 - `master_count` (Number) The number of master nodes in the database cluster.

@@ -174,6 +174,7 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		fptcloud_database.NewDataSourceDatabaseBackup,
 		fptcloud_database.NewDataSourceDatabaseRestorePoints,
 		fptcloud_database.NewDataSourceDatabaseRestoredClusters,
+		fptcloud_database.NewDataSourceDatabaseResources,
 	}
 }
 

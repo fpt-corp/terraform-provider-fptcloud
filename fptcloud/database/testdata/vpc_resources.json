@@ -1,0 +1,460 @@
+{
+  "code": "200",
+  "message": "Successful",
+  "data": {
+    "vpc_id": "ab463af6-1147-4446-92fc-3700df39ba05",
+    "total": {
+      "cluster_count": 15,
+      "pitr_enabled_count": 5,
+      "database": {
+        "node_count": 40,
+        "cpu": 138,
+        "ram_gb": 268,
+        "disk_gb": 2051
+      },
+      "backup": {
+        "capacity_gb": 31,
+        "used_gb": 21
+      },
+      "pitr": {
+        "enabled": false,
+        "archive_size_gb": 0
+      },
+      "proxy": {
+        "node_count": 2,
+        "cpu": 4,
+        "ram_gb": 8,
+        "disk_gb": 20
+      }
+    },
+    "clusters": [
+      {
+        "cluster_id": "ofc1chqj",
+        "cluster_name": "Duongtest-KXOA",
+        "type_db": "opensearch",
+        "status": "running",
+        "database": {
+          "node_count": 4,
+          "cpu": 16,
+          "ram_gb": 32,
+          "disk_gb": 80
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "g5nxyq98",
+        "cluster_name": "xoahoithongnv10",
+        "type_db": "mongodb_replicaset",
+        "status": "running",
+        "database": {
+          "node_count": 3,
+          "cpu": 24,
+          "ram_gb": 30,
+          "disk_gb": 975
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": 17
+        },
+        "pitr": {
+          "enabled": true,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "enrb1ro7",
+        "cluster_name": "Database",
+        "type_db": "mongodb_replicaset",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 6,
+          "ram_gb": 8,
+          "disk_gb": 30
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": 1
+        },
+        "pitr": {
+          "enabled": true,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "ong92ytu",
+        "cluster_name": "xoahoithongnv10",
+        "type_db": "mysql_innodb",
+        "status": "running",
+        "database": {
+          "node_count": 3,
+          "cpu": 12,
+          "ram_gb": 12,
+          "disk_gb": 300
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "pm7ts3f2",
+        "cluster_name": "Database",
+        "type_db": "psql_patroni",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 2,
+          "ram_gb": 4,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 20,
+          "used_gb": 1
+        },
+        "pitr": {
+          "enabled": true,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "l1vzvbkv",
+        "cluster_name": "Newrestore-pitr-pm",
+        "type_db": "psql_patroni",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 2,
+          "ram_gb": 4,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "ckgdzwct",
+        "cluster_name": "Minhnt93TestAll",
+        "type_db": "psql_patroni",
+        "status": "running",
+        "database": {
+          "node_count": 3,
+          "cpu": 12,
+          "ram_gb": 24,
+          "disk_gb": 66
+        },
+        "backup": {
+          "capacity_gb": 11,
+          "used_gb": 1
+        },
+        "pitr": {
+          "enabled": true,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 2,
+          "cpu": 4,
+          "ram_gb": 8,
+          "disk_gb": 20,
+          "items": [
+            {
+              "node_count": 1,
+              "cpu": 2,
+              "ram_gb": 4,
+              "disk_gb": 10,
+              "lb_cluster_id": "NDYBTV5Z",
+              "lb_cluster_name": "Minhnt93Test",
+              "lb_type": "haproxy",
+              "status": "running"
+            },
+            {
+              "node_count": 1,
+              "cpu": 2,
+              "ram_gb": 4,
+              "disk_gb": 10,
+              "lb_cluster_id": "V7KJYJGH",
+              "lb_cluster_name": "Proxy test 2",
+              "lb_type": "haproxy",
+              "status": "running"
+            }
+          ]
+        }
+      },
+      {
+        "cluster_id": "xh2iumzu",
+        "cluster_name": "Minhnt93TestRestore",
+        "type_db": "psql_patroni",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 2,
+          "ram_gb": 4,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "d4ln5mv2",
+        "cluster_name": "Database",
+        "type_db": "psql_patroni",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 2,
+          "ram_gb": 4,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": 1
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "pozmuv96",
+        "cluster_name": "tfFullFlow01",
+        "type_db": "psql_patroni",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 2,
+          "ram_gb": 8,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "svye0xca",
+        "cluster_name": "tfFullFlow01",
+        "type_db": "redis_replication",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 2,
+          "ram_gb": 24,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "haei3psp",
+        "cluster_name": "Database",
+        "type_db": "opensearch",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 4,
+          "ram_gb": 10,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "dc4d3fdg",
+        "cluster_name": "Database",
+        "type_db": "opensearch",
+        "status": "running",
+        "database": {
+          "node_count": 7,
+          "cpu": 28,
+          "ram_gb": 56,
+          "disk_gb": 180
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "gmibbev0",
+        "cluster_name": "test-metadata",
+        "type_db": "mongodb_sharding",
+        "status": "running",
+        "database": {
+          "node_count": 11,
+          "cpu": 22,
+          "ram_gb": 44,
+          "disk_gb": 260
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": true,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      },
+      {
+        "cluster_id": "yz0su8ap",
+        "cluster_name": "Minhnt93Test446",
+        "type_db": "mongodb_replicaset",
+        "status": "running",
+        "database": {
+          "node_count": 1,
+          "cpu": 2,
+          "ram_gb": 4,
+          "disk_gb": 20
+        },
+        "backup": {
+          "capacity_gb": 0,
+          "used_gb": null
+        },
+        "pitr": {
+          "enabled": false,
+          "archive_size_gb": 0
+        },
+        "proxy": {
+          "node_count": 0,
+          "cpu": 0,
+          "ram_gb": 0,
+          "disk_gb": 0,
+          "items": []
+        }
+      }
+    ]
+  },
+  "type": "success"
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -426,7 +427,8 @@ func (r *resourceDatabase) Schema(ctx context.Context, request resource.SchemaRe
 			},
 			"is_cluster": schema.StringAttribute{
 				Required:    true,
-				Description: "The cluster status of the database cluster.",
+				Description: "Whether the database is a cluster. Must be `yes` or `no`.",
+				Validators:  []validator.String{yesNoValidator{}},
 			},
 			"master_count": schema.Int64Attribute{
 				Required:    true,
@@ -1390,4 +1392,25 @@ func attrText(v attr.Value) string {
 		return s.ValueString()
 	}
 	return v.String()
+}
+
+// yesNoValidator only accepts "yes" or "no" (known values only, so a value set by a variable still plans).
+type yesNoValidator struct{}
+
+func (yesNoValidator) Description(context.Context) string {
+	return "value must be `yes` or `no`"
+}
+
+func (v yesNoValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (yesNoValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if v := req.ConfigValue.ValueString(); v != "yes" && v != "no" {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid is_cluster",
+			fmt.Sprintf("is_cluster must be \"yes\" or \"no\", got %q.", v))
+	}
 }

@@ -1,3 +1,13 @@
+## [0.3.86] - 2026-10-27
+
+### Datasource
+
+- Feat: add `fptcloud_database_resources` to list every database cluster and DB proxy of a VPC (`vpc_id`), with the nodes, CPU, RAM, disk, backup and PITR usage of each cluster and its DB proxies, and the totals of the VPC
+
+### Resource
+
+- Feat: `is_cluster` of `fptcloud_database` accepts only `yes` or `no`; any other value fails `terraform plan`
+
 ## [0.3.85] - 2026-10-26
 
 ### Datasource
