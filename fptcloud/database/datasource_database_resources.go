@@ -244,12 +244,12 @@ func (d *datasourceDatabaseResources) Schema(
 				Description: "The ID of the VPC.",
 			},
 			"total": schema.ObjectAttribute{
-				Computed: true,
-				Description: "Totals over all clusters of the VPC: cluster_count, pitr_enabled_count, database, backup, pitr and proxy usage.",
+				Computed:       true,
+				Description:    "Totals over all clusters of the VPC: cluster_count, pitr_enabled_count, database, backup, pitr and proxy usage.",
 				AttributeTypes: vpcTotalTypes(),
 			},
 			"clusters": schema.ListAttribute{
-				Computed: true,
+				Computed:    true,
 				Description: "The database clusters of the VPC. Database and proxy contain node_count, cpu, ram_gb and disk_gb. proxy.items lists DB proxies and their usage. backup.used_gb is null when the cluster has no backup data.",
 				ElementType: types.ObjectType{
 					AttrTypes: vpcClusterTypes(),
