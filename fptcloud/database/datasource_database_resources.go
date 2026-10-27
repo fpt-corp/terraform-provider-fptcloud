@@ -27,7 +27,7 @@ func NewDataSourceDatabaseResources() datasource.DataSource {
 	return &datasourceDatabaseResources{}
 }
 
-// usage is the compute usage of a group of nodes.
+// usage represents the compute usage of a group of nodes.
 type usage struct {
 	NodeCount *int64   `tfsdk:"node_count" json:"node_count"`
 	Cpu       *int64   `tfsdk:"cpu" json:"cpu"`
@@ -65,14 +65,14 @@ type proxyUsage struct {
 }
 
 type vpcCluster struct {
-	ClusterId   *string    `tfsdk:"cluster_id" json:"cluster_id"`
-	ClusterName *string    `tfsdk:"cluster_name" json:"cluster_name"`
-	TypeDb      *string    `tfsdk:"type_db" json:"type_db"`
-	Status      *string    `tfsdk:"status" json:"status"`
-	Database    usage      `tfsdk:"database" json:"database"`
+	ClusterId   *string     `tfsdk:"cluster_id" json:"cluster_id"`
+	ClusterName *string     `tfsdk:"cluster_name" json:"cluster_name"`
+	TypeDb      *string     `tfsdk:"type_db" json:"type_db"`
+	Status      *string     `tfsdk:"status" json:"status"`
+	Database    usage       `tfsdk:"database" json:"database"`
 	Backup      backupUsage `tfsdk:"backup" json:"backup"`
-	Pitr        pitrUsage  `tfsdk:"pitr" json:"pitr"`
-	Proxy       proxyUsage `tfsdk:"proxy" json:"proxy"`
+	Pitr        pitrUsage   `tfsdk:"pitr" json:"pitr"`
+	Proxy       proxyUsage  `tfsdk:"proxy" json:"proxy"`
 }
 
 type vpcTotal struct {
@@ -80,7 +80,7 @@ type vpcTotal struct {
 	PitrEnabledCount *int64      `tfsdk:"pitr_enabled_count" json:"pitr_enabled_count"`
 	Database         usage       `tfsdk:"database" json:"database"`
 	Backup           backupUsage `tfsdk:"backup" json:"backup"`
-	Pitr             pitrUsage  `tfsdk:"pitr" json:"pitr"`
+	Pitr             pitrUsage   `tfsdk:"pitr" json:"pitr"`
 	Proxy            usage       `tfsdk:"proxy" json:"proxy"`
 }
 
@@ -96,8 +96,8 @@ type databaseResourcesModel struct {
 	Clusters []vpcCluster `tfsdk:"clusters"`
 }
 
-// getVpcResources reads every database cluster and DB proxy of a VPC
-// with their compute and backup usage.
+// getVpcResources reads every database cluster and DB proxy of a VPC,
+// including their compute and backup usage.
 func (m *databaseApiClient) getVpcResources(vpcId string) (*vpcResources, error) {
 	path := common.ApiPath.DatabaseVpcResources(vpcId)
 
@@ -106,8 +106,8 @@ func (m *databaseApiClient) getVpcResources(vpcId string) (*vpcResources, error)
 		return nil, fmt.Errorf("failed calling path %s: %w", path, err)
 	}
 
-	if berr := checkBusinessError(body); berr != nil {
-		return nil, berr
+	if err := checkBusinessError(body); err != nil {
+		return nil, err
 	}
 
 	var resp struct {
@@ -137,7 +137,7 @@ func (m *databaseApiClient) getVpcResources(vpcId string) (*vpcResources, error)
 }
 
 func (d *datasourceDatabaseResources) Metadata(
-	ctx context.Context,
+	_ context.Context,
 	request datasource.MetadataRequest,
 	response *datasource.MetadataResponse,
 ) {
@@ -145,7 +145,7 @@ func (d *datasourceDatabaseResources) Metadata(
 }
 
 func (d *datasourceDatabaseResources) Configure(
-	ctx context.Context,
+	_ context.Context,
 	request datasource.ConfigureRequest,
 	response *datasource.ConfigureResponse,
 ) {
@@ -177,12 +177,12 @@ func withTypes(
 ) map[string]attr.Type {
 	out := make(map[string]attr.Type, len(base)+len(extra))
 
-	for k, v := range base {
-		out[k] = v
+	for key, value := range base {
+		out[key] = value
 	}
 
-	for k, v := range extra {
-		out[k] = v
+	for key, value := range extra {
+		out[key] = value
 	}
 
 	return out
@@ -207,6 +207,14 @@ func vpcClusterTypes() map[string]attr.Type {
 		"status":          types.StringType,
 	})
 
+	proxyTypes := withTypes(usageTypes, map[string]attr.Type{
+		"items": types.ListType{
+			ElemType: types.ObjectType{
+				AttrTypes: proxyItemTypes,
+			},
+		},
+	})
+
 	return map[string]attr.Type{
 		"cluster_id":   types.StringType,
 		"cluster_name": types.StringType,
@@ -215,42 +223,34 @@ func vpcClusterTypes() map[string]attr.Type {
 		"database":     types.ObjectType{AttrTypes: usageTypes},
 		"backup":       types.ObjectType{AttrTypes: backupTypes},
 		"pitr":         types.ObjectType{AttrTypes: pitrTypes},
-		"proxy": types.ObjectType{
-			AttrTypes: withTypes(usageTypes, map[string]attr.Type{
-				"items": types.ListType{
-					ElemType: types.ObjectType{
-						AttrTypes: proxyItemTypes,
-					},
-				},
-			}),
-		},
+		"proxy":        types.ObjectType{AttrTypes: proxyTypes},
 	}
 }
 
 func (d *datasourceDatabaseResources) Schema(
-	ctx context.Context,
-	request datasource.SchemaRequest,
+	_ context.Context,
+	_ datasource.SchemaRequest,
 	response *datasource.SchemaResponse,
 ) {
 	response.Schema = schema.Schema{
 		Description: "Lists every database cluster and DB proxy of a VPC, with the nodes, CPU, RAM, disk and backup they use, and the totals of the VPC.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed:   true,
-				Description: "The Id of the VPC.",
+				Computed:    true,
+				Description: "The ID of the VPC.",
 			},
 			"vpc_id": schema.StringAttribute{
-				Required:   true,
-				Description: "The Id of the VPC.",
+				Required:    true,
+				Description: "The ID of the VPC.",
 			},
 			"total": schema.ObjectAttribute{
 				Computed: true,
-				Description: "Totals over all the clusters of the VPC: `cluster_count`, `pitr_enabled_count`, and `database`, `backup`, `pitr` and `proxy` usage.",
+				Description: "Totals over all clusters of the VPC: cluster_count, pitr_enabled_count, database, backup, pitr and proxy usage.",
 				AttributeTypes: vpcTotalTypes(),
 			},
 			"clusters": schema.ListAttribute{
 				Computed: true,
-				Description: "The database clusters of the VPC. `database` and `proxy` hold `node_count`, `cpu`, `ram_gb` and `disk_gb`; `proxy.items` lists the DB proxies (`lb_cluster_id`, `lb_cluster_name`, `lb_type`, `status` and their own usage); `backup.used_gb` is null when the cluster has no backup data.",
+				Description: "The database clusters of the VPC. Database and proxy contain node_count, cpu, ram_gb and disk_gb. proxy.items lists DB proxies and their usage. backup.used_gb is null when the cluster has no backup data.",
 				ElementType: types.ObjectType{
 					AttrTypes: vpcClusterTypes(),
 				},
@@ -271,16 +271,24 @@ func (d *datasourceDatabaseResources) Read(
 		return
 	}
 
-	vpcId := strings.TrimSpace(state.VpcId.ValueString())
-	if vpcId == "" {
+	vpcID := strings.TrimSpace(state.VpcId.ValueString())
+	if vpcID == "" {
 		response.Diagnostics.AddError(
 			"Missing vpc_id",
-			"vpc_id must be a non empty string",
+			"vpc_id must be a non-empty string",
 		)
 		return
 	}
 
-	res, err := d.api.getVpcResources(vpcId)
+	if d.api == nil {
+		response.Diagnostics.AddError(
+			"Unconfigured API client",
+			"The database API client has not been configured.",
+		)
+		return
+	}
+
+	res, err := d.api.getVpcResources(vpcID)
 	if err != nil {
 		response.Diagnostics.AddError(
 			"Error reading database resources",
@@ -289,7 +297,7 @@ func (d *datasourceDatabaseResources) Read(
 		return
 	}
 
-	state.Id = types.StringValue(vpcId)
+	state.Id = types.StringValue(vpcID)
 	state.Total = &res.Total
 	state.Clusters = res.Clusters
 
