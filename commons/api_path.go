@@ -74,6 +74,7 @@ var ApiPath = struct {
 	DatabaseChangeIops      func() string
 	DatabaseFlavor          func(vpcId string, isOSP string) string
 	DatabaseList            func(vpcId string, page, pageSize int) string
+	DatabaseVpcResources    func(vpcId string) string
 
 	DatabaseBackupDetail     func(clusterId string) string
 	DatabaseBackupCapacity   func() string
@@ -502,6 +503,9 @@ var ApiPath = struct {
 	},
 	DatabaseList: func(vpcId string, page, pageSize int) string {
 		return fmt.Sprintf("/v1/xplat/database/management/cluster/list/%s?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	DatabaseVpcResources: func(vpcId string) string {
+		return fmt.Sprintf("/v1/xplat/database/management/cluster/resource/%s", vpcId)
 	},
 
 	DatabaseBackupDetail: func(clusterId string) string {
