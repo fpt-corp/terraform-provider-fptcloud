@@ -73,7 +73,7 @@ func createVolumeRestore(ctx context.Context, d *schema.ResourceData, m interfac
 	submitted := time.Now().UTC()
 
 	// Rows already in the history belong to earlier restores of this volume.
-	seen, err := volumeRestoreRowsSeen(svc, vpcId, volumeId, submitted)
+	seen, err := volumeHistoryRowsSeen(svc, vpcId, volumeId, historyTypeRestoreKeep, submitted)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -115,7 +115,7 @@ func readVolumeRestore(_ context.Context, d *schema.ResourceData, m interface{})
 		var row *VolumeHistoryItem
 		// Rows come newest first, so without a stored start the last one
 		// visited is the first restore after the submit.
-		err = scanVolumeRestoreRows(svc, d.Get("vpc_id").(string), volumeId, submitted, func(item *VolumeHistoryItem) bool {
+		err = scanVolumeHistoryRows(svc, d.Get("vpc_id").(string), volumeId, historyTypeRestoreKeep, submitted, func(item *VolumeHistoryItem) bool {
 			if startedAt == "" {
 				row = item
 				return false

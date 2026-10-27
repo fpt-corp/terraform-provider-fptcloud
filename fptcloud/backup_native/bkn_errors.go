@@ -80,7 +80,8 @@ func isNotFound(err error) bool {
 }
 
 // msgNotAvailableForDelete is in the message of a delete the API refuses
-// while a backup or restore of the VM runs (DeleteBackupController.py:513-522).
+// while a backup or restore of the VM or volume runs
+// (DeleteBackupController.py:513-522, delete_restore_point_controller.py:62-73).
 const msgNotAvailableForDelete = "not available for delete"
 
 // hintFor returns advice for a failure the user can act on, or "".
@@ -98,7 +99,7 @@ func hintFor(code int, message string) string {
 	case strings.Contains(m, "invalid fke volume"):
 		return "only FKE persistent volumes (names starting with pv-fke) can be backed up"
 	case strings.Contains(m, msgNotAvailableForDelete):
-		return "a backup or restore of the VM is running, or its backup job is still being set up; wait for it to end and apply again"
+		return "a backup or restore of the VM or volume is running, or its backup job is still being set up; wait for it to end and apply again"
 	case strings.Contains(m, "unavailable") || strings.Contains(m, "busy"):
 		return "the job or restore point is busy; wait for the running operation to finish and apply again. A volume restore point that stays busy may be stuck after a failed restore; use another restore point"
 	case code >= 500:

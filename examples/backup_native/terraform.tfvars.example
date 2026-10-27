@@ -7,14 +7,15 @@ notification_method_ids = ["your_notification_method_id"]
 vm_id     = "your_throwaway_vm_id"
 volume_id = "your_pv_fke_volume_id"
 
-# Runs, restores and the purge take any value, a request time is recommended;
+# Runs, restores and the purges take any value, a request time is recommended;
 # a new value repeats the action. Clear the restores before a run or a purge: they follow
 # the newest restore point.
 # vm_backup_run           = "2026-10-26 09:00:00"
 # volume_backup_run       = "2026-10-26 09:00:00"
 # vm_restore              = "2026-10-26 09:30:00"
 # volume_restore          = "2026-10-26 09:30:00"
-# vm_restore_points_purge = "2026-10-26 10:00:00"
+# vm_restore_points_purge     = "2026-10-26 10:00:00"
+# volume_restore_points_purge = "2026-10-26 10:00:00"
 
 # VM restore. keep creates a new VM with the flavor, subnet and security
 # groups below; overwrite replaces the disk of vm_id.

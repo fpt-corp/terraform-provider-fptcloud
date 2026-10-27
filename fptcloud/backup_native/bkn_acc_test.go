@@ -278,3 +278,38 @@ data "fptcloud_backup_native_vm_restore_points" "test" {
 		},
 	})
 }
+
+// TestAccBackupNativeVolumeRestorePointsPurge_basic deletes every restore
+// point of BKN_PURGE_VOLUME_ID, under any job, then checks that none is left.
+// It has its own variable so that no other test's volume loses its restore
+// points.
+func TestAccBackupNativeVolumeRestorePointsPurge_basic(t *testing.T) {
+	env := requireEnv(t, "VPC_ID", "BKN_PURGE_VOLUME_ID")
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { test_helper.TestPreCheck(t) },
+		ProviderFactories: test_helper.TestProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "fptcloud_backup_native_volume_restore_points_purge" "test" {
+  vpc_id    = %q
+  volume_id = %q
+}
+`, env["VPC_ID"], env["BKN_PURGE_VOLUME_ID"]),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("fptcloud_backup_native_volume_restore_points_purge.test", "status", "success"),
+					resource.TestCheckResourceAttrSet("fptcloud_backup_native_volume_restore_points_purge.test", "restore_point_count"),
+				),
+			},
+			{
+				Config: fmt.Sprintf(`
+data "fptcloud_backup_native_volume_restore_points" "test" {
+  vpc_id    = %q
+  volume_id = %q
+}
+`, env["VPC_ID"], env["BKN_PURGE_VOLUME_ID"]),
+				Check: resource.TestCheckResourceAttr("data.fptcloud_backup_native_volume_restore_points.test", "restore_points.#", "0"),
+			},
+		},
+	})
+}

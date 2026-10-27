@@ -11,11 +11,12 @@ import (
 // changed value must replace the resource.
 func TestOneShotResourcesHaveTriggers(t *testing.T) {
 	resources := map[string]*schema.Resource{
-		"vm_job_run":              ResourceVmJobRun(),
-		"volume_job_run":          ResourceVolumeJobRun(),
-		"vm_restore":              ResourceVmRestore(),
-		"volume_restore":          ResourceVolumeRestore(),
-		"vm_restore_points_purge": ResourceVmRestorePointsPurge(),
+		"vm_job_run":                  ResourceVmJobRun(),
+		"volume_job_run":              ResourceVolumeJobRun(),
+		"vm_restore":                  ResourceVmRestore(),
+		"volume_restore":              ResourceVolumeRestore(),
+		"vm_restore_points_purge":     ResourceVmRestorePointsPurge(),
+		"volume_restore_points_purge": ResourceVolumeRestorePointsPurge(),
 	}
 	for name, r := range resources {
 		triggers, ok := r.Schema["triggers"]

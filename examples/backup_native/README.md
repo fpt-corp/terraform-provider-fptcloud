@@ -1,6 +1,6 @@
 # Backup Native example
 
-A runnable configuration that exercises every Backup Native resource and data source: a VM backup job, a volume backup job, a manual run of each, their restore point lists, a VM and a volume restore, and a purge of the VM's restore points. Use it to try the provider by hand against a real VPC.
+A runnable configuration that exercises every Backup Native resource and data source: a VM backup job, a volume backup job, a manual run of each, their restore point lists, a VM and a volume restore, and a purge of the VM's and of the volume's restore points. Use it to try the provider by hand against a real VPC.
 
 Applying it creates real jobs and restores, which may incur cost. The purge deletes restore points for good.
 
@@ -43,7 +43,7 @@ Run every command from this folder. Nothing needs to be pushed or published: `.t
 
 5. To run a job now instead of waiting for its schedule, set `vm_backup_run` or `volume_backup_run` and apply. Any value works; the time you ask for the run, for example `"2026-10-26 09:00:00"`, is recommended so the state keeps the time of the last request. Apply waits for the run to end; the `vm_job_run` and `volume_job_run` outputs show its status. Set a new value to run it again. The same holds for every `triggers` value (runs, restores, purge). Avoid `timestamp()`: it changes on every plan and repeats the action on every apply.
 6. After a backup has run, set `vm_restore` or `volume_restore`, for example to the time you ask for the restore, and apply again. The restore uses the newest restore point. The `vm_restore_status` and `volume_restore_status` outputs show the result. Clear the variable before the next manual backup, or the apply after it restores again.
-7. To delete every restore point of `vm_id`, under any job, clear `vm_restore`, set `vm_restore_points_purge`, for example to the time you ask for the purge, and apply. Apply waits for the deletion to end; the `vm_restore_points_purge` output shows how many restore points there were. A new value purges again.
+7. To delete every restore point of `vm_id`, under any job, clear `vm_restore`, set `vm_restore_points_purge`, for example to the time you ask for the purge, and apply. Apply waits for the deletion to end; the `vm_restore_points_purge` output shows how many restore points there were. A new value purges again. `volume_restore_points_purge` does the same for `volume_id`.
 8. Run `terraform destroy` to delete the jobs. Destroying a restore only removes it from state; the restored VM or volume stays and must be deleted in the portal.
 
 ## Things to check

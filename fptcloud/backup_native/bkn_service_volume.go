@@ -28,6 +28,10 @@ type VolumeService interface {
 	ListVolumeRestorePoints(vpcId string, volumeId string) ([]VolumeRestorePoint, error)
 	RestoreVolume(vpcId string, volumeId string, p VolumeRestorePayload) error
 	ListVolumeHistoryPage(vpcId string, page int, pageSize int) (*VolumeHistoryPage, error)
+	// DeleteAllVolumeRestorePoints starts deleting every restore point of the
+	// volume. It returns a restorePointsBusy error while the API refuses the
+	// request.
+	DeleteAllVolumeRestorePoints(vpcId string, volumeId string) error
 }
 
 func NewVolumeService(client *common.Client) VolumeService {
@@ -218,4 +222,14 @@ func (s *service) ListVolumeHistoryPage(vpcId string, page int, pageSize int) (*
 		return nil, fmt.Errorf("%s: could not parse the response: %w", action, err)
 	}
 	return &result, nil
+}
+
+func (s *service) DeleteAllVolumeRestorePoints(vpcId string, volumeId string) error {
+	const action = "deleting the volume's restore points"
+	raw, err := s.client.SendDeleteRequest(common.ApiPath.BackupNativeVolumeDeleteRestorePoints(vpcId, volumeId))
+	if err != nil {
+		return asRestorePointsBusy(err, wrapAPIError(action, err))
+	}
+	_, err = decodeEnvelope(raw, action)
+	return err
 }

@@ -51,8 +51,8 @@ const (
 	// historyTypeRestoreKeep is a restore into a new VM (v1) or a new volume
 	// (v2); both APIs write the same type.
 	historyTypeRestoreKeep = "Restore keep"
-	// historyTypePurge is the type of a delete-all request
-	// (HistoryActionType.BACKUP_RESTORE_POINTS_DELETION).
+	// historyTypePurge is the type of a delete-all request of a VM (v1) or a
+	// volume (v2) (BACKUP_RESTORE_POINTS_DELETION); both APIs write it.
 	historyTypePurge = "Delete all backup restore point"
 )
 

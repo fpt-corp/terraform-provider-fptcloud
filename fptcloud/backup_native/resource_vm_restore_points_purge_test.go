@@ -125,7 +125,7 @@ func TestSubmitVmRestorePointsPurgeReportsTheLastRefusalOnTimeout(t *testing.T) 
 	_, _, err := submitVmRestorePointsPurge(context.Background(), NewVmService(client), "vpc-1", "vm-1", time.Now().Add(200*time.Millisecond))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "waiting for the API to accept deleting the restore points of VM vm-1")
-	assert.Contains(t, err.Error(), "a backup or restore of the VM is running")
+	assert.Contains(t, err.Error(), "a backup or restore of the VM or volume is running")
 }
 
 func TestCreateVmRestorePointsPurgeStopsOnOtherErrors(t *testing.T) {

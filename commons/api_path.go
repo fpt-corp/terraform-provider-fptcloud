@@ -331,14 +331,15 @@ var ApiPath = struct {
 	BackupNativeFloatingIps           func(vpcId string, page int, pageSize int) string
 
 	// Backup Native - v2 Backup Volume (volume jobs). User API only.
-	BackupNativeVolumeJobs          func(vpcId string, page int, pageSize int) string
-	BackupNativeVolumeJobCreate     func(vpcId string) string
-	BackupNativeVolumeJob           func(vpcId string, jobId string) string
-	BackupNativeVolumeJobActions    func(vpcId string, jobId string) string
-	BackupNativeVolumeJobExecutions func(vpcId string, jobId string) string
-	BackupNativeVolumeRestorePoints func(vpcId string, volumeId string) string
-	BackupNativeVolumeRestore       func(vpcId string, volumeId string) string
-	BackupNativeVolumeHistory       func(vpcId string, page int, pageSize int) string
+	BackupNativeVolumeJobs                func(vpcId string, page int, pageSize int) string
+	BackupNativeVolumeJobCreate           func(vpcId string) string
+	BackupNativeVolumeJob                 func(vpcId string, jobId string) string
+	BackupNativeVolumeJobActions          func(vpcId string, jobId string) string
+	BackupNativeVolumeJobExecutions       func(vpcId string, jobId string) string
+	BackupNativeVolumeRestorePoints       func(vpcId string, volumeId string) string
+	BackupNativeVolumeRestore             func(vpcId string, volumeId string) string
+	BackupNativeVolumeHistory             func(vpcId string, page int, pageSize int) string
+	BackupNativeVolumeDeleteRestorePoints func(vpcId string, volumeId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -1460,5 +1461,10 @@ var ApiPath = struct {
 	},
 	BackupNativeVolumeHistory: func(vpcId string, page int, pageSize int) string {
 		return fmt.Sprintf("/v2/vpc/%s/backup-volume/history/combined-history?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	// Deletes every restore point of the volume, under any job
+	// (user_api.py:571). The route says volume, not volumes.
+	BackupNativeVolumeDeleteRestorePoints: func(vpcId string, volumeId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/volume/%s/restore_points", vpcId, volumeId)
 	},
 }

@@ -61,7 +61,7 @@ func TestHintFor(t *testing.T) {
 		{400, "Volumes ['v'] is already registered.", "fptcloud_backup_native_volume_jobs"},
 		{400, "Invalid fke volume", "pv-fke"},
 		{400, "Resource is unavailable", "busy"},
-		{400, "Resource is not available for delete", "a backup or restore of the VM is running"},
+		{400, "Resource is not available for delete", "a backup or restore of the VM or volume is running"},
 		{500, "There is an unexpected error", "check that vpc_id is correct"},
 		{400, "Backup schedule name has already existed", ""},
 	}

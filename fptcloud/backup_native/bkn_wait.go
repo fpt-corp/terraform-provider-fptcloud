@@ -360,11 +360,11 @@ func waitVmRestore(ctx context.Context, svc VmService, vpcId, vmId, historyType 
 	return last, nil
 }
 
-// findVolumeRestoreRow returns the newest "Restore keep" row of this volume
+// findVolumeHistoryRow returns the newest historyType row of this volume
 // that is not in seen, or nil. seen works as in findVmHistoryRow.
-func findVolumeRestoreRow(svc VolumeService, vpcId, volumeId string, since time.Time, seen map[string]bool) (*VolumeHistoryItem, error) {
+func findVolumeHistoryRow(svc VolumeService, vpcId, volumeId, historyType string, since time.Time, seen map[string]bool) (*VolumeHistoryItem, error) {
 	var found *VolumeHistoryItem
-	err := scanVolumeRestoreRows(svc, vpcId, volumeId, since, func(item *VolumeHistoryItem) bool {
+	err := scanVolumeHistoryRows(svc, vpcId, volumeId, historyType, since, func(item *VolumeHistoryItem) bool {
 		if seen[item.StartTime] {
 			return false
 		}
@@ -374,22 +374,22 @@ func findVolumeRestoreRow(svc VolumeService, vpcId, volumeId string, since time.
 	return found, err
 }
 
-// volumeRestoreRowsSeen returns the start times of the rows
-// findVolumeRestoreRow would match before a restore is submitted.
-func volumeRestoreRowsSeen(svc VolumeService, vpcId, volumeId string, since time.Time) (map[string]bool, error) {
+// volumeHistoryRowsSeen returns the start times of the rows
+// findVolumeHistoryRow would match before an action is submitted.
+func volumeHistoryRowsSeen(svc VolumeService, vpcId, volumeId, historyType string, since time.Time) (map[string]bool, error) {
 	seen := map[string]bool{}
-	err := scanVolumeRestoreRows(svc, vpcId, volumeId, since, func(item *VolumeHistoryItem) bool {
+	err := scanVolumeHistoryRows(svc, vpcId, volumeId, historyType, since, func(item *VolumeHistoryItem) bool {
 		seen[item.StartTime] = true
 		return false
 	})
 	return seen, err
 }
 
-// scanVolumeRestoreRows reads combined history newest first and calls visit
-// for each "Restore keep" row of this volume, until visit returns true or the
+// scanVolumeHistoryRows reads combined history newest first and calls visit
+// for each historyType row of this volume, until visit returns true or the
 // rows get older than the cutoff. The endpoint ignores every filter, so
 // matching happens here.
-func scanVolumeRestoreRows(svc VolumeService, vpcId, volumeId string, since time.Time, visit func(*VolumeHistoryItem) bool) error {
+func scanVolumeHistoryRows(svc VolumeService, vpcId, volumeId, historyType string, since time.Time, visit func(*VolumeHistoryItem) bool) error {
 	cutoff := since.Add(-historyClockSkew)
 	for page := 1; page <= maxListPages; page++ {
 		result, err := svc.ListVolumeHistoryPage(vpcId, page, historyPageSize)
@@ -405,7 +405,7 @@ func scanVolumeRestoreRows(svc VolumeService, vpcId, volumeId string, since time
 			if start.Before(cutoff) {
 				return nil
 			}
-			if item.SourceType == historySourceVolume && item.ObjectId == volumeId && item.Type == historyTypeRestoreKeep && visit(item) {
+			if item.SourceType == historySourceVolume && item.ObjectId == volumeId && item.Type == historyType && visit(item) {
 				return nil
 			}
 		}
@@ -433,7 +433,7 @@ func volumeRestoreEnded(volumeId string, row *VolumeHistoryItem) (bool, error) {
 func waitVolumeRestore(ctx context.Context, svc VolumeService, vpcId, volumeId string, since time.Time, seen map[string]bool, timeout time.Duration) (*VolumeHistoryItem, error) {
 	var last *VolumeHistoryItem
 	conf := newStateConf([]string{"waiting"}, []string{"done"}, func() (interface{}, string, error) {
-		row, err := findVolumeRestoreRow(svc, vpcId, volumeId, since, seen)
+		row, err := findVolumeHistoryRow(svc, vpcId, volumeId, historyTypeRestoreKeep, since, seen)
 		if err != nil {
 			return nil, "", readFailed(err)
 		}

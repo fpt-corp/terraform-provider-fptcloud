@@ -201,7 +201,7 @@ func TestWaitVmRestoreStatusIgnoresCase(t *testing.T) {
 	assert.ErrorContains(t, err, "disk full")
 }
 
-func TestFindVolumeRestoreRowSkipsRowsSeenBeforeSubmit(t *testing.T) {
+func TestFindVolumeHistoryRowSkipsRowsSeenBeforeSubmit(t *testing.T) {
 	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
 	_, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + volBase + "/history/combined-history": {{Body: `{"items":[
@@ -209,19 +209,19 @@ func TestFindVolumeRestoreRowSkipsRowsSeenBeforeSubmit(t *testing.T) {
 			{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"success","start_time":"2026-10-13T07:59:40"}],"has_more":false}`}},
 	})
 	svc := NewVolumeService(client)
-	row, err := findVolumeRestoreRow(svc, "vpc-1", "vol-1", since, map[string]bool{"2026-10-13T08:00:20": true})
+	row, err := findVolumeHistoryRow(svc, "vpc-1", "vol-1", historyTypeRestoreKeep, since, map[string]bool{"2026-10-13T08:00:20": true})
 	require.NoError(t, err)
 	require.NotNil(t, row)
 	assert.Equal(t, "2026-10-13T07:59:40", row.StartTime, "the newest row was seen before submit, so the next one matches")
 
-	row, err = findVolumeRestoreRow(svc, "vpc-1", "vol-1", since, map[string]bool{"2026-10-13T08:00:20": true, "2026-10-13T07:59:40": true})
+	row, err = findVolumeHistoryRow(svc, "vpc-1", "vol-1", historyTypeRestoreKeep, since, map[string]bool{"2026-10-13T08:00:20": true, "2026-10-13T07:59:40": true})
 	require.NoError(t, err)
 	assert.Nil(t, row)
 }
 
 // Review focus 5: rows are newest first, so reading stops at the first row
 // older than the cutoff.
-func TestFindVolumeRestoreRowStopsAtCutoff(t *testing.T) {
+func TestFindVolumeHistoryRowStopsAtCutoff(t *testing.T) {
 	since := time.Date(2026, 10, 13, 8, 0, 0, 0, time.UTC)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + volBase + "/history/combined-history": {
@@ -232,7 +232,7 @@ func TestFindVolumeRestoreRowStopsAtCutoff(t *testing.T) {
 				{"source_type":"volume","object_id":"vol-1","type":"Restore keep","status":"success","start_time":"2026-10-13T07:00:00"}],"has_more":true}`},
 		},
 	})
-	row, err := findVolumeRestoreRow(NewVolumeService(client), "vpc-1", "vol-1", since, nil)
+	row, err := findVolumeHistoryRow(NewVolumeService(client), "vpc-1", "vol-1", historyTypeRestoreKeep, since, nil)
 	require.NoError(t, err)
 	assert.Nil(t, row, "the 07:00 row belongs to an earlier restore")
 	assert.Equal(t, 2, api.count("GET "+volBase+"/history/combined-history"), "stops at the cutoff instead of reading every page")

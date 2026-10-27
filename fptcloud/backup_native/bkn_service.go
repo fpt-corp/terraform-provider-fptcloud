@@ -215,8 +215,9 @@ func (s *service) ListVmRestorePoints(vpcId string, vmId string) ([]VmRestorePoi
 }
 
 // restorePointsBusy is the API refusing to delete restore points while a
-// backup or restore of the VM runs, or while the job's AWX template or
-// inventory is not ready (DeleteBackupController.py:513-522).
+// backup or restore of the VM or volume runs, or while the job's AWX template
+// or inventory is not ready (DeleteBackupController.py:513-522,
+// delete_restore_point_controller.py:62-73).
 type restorePointsBusy struct{ error }
 
 func (e restorePointsBusy) Unwrap() error { return e.error }
@@ -226,13 +227,19 @@ func (s *service) DeleteAllVmRestorePoints(vpcId string, vmId string) error {
 	raw, err := s.client.SendDeleteRequest(common.ApiPath.BackupNativeVmDeleteRestorePoints(vpcId, vmId))
 	if err != nil {
 		wrapped := wrapAPIError(action, err)
-		if apiErr := asAPIError(err); apiErr != nil && apiErr.Code == 400 && strings.Contains(strings.ToLower(apiErr.Message), msgNotAvailableForDelete) {
-			return restorePointsBusy{wrapped}
-		}
-		return wrapped
+		return asRestorePointsBusy(err, wrapped)
 	}
 	_, err = decodeEnvelope(raw, action)
 	return err
+}
+
+// asRestorePointsBusy returns wrapped as a restorePointsBusy error when err is
+// the API refusing a delete-all request, and wrapped as it is otherwise.
+func asRestorePointsBusy(err, wrapped error) error {
+	if apiErr := asAPIError(err); apiErr != nil && apiErr.Code == 400 && strings.Contains(strings.ToLower(apiErr.Message), msgNotAvailableForDelete) {
+		return restorePointsBusy{wrapped}
+	}
+	return wrapped
 }
 
 func (s *service) ListVmHistories(vpcId string, historyType string, cutoff time.Time) ([]VmHistory, error) {
