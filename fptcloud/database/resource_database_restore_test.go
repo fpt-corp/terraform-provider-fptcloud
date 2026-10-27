@@ -148,16 +148,8 @@ func TestRestoreFailedKeepsTheClusterId(t *testing.T) {
 	// The new cluster ends in failed.
 	p.mu.Lock()
 	p.restorePoints = p.restorePoints[:1]
+	p.restoreEndsIn = "failed"
 	p.mu.Unlock()
-	go func() {
-		for {
-			p.mu.Lock()
-			for _, c := range p.restored {
-				c["status"] = "failed"
-			}
-			p.mu.Unlock()
-		}
-	}()
 	resp, got := createRestore(t, r, s, restorePlan())
 	require.True(t, resp.Diagnostics.HasError())
 	assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "failed")
