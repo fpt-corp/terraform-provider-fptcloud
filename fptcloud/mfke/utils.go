@@ -21,6 +21,7 @@ import (
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -186,6 +187,15 @@ func TopFields() map[string]schema.Attribute {
 			ElementType: types.StringType,
 			Description: descriptions[attribute],
 		}
+	}
+
+	// The API accepts only a fixed list of timezones; checking it here makes a
+	// wrong value fail at plan time instead of during apply.
+	topLevelAttributes["auto_upgrade_timezone"] = schema.StringAttribute{
+		Optional:    true,
+		Computed:    true,
+		Description: descriptions["auto_upgrade_timezone"],
+		Validators:  []validator.String{autoUpgradeTimezoneValidator{}},
 	}
 
 	// tags is a Set, not a List: the API returns a cluster's tags in its own
@@ -2077,6 +2087,13 @@ func internalReadClusterAutoscaler(ca managedKubernetesEngineDataClusterAutoscal
 }
 
 func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.Object, diag2.Diagnostics) {
+	return clusterEndpointAccessFrom(data.Metadata.Labels, data.Spec.Extensions)
+}
+
+// clusterEndpointAccessFrom reads cluster_endpoint_access from the shoot labels
+// and extensions. The cluster list endpoint returns both too, so the
+// fptcloud_managed_kubernetes_engines_v1 data source shares it.
+func clusterEndpointAccessFrom(labels map[string]string, extensions []ExtensionSpec) (types.Object, diag2.Diagnostics) {
 	accessMap := map[string]attr.Value{
 		"type": types.StringValue("public"),
 		"allow_cidr": types.ListValueMust(types.StringType, []attr.Value{
@@ -2085,10 +2102,10 @@ func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.
 	}
 
 	// Determine cluster type from metadata labels
-	if _, hasACL := data.Metadata.Labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
+	if _, hasACL := labels["extensions.extensions.gardener.cloud/acl"]; hasACL {
 		accessMap["type"] = types.StringValue("public")
-	} else if _, hasPrivateNetwork := data.Metadata.Labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
-		for _, extension := range data.Spec.Extensions {
+	} else if _, hasPrivateNetwork := labels["extensions.extensions.gardener.cloud/private-network"]; hasPrivateNetwork {
+		for _, extension := range extensions {
 			if extension.Type == "private-network" && extension.ProviderConfig != nil {
 				if privateCluster, exists := extension.ProviderConfig["privateCluster"].(bool); exists {
 					if privateCluster {
@@ -2103,7 +2120,7 @@ func internalReadClusterEndpointAccess(data managedKubernetesEngineData) (types.
 	}
 
 	// Parse extensions field to get CIDR configuration
-	for _, extension := range data.Spec.Extensions {
+	for _, extension := range extensions {
 		if extension.ProviderConfig == nil {
 			continue
 		}

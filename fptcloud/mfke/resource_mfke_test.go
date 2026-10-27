@@ -63,7 +63,7 @@ func TestManagedKubernetesEngine_AdvancedFeatures(t *testing.T) {
 
 		assert.Contains(t, config, "is_enable_auto_upgrade = true")
 		assert.Contains(t, config, "auto_upgrade_expression = [\"0 2 * * 0\"]")
-		assert.Contains(t, config, "auto_upgrade_timezone   = \"Asia/Bangkok\"")
+		assert.Contains(t, config, "auto_upgrade_timezone   = \"Asia/Saigon\"")
 	})
 
 	t.Run("TestHibernationSchedules", func(t *testing.T) {
@@ -259,7 +259,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "test" {
   
   is_enable_auto_upgrade = %t
   auto_upgrade_expression = ["0 2 * * 0"]
-  auto_upgrade_timezone   = "Asia/Bangkok"
+  auto_upgrade_timezone   = "Asia/Saigon"
   
   pools {
     name                  = "worker-pool"

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"terraform-provider-fptcloud/commons"
@@ -139,4 +140,49 @@ func (m *MfkeApiClient) sendRequestWithHeader(request *http.Request, infraType s
 	request.Header.Set("infra-type", strings.ToUpper(infraType))
 
 	return m.Client.SendRequest(request)
+}
+
+// managedKubernetesEngineListPageSize is the page size used when listing the
+// clusters of a VPC. A VPC rarely holds more than a handful of clusters, so
+// one request is normally enough.
+const managedKubernetesEngineListPageSize = 1000
+
+// listClusters returns every managed FKE cluster in the VPC, v1 and v2 alike.
+// Pages are requested until one comes back short. A cluster that shows up on
+// two pages is kept once, and paging stops if a page adds nothing new, so an
+// API that ignores the page parameter cannot loop forever.
+func (m *MfkeApiClient) listClusters(vpcId string, platform string) ([]managedKubernetesEngineShoot, error) {
+	all := []managedKubernetesEngineShoot{}
+	seen := map[string]bool{}
+
+	for page := 1; ; page++ {
+		path := commons.ApiPath.ManagedFKEList(vpcId, page, managedKubernetesEngineListPageSize, platform)
+		a, err := m.sendGet(path, platform)
+		if err != nil {
+			return nil, err
+		}
+
+		var response managedKubernetesEngineListResponse
+		if err = json.Unmarshal(a, &response); err != nil {
+			return nil, err
+		}
+		if response.Error {
+			return nil, fmt.Errorf("error listing clusters of VPC %s: %v", vpcId, response.Mess)
+		}
+
+		items := response.Data.Items
+		added := 0
+		for _, item := range items {
+			if seen[item.Metadata.Name] {
+				continue
+			}
+			seen[item.Metadata.Name] = true
+			all = append(all, item)
+			added++
+		}
+
+		if len(items) < managedKubernetesEngineListPageSize || added == 0 {
+			return all, nil
+		}
+	}
 }

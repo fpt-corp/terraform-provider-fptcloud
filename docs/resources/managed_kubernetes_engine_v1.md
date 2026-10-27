@@ -172,7 +172,8 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_hibernation" {
 ### Configure Automatic Kubernetes Version Upgrades
 
 Use a five-field cron expression (`minute hour day-of-month month day-of-week`)
-and an IANA timezone. For example, `0 2 * * 0` means every Sunday at 02:00 in
+and one of the timezones listed under `auto_upgrade_timezone`. For example,
+`0 2 * * 0` means every Sunday at 02:00 in
 the configured timezone.
 
 ```hcl
@@ -184,7 +185,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "example_with_auto_upgrade" {
   # Allow M-FKE to perform version upgrades every Sunday at 02:00 (UTC+7).
   is_enable_auto_upgrade  = true
   auto_upgrade_expression = ["0 2 * * 0"]
-  auto_upgrade_timezone   = "Asia/Bangkok"
+  auto_upgrade_timezone   = "Asia/Saigon"
 
   pools {
     name             = "worker-pool-1"
@@ -307,7 +308,7 @@ resource "fptcloud_managed_kubernetes_engine_v1" "complete_example" {
   # Automatic Kubernetes version upgrade: every Sunday at 02:00 local time.
   is_enable_auto_upgrade  = true
   auto_upgrade_expression = ["0 2 * * 0"]  # Every Sunday at 2 AM
-  auto_upgrade_timezone   = "Asia/Ho_Chi_Minh"
+  auto_upgrade_timezone   = "Asia/Saigon"
 
   # Hibernation schedules
   hibernation_schedules = [
@@ -493,7 +494,7 @@ Both `tags` and a pool's `pool_tags` are sets: order is not significant, and reo
 #### Auto Upgrade Configuration
 * `is_enable_auto_upgrade` - (Optional) Allows the M-FKE service to perform automatic Kubernetes version upgrades during the configured maintenance schedules. Default: `false`. When set to `false`, remove both `auto_upgrade_expression` and `auto_upgrade_timezone` from the resource configuration.
 * `auto_upgrade_expression` - (Optional) List of five-field cron expressions (`minute hour day-of-month month day-of-week`) defining when M-FKE may perform an automatic upgrade. Configure at least one expression only when auto-upgrade is enabled. Do not configure this argument when `is_enable_auto_upgrade` is `false`.
-* `auto_upgrade_timezone` - (Optional) IANA timezone used to evaluate `auto_upgrade_expression`, for example `"Asia/Bangkok"`. Configure this argument only when auto-upgrade is enabled. Do not configure it when `is_enable_auto_upgrade` is `false`.
+* `auto_upgrade_timezone` - (Optional) Timezone used to evaluate `auto_upgrade_expression`. Must be one of `UTC`, `Asia/Saigon`, `Asia/Singapore`, `Asia/Seoul`, `Asia/Qatar`, `America/New_York`, `Europe/London` or `Europe/Berlin`; other timezones fail at plan time. Default: `Asia/Saigon`. Configure this argument only when auto-upgrade is enabled. Do not configure it when `is_enable_auto_upgrade` is `false`.
 
 The M-FKE service determines the target Kubernetes version; these fields only
 control whether automatic upgrades are enabled and when they may run. All three

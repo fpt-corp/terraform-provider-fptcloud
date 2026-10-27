@@ -3,7 +3,6 @@ package fptcloud_mfke
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	fptcloud_dfke "terraform-provider-fptcloud/fptcloud/dfke"
 	fptcloud_subnet "terraform-provider-fptcloud/fptcloud/subnet"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	diag2 "github.com/hashicorp/terraform-plugin-framework/diag"
@@ -23,11 +23,77 @@ var (
 	_ datasource.DataSourceWithConfigure = &datasourceManagedKubernetesEngine{}
 )
 
+// datasourceManagedKubernetesEngine reads one managed FKE cluster. It has its
+// own model rather than the resource's, so a change to the resource cannot
+// break it, and it reports the same attributes as one element of
+// fptcloud_managed_kubernetes_engines_v1, plus what only the detail endpoint
+// returns.
 type datasourceManagedKubernetesEngine struct {
 	client        *commons.Client
 	mfkeClient    *MfkeApiClient
 	subnetClient  fptcloud_subnet.SubnetService
 	tenancyClient *fptcloud_dfke.TenancyApiClient
+}
+
+type managedKubernetesEngineDetail struct {
+	VpcId                 types.String                        `tfsdk:"vpc_id"`
+	ClusterName           types.String                        `tfsdk:"cluster_name"`
+	Id                    types.String                        `tfsdk:"id"`
+	K8SVersion            types.String                        `tfsdk:"k8s_version"`
+	Purpose               types.String                        `tfsdk:"purpose"`
+	IsRunning             types.Bool                          `tfsdk:"is_running"`
+	ClusterEndpointAccess types.Object                        `tfsdk:"cluster_endpoint_access"`
+	NetworkType           types.String                        `tfsdk:"network_type"`
+	NodeNetwork           types.String                        `tfsdk:"node_network"`
+	NodePrefix            types.String                        `tfsdk:"node_prefix"`
+	PodNetwork            types.String                        `tfsdk:"pod_network"`
+	PodPrefix             types.String                        `tfsdk:"pod_prefix"`
+	ServiceNetwork        types.String                        `tfsdk:"service_network"`
+	ServicePrefix         types.String                        `tfsdk:"service_prefix"`
+	K8SMaxPod             types.Int64                         `tfsdk:"k8s_max_pod"`
+	CreatedAt             types.String                        `tfsdk:"created_at"`
+	Tags                  types.Set                           `tfsdk:"tags"`
+	Pools                 []managedKubernetesEngineDetailPool `tfsdk:"pools"`
+}
+
+type managedKubernetesEngineDetailPool struct {
+	Name                   types.String `tfsdk:"name"`
+	WorkerType             types.String `tfsdk:"worker_type"`
+	MachineType            types.String `tfsdk:"machine_type"`
+	VGpuID                 types.String `tfsdk:"vgpu_id"`
+	StorageProfile         types.String `tfsdk:"storage_profile"`
+	WorkerDiskSize         types.Int64  `tfsdk:"worker_disk_size"`
+	ScaleMin               types.Int64  `tfsdk:"scale_min"`
+	ScaleMax               types.Int64  `tfsdk:"scale_max"`
+	WorkerBase             types.Bool   `tfsdk:"worker_base"`
+	IsEnableAutoRepair     types.Bool   `tfsdk:"is_enable_auto_repair"`
+	NetworkID              types.String `tfsdk:"network_id"`
+	PoolTags               types.Set    `tfsdk:"pool_tags"`
+	DriverInstallationType types.String `tfsdk:"driver_installation_type"`
+	GpuDriverVersion       types.String `tfsdk:"gpu_driver_version"`
+	MaxClient              types.Int64  `tfsdk:"max_client"`
+	GpuSharingClient       types.String `tfsdk:"gpu_sharing_client"`
+}
+
+// managedKubernetesEngineDetailPoolAttrTypes is a pool of the list data source
+// plus the fields only the detail endpoint returns.
+var managedKubernetesEngineDetailPoolAttrTypes = func() map[string]attr.Type {
+	attrTypes := map[string]attr.Type{
+		"network_id":               types.StringType,
+		"pool_tags":                types.SetType{ElemType: types.StringType},
+		"driver_installation_type": types.StringType,
+		"gpu_driver_version":       types.StringType,
+		"max_client":               types.Int64Type,
+		"gpu_sharing_client":       types.StringType,
+	}
+	for name, attrType := range managedKubernetesEnginePoolAttrTypes {
+		attrTypes[name] = attrType
+	}
+	return attrTypes
+}()
+
+func NewDataSourceManagedKubernetesEngine() datasource.DataSource {
+	return &datasourceManagedKubernetesEngine{}
 }
 
 func (d *datasourceManagedKubernetesEngine) Configure(ctx context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) {
@@ -56,419 +122,238 @@ func (d *datasourceManagedKubernetesEngine) Metadata(ctx context.Context, reques
 }
 
 func (d *datasourceManagedKubernetesEngine) Schema(ctx context.Context, request datasource.SchemaRequest, response *datasource.SchemaResponse) {
-	topLevelAttributes := d.topFields()
-	poolAttributes := d.poolFields()
-
-	topLevelAttributes["id"] = schema.StringAttribute{
-		Computed: true,
+	computedString := func(description string) schema.StringAttribute {
+		return schema.StringAttribute{Computed: true, Description: description}
 	}
-	topLevelAttributes["cluster_name"] = schema.StringAttribute{
-		Required: true,
+	computedInt := func(description string) schema.Int64Attribute {
+		return schema.Int64Attribute{Computed: true, Description: description}
 	}
-	topLevelAttributes["vpc_id"] = schema.StringAttribute{
-		Required: true,
+	computedBool := func(description string) schema.BoolAttribute {
+		return schema.BoolAttribute{Computed: true, Description: description}
 	}
 
 	response.Schema = schema.Schema{
-		Description: "Retrieve information about a managed FKE cluster.",
-		Attributes:  topLevelAttributes,
-	}
-
-	response.Schema.Blocks = map[string]schema.Block{
-		"pools": schema.ListNestedBlock{
-			NestedObject: schema.NestedBlockObject{
-				Attributes: poolAttributes,
+		Description: "Retrieve information about a managed FKE cluster. Attribute names follow the " +
+			"`fptcloud_managed_kubernetes_engine_v1` resource.",
+		Attributes: map[string]schema.Attribute{
+			"vpc_id": schema.StringAttribute{
+				Required:    true,
+				Description: "The ID of the VPC the cluster belongs to.",
+			},
+			"cluster_name": schema.StringAttribute{
+				Required: true,
+				Description: "The full name of the cluster, e.g. `my-cluster-ab12cd34`, as `id` and `cluster_name` " +
+					"of `fptcloud_managed_kubernetes_engines_v1` report it.",
+			},
+			"id":              computedString("The full name of the cluster, the same as `cluster_name`."),
+			"k8s_version":     computedString("Kubernetes version"),
+			"purpose":         computedString("Cluster purpose: `public`, `private` or `firewall`."),
+			"is_running":      computedBool("`false` when the cluster is hibernated."),
+			"network_type":    computedString("Network plugin, e.g. `calico` or `cilium`."),
+			"node_network":    computedString("Node network (address)"),
+			"node_prefix":     computedString("Node network (prefix)"),
+			"pod_network":     computedString("Pod network (address)"),
+			"pod_prefix":      computedString("Pod network (prefix)"),
+			"service_network": computedString("Service network (address)"),
+			"service_prefix":  computedString("Service network (prefix)"),
+			"k8s_max_pod":     computedInt("Max pods per node"),
+			"created_at":      computedString("Creation time, in RFC 3339 format."),
+			"tags": schema.SetAttribute{
+				Computed:    true,
+				ElementType: types.StringType,
+				Description: "The tag IDs of the cluster.",
+			},
+			"cluster_endpoint_access": schema.ObjectAttribute{
+				Computed:       true,
+				AttributeTypes: clusterEndpointAccessAttrTypes,
+				Description: "Access to the Kubernetes API server: `type` (`public`, `private` or `mixed`) and the " +
+					"allowed CIDR blocks in `allow_cidr`.",
+			},
+			"pools": schema.ListAttribute{
+				Computed:    true,
+				ElementType: types.ObjectType{AttrTypes: managedKubernetesEngineDetailPoolAttrTypes},
+				Description: "The worker pools of the cluster, each with `name`, `worker_type` (flavor ID), " +
+					"`machine_type` (flavor name, e.g. `2C4G`), `vgpu_id` (empty for a pool without GPU), " +
+					"`storage_profile`, `worker_disk_size` (GB), `scale_min`, `scale_max`, `worker_base`, " +
+					"`is_enable_auto_repair`, `network_id`, `pool_tags` (the tag IDs of the pool, inherited " +
+					"cluster tags included), `driver_installation_type`, `gpu_driver_version`, `max_client` and " +
+					"`gpu_sharing_client`.",
 			},
 		},
 	}
 }
 
 func (d *datasourceManagedKubernetesEngine) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) {
-	var state managedKubernetesEngine
-	diags := request.Config.Get(ctx, &state)
-
-	response.Diagnostics.Append(diags...)
+	var state managedKubernetesEngineDetail
+	response.Diagnostics.Append(request.Config.Get(ctx, &state)...)
 	if response.Diagnostics.HasError() {
 		return
 	}
 
-	_, err := d.internalRead(ctx, state.ClusterName.ValueString(), &state)
-	if err != nil {
-		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error calling API", err.Error()))
-		return
-	}
-
-	diags = response.State.Set(ctx, &state)
-	response.Diagnostics.Append(diags...)
-	if response.Diagnostics.HasError() {
-		return
-	}
-}
-
-func NewDataSourceManagedKubernetesEngine() datasource.DataSource {
-	return &datasourceManagedKubernetesEngine{}
-}
-
-func (d *datasourceManagedKubernetesEngine) internalRead(ctx context.Context, id string, state *managedKubernetesEngine) (*managedKubernetesEngineReadResponse, error) {
 	vpcId := state.VpcId.ValueString()
-	tflog.Info(ctx, "Reading state of cluster ID "+id+", VPC ID "+vpcId)
+	clusterName := state.ClusterName.ValueString()
+	tflog.Info(ctx, "Reading managed FKE cluster "+clusterName+" of VPC "+vpcId)
 
 	platform, err := d.tenancyClient.GetVpcPlatform(ctx, vpcId)
 	if err != nil {
-		return nil, err
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error getting VPC platform", err.Error()))
+		return
 	}
-
 	platform = strings.ToLower(platform)
 
-	v1Path := commons.ApiPath.ManagedFKEGet(vpcId, platform, id)
-	v2Path := commons.ApiPath.ManagedFKEGetV2(vpcId, platform, id)
-	primaryPath, fallbackPath := v1Path, v2Path
-	if requiresV2API(platform, state.K8SVersion.ValueString()) {
-		primaryPath, fallbackPath = v2Path, v1Path
-	}
-	a, err := d.mfkeClient.sendGetV2Aware(primaryPath, fallbackPath, platform)
+	shoot, err := d.mfkeClient.getCluster(vpcId, platform, clusterName)
 	if err != nil {
-		return nil, err
+		response.Diagnostics.Append(diag2.NewErrorDiagnostic("Error reading managed FKE cluster "+clusterName, err.Error()))
+		return
 	}
 
-	var response managedKubernetesEngineReadResponse
-	err = json.Unmarshal(a, &response)
-	if err != nil {
-		return nil, err
+	detail, diags := toManagedKubernetesEngineDetail(shoot, d.poolNetworkIds(ctx, vpcId, platform, shoot))
+	response.Diagnostics.Append(diags...)
+	if response.Diagnostics.HasError() {
+		return
 	}
 
-	if response.Error {
-		return nil, fmt.Errorf("error: %v", response.Mess)
-	}
+	detail.VpcId = state.VpcId
+	response.Diagnostics.Append(response.State.Set(ctx, &detail)...)
+}
 
-	data := response.Data
+// poolNetworkIds returns the network ID of each worker pool, keyed by pool
+// name. On OSP every pool sits on the cluster network. On VMW a pool names its
+// network, which is looked up once per name; a name that is not found leaves
+// the pool's network_id empty.
+func (d *datasourceManagedKubernetesEngine) poolNetworkIds(ctx context.Context, vpcId string, platform string, shoot managedKubernetesEngineShoot) map[string]string {
+	clusterNetworkId := shoot.Spec.Provider.InfrastructureConfig.Networks.Id
+	ids := make(map[string]string, len(shoot.Spec.Provider.Workers))
+	byName := map[string]string{}
 
-	state.Id = types.StringValue(data.Metadata.Name)
-	state.Tags = tagSpecsToList(data.Tags)
-	state.VpcId = types.StringValue(vpcId)
-	// keep clusterName
-	//state.NetworkID
-	state.K8SVersion = types.StringValue(data.Spec.Kubernetes.Version)
-
-	if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "public") {
-		state.Purpose = types.StringValue("public")
-	} else if strings.Contains(data.Spec.SeedSelector.MatchLabels.GardenerCloudPurpose, "firewall") {
-		state.Purpose = types.StringValue("firewall")
-	} else {
-		state.Purpose = types.StringValue("private")
-	}
-
-	poolNames, err := validatePoolNames(state.Pools)
-	if err != nil {
-		return nil, err
-	}
-
-	workers := map[string]*managedKubernetesEngineDataWorker{}
-
-	// Sort workers to ensure consistent order: worker_base first, then by name
-	for _, worker := range data.Spec.Provider.Workers {
-		workers[worker.Name] = worker
-
-		if len(state.Pools) == 0 {
-			poolNames = append(poolNames, worker.Name)
-		}
-	}
-
-	var pool []*managedKubernetesEnginePool
-
-	for _, name := range poolNames {
-		w, ok := workers[name]
-		if !ok {
+	for _, w := range shoot.Spec.Provider.Workers {
+		networkName := w.ProviderConfig.NetworkName
+		if platform != "vmw" || networkName == "" {
+			ids[w.Name] = clusterNetworkId
 			continue
 		}
 
-		flavorPoolKey := "fptcloud.com/flavor_pool_" + name
-		flavorId, ok := data.Metadata.Labels[flavorPoolKey]
+		id, ok := byName[networkName]
 		if !ok {
-			return nil, errors.New("missing flavor ID on label " + flavorPoolKey)
+			subnet, err := d.subnetClient.FindSubnetByName(fptcloud_subnet.FindSubnetDTO{NetworkName: networkName, VpcId: vpcId})
+			if err != nil {
+				tflog.Warn(ctx, "Network "+networkName+" of pool "+w.Name+" not found: "+err.Error())
+			} else if subnet != nil {
+				id = subnet.NetworkID
+			}
+			byName[networkName] = id
 		}
-
-		autoRepair := w.AutoRepair()
-
-		// Only use networkId and error from getNetworkInfoByPlatform
-		networkId, _, e := getNetworkInfoByPlatform(ctx, d.subnetClient, vpcId, platform, w, &data)
-
-		if e != nil {
-			return nil, e
-		}
-
-		item := &managedKubernetesEnginePool{
-			WorkerPoolID:           types.StringValue(w.Name),
-			StorageProfile:         types.StringValue(w.Volume.Type),
-			WorkerType:             types.StringValue(flavorId),
-			WorkerDiskSize:         types.Int64Value(int64(parseNumber(w.Volume.Size))),
-			ScaleMin:               types.Int64Value(int64(w.Minimum)),
-			ScaleMax:               types.Int64Value(int64(w.Maximum)),
-			NetworkID:              types.StringValue(networkId),
-			IsEnableAutoRepair:     types.BoolValue(autoRepair),
-			VGpuID:                 types.StringValue(w.ProviderConfig.VGpuID),
-			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
-			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
-			WorkerBase:             types.BoolValue(w.IsWorkerBase()),
-			// Read-only view: report the effective set, inherited tags included.
-			PoolTags: tagSpecsToList(w.Tags),
-		}
-
-		// For GPU pools, read values from addons configuration
-		if w.ProviderConfig.VGpuID != "" {
-			// Read MaxClient from addons configuration
-			maxClientFromAPI := d.MaxClientFromAddons(&data.Spec, w.Name)
-			item.MaxClient = types.Int64Value(maxClientFromAPI)
-
-			// Read GpuSharingClient from addons configuration
-			gpuSharingClientFromAPI := d.GpuSharingClientFromAddons(&data.Spec, w.Name)
-			item.GpuSharingClient = types.StringValue(gpuSharingClientFromAPI)
-		} else {
-			// Non-GPU pools: set default values
-			item.MaxClient = types.Int64Value(0)
-			item.GpuSharingClient = types.StringValue("")
-		}
-
-		pool = append(pool, item)
+		ids[w.Name] = id
 	}
 
-	state.Pools = pool
-
-	podNetwork := strings.Split(data.Spec.Networking.Pods, "/")
-	state.PodNetwork = types.StringValue(podNetwork[0])
-	state.PodPrefix = types.StringValue(podNetwork[1])
-
-	serviceNetwork := strings.Split(data.Spec.Networking.Services, "/")
-	state.ServiceNetwork = types.StringValue(serviceNetwork[0])
-	state.ServicePrefix = types.StringValue(serviceNetwork[1])
-
-	state.K8SMaxPod = types.Int64Value(int64(data.Spec.Kubernetes.Kubelet.MaxPods))
-	// state.NetworkNodePrefix
-
-	return &response, nil
+	return ids
 }
 
-// MaxClient reads the maxClient value from the addons configuration
-// The maxClient is stored in spec.addons.gpuOperator.timeSliceConfig.maxClient
-// Format: ["pool-name:value"] e.g. ["gpu-test:2"]
-func (d *datasourceManagedKubernetesEngine) MaxClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) int64 {
-	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+// toManagedKubernetesEngineDetail maps a shoot read from the detail endpoint.
+// The attributes it shares with fptcloud_managed_kubernetes_engines_v1 come from
+// the same mapping, so the two data sources always agree.
+func toManagedKubernetesEngineDetail(shoot managedKubernetesEngineShoot, networkIds map[string]string) (managedKubernetesEngineDetail, diag2.Diagnostics) {
+	summary, diags := toManagedKubernetesEngineSummary(shoot)
+
+	pools := make([]managedKubernetesEngineDetailPool, 0, len(summary.Pools))
+	for i, p := range summary.Pools {
+		w := shoot.Spec.Provider.Workers[i]
+		pools = append(pools, managedKubernetesEngineDetailPool{
+			Name:                   p.Name,
+			WorkerType:             p.WorkerType,
+			MachineType:            p.MachineType,
+			VGpuID:                 p.VGpuID,
+			StorageProfile:         p.StorageProfile,
+			WorkerDiskSize:         p.WorkerDiskSize,
+			ScaleMin:               p.ScaleMin,
+			ScaleMax:               p.ScaleMax,
+			WorkerBase:             p.WorkerBase,
+			IsEnableAutoRepair:     p.IsEnableAutoRepair,
+			NetworkID:              types.StringValue(networkIds[w.Name]),
+			PoolTags:               tagSpecsToList(w.Tags),
+			DriverInstallationType: types.StringValue(w.Machine.Image.DriverInstallationType),
+			GpuDriverVersion:       types.StringValue(w.Machine.Image.GpuDriverVersion),
+			MaxClient:              types.Int64Value(maxClientFromAddons(shoot.Spec.Addons, w.Name)),
+			GpuSharingClient:       types.StringValue(gpuSharingClientFromAddons(shoot.Spec.Addons, w.Name)),
+		})
+	}
+
+	return managedKubernetesEngineDetail{
+		ClusterName:           summary.ClusterName,
+		Id:                    summary.Id,
+		K8SVersion:            summary.K8SVersion,
+		Purpose:               summary.Purpose,
+		IsRunning:             summary.IsRunning,
+		ClusterEndpointAccess: summary.ClusterEndpointAccess,
+		NetworkType:           summary.NetworkType,
+		NodeNetwork:           summary.NodeNetwork,
+		NodePrefix:            summary.NodePrefix,
+		PodNetwork:            summary.PodNetwork,
+		PodPrefix:             summary.PodPrefix,
+		ServiceNetwork:        summary.ServiceNetwork,
+		ServicePrefix:         summary.ServicePrefix,
+		K8SMaxPod:             summary.K8SMaxPod,
+		CreatedAt:             summary.CreatedAt,
+		Tags:                  summary.Tags,
+		Pools:                 pools,
+	}, diags
+}
+
+// maxClientFromAddons reads a GPU pool's time-slicing client count from
+// spec.addons.gpuOperator.timeSliceConfig.maxClient, whose entries look like
+// "pool-name:2". A pool without an entry reports 0.
+func maxClientFromAddons(addons *AddonsSpec, poolName string) int64 {
+	if addons == nil || addons.GpuOperator == nil || addons.GpuOperator.TimeSliceConfig == nil {
 		return 0
 	}
 
-	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
-		// Parse format "pool-name:value" e.g. "gpu-test:2"
-		if strings.HasPrefix(maxClientStr, poolName+":") {
-			parts := strings.Split(maxClientStr, ":")
-			if len(parts) == 2 {
-				if value, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
-					return value
-				}
-			}
+	for _, entry := range addons.GpuOperator.TimeSliceConfig.MaxClient {
+		name, value, found := strings.Cut(entry, ":")
+		if !found || name != poolName {
+			continue
+		}
+		if n, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return n
 		}
 	}
 	return 0
 }
 
-func (d *datasourceManagedKubernetesEngine) GpuSharingClientFromAddons(spec *managedKubernetesEngineDataSpec, poolName string) string {
-	if spec.Addons == nil || spec.Addons.GpuOperator == nil || spec.Addons.GpuOperator.TimeSliceConfig == nil {
+// gpuSharingClientFromAddons reports "timeSlicing" for a pool that has a
+// time-slicing entry, and "" otherwise.
+func gpuSharingClientFromAddons(addons *AddonsSpec, poolName string) string {
+	if addons == nil || addons.GpuOperator == nil || addons.GpuOperator.TimeSliceConfig == nil {
 		return ""
 	}
 
-	// Check if this pool has TimeSliceConfig (maxClient configuration)
-	for _, maxClientStr := range spec.Addons.GpuOperator.TimeSliceConfig.MaxClient {
-		if strings.HasPrefix(maxClientStr, poolName+":") {
-			// If pool has TimeSliceConfig, it means gpu_sharing_client = "timeSlicing"
+	for _, entry := range addons.GpuOperator.TimeSliceConfig.MaxClient {
+		if name, _, found := strings.Cut(entry, ":"); found && name == poolName {
 			return "timeSlicing"
 		}
 	}
-
-	// If no TimeSliceConfig found for this pool, gpu_sharing_client = "" (empty)
 	return ""
 }
 
-func (d *datasourceManagedKubernetesEngine) topFields() map[string]schema.Attribute {
-	topLevelAttributes := map[string]schema.Attribute{}
-	// Required string fields
-	requiredStrings := []string{
-		"vpc_id", "cluster_name", "k8s_version", "purpose",
-		"pod_network", "pod_prefix", "service_network", "service_prefix",
-		"network_id", "network_overlay",
-	}
-	// Optional string fields
-	optionalStrings := []string{
-		"internal_subnet_lb", "edge_gateway_name", "auto_upgrade_timezone", "network_node_prefix",
-	}
-	// Required int fields
-	requiredInts := []string{}
-	// Optional int fields
-	optionalInts := []string{"k8s_max_pod"}
-	// Optional bool fields
-	optionalBools := []string{"is_enable_auto_upgrade", "is_running"}
-	// Optional list fields
-	optionalLists := []string{"auto_upgrade_expression"}
-
-	for _, attribute := range requiredStrings {
-		topLevelAttributes[attribute] = schema.StringAttribute{
-			Required:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range optionalStrings {
-		topLevelAttributes[attribute] = schema.StringAttribute{
-			Optional:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range requiredInts {
-		topLevelAttributes[attribute] = schema.Int64Attribute{
-			Required:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range optionalInts {
-		topLevelAttributes[attribute] = schema.Int64Attribute{
-			Optional:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range optionalBools {
-		topLevelAttributes[attribute] = schema.BoolAttribute{
-			Optional:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	// tags mirrors the resource: a Set, because the API returns tags in its
-	// own order.
-	topLevelAttributes["tags"] = schema.SetAttribute{
-		Optional:    true,
-		ElementType: types.StringType,
-		Description: descriptions["pool_tags"],
+// getCluster reads one cluster from the detail endpoint. A cluster is served
+// by the v1 or the v2 API family depending on how it was created, which the
+// data source cannot know up front, so a 404 on v1 retries v2.
+func (m *MfkeApiClient) getCluster(vpcId string, platform string, clusterName string) (managedKubernetesEngineShoot, error) {
+	a, err := m.sendGetV2Aware(
+		commons.ApiPath.ManagedFKEGet(vpcId, platform, clusterName),
+		commons.ApiPath.ManagedFKEGetV2(vpcId, platform, clusterName),
+		platform,
+	)
+	if err != nil {
+		return managedKubernetesEngineShoot{}, err
 	}
 
-	for _, attribute := range optionalLists {
-		topLevelAttributes[attribute] = schema.ListAttribute{
-			Optional:    true,
-			ElementType: types.StringType,
-			Description: descriptions[attribute],
-		}
+	var response managedKubernetesEngineShootResponse
+	if err = json.Unmarshal(a, &response); err != nil {
+		return managedKubernetesEngineShoot{}, err
+	}
+	if response.Error {
+		return managedKubernetesEngineShoot{}, fmt.Errorf("error: %v", response.Mess)
 	}
 
-	topLevelAttributes["k8s_version"] = schema.StringAttribute{
-		Required:    true,
-		Description: descriptions["k8s_version"],
-	}
-
-	// Flatten cluster_autoscaler into individual attributes
-	topLevelAttributes["is_enable_auto_scaling"] = schema.BoolAttribute{
-		Optional:    true,
-		Description: descriptions["is_enable_auto_scaling"],
-	}
-	topLevelAttributes["scale_down_delay_after_add"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: descriptions["scale_down_delay_after_add"],
-	}
-	topLevelAttributes["scale_down_delay_after_delete"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: descriptions["scale_down_delay_after_delete"],
-	}
-	topLevelAttributes["scale_down_delay_after_failure"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: descriptions["scale_down_delay_after_failure"],
-	}
-	topLevelAttributes["scale_down_unneeded_time"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: descriptions["scale_down_unneeded_time"],
-	}
-	topLevelAttributes["scale_down_utilization_threshold"] = schema.Float64Attribute{
-		Optional:    true,
-		Description: descriptions["scale_down_utilization_threshold"],
-	}
-	topLevelAttributes["scan_interval"] = schema.Int64Attribute{
-		Optional:    true,
-		Description: descriptions["scan_interval"],
-	}
-	topLevelAttributes["expander"] = schema.StringAttribute{
-		Optional:    true,
-		Description: descriptions["expander"],
-	}
-
-	return topLevelAttributes
-}
-
-func (d *datasourceManagedKubernetesEngine) poolFields() map[string]schema.Attribute {
-	poolLevelAttributes := map[string]schema.Attribute{}
-	// Required string fields
-	requiredStrings := []string{
-		"name", "storage_profile", "worker_type", "network_id",
-	}
-	// Optional string fields
-	optionalStrings := []string{"gpu_sharing_client", "driver_installation_type", "container_runtime", "gpu_driver_version", "network_name", "vgpu_id"}
-	// Required int fields
-	requiredInts := []string{"worker_disk_size", "scale_min", "scale_max"}
-	// Optional int fields
-	optionalInts := []string{"max_client"}
-	// Required bool fields
-	requiredBools := []string{"auto_scale", "is_enable_auto_repair"}
-	// Optional bool fields
-	optionalBools := []string{"is_enable_auto_repair"}
-	// Optional list fields
-	optionalLists := []string{}
-
-	for _, attribute := range requiredStrings {
-		poolLevelAttributes[attribute] = schema.StringAttribute{
-			Required:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range optionalStrings {
-		poolLevelAttributes[attribute] = schema.StringAttribute{
-			Optional:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range requiredInts {
-		poolLevelAttributes[attribute] = schema.Int64Attribute{
-			Required:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range optionalInts {
-		poolLevelAttributes[attribute] = schema.Int64Attribute{
-			Optional:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range requiredBools {
-		poolLevelAttributes[attribute] = schema.BoolAttribute{
-			Required:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range optionalBools {
-		poolLevelAttributes[attribute] = schema.BoolAttribute{
-			Optional:    true,
-			Description: descriptions[attribute],
-		}
-	}
-	for _, attribute := range optionalLists {
-		poolLevelAttributes[attribute] = schema.ListAttribute{
-			Optional:    true,
-			ElementType: types.StringType,
-			Description: descriptions[attribute],
-		}
-	}
-	// kv: list of map[string]string
-	poolLevelAttributes["pool_tags"] = schema.SetAttribute{
-		Optional:    true,
-		ElementType: types.StringType,
-		Description: descriptions["tags"],
-	}
-
-	poolLevelAttributes["kv"] = schema.ListAttribute{
-		Optional:    true,
-		ElementType: types.MapType{ElemType: types.StringType},
-		Description: descriptions["kv"],
-	}
-	return poolLevelAttributes
+	return response.Data, nil
 }

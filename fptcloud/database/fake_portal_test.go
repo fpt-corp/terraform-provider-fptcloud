@@ -37,6 +37,7 @@ type fakePortal struct {
 
 	restorePoints []map[string]string
 	restored      []map[string]string
+	restoreEndsIn string // status a restored cluster reaches after its first read; "" means running
 	flavors       []map[string]interface{}
 	clusters      []map[string]string // clusters of the VPC
 	nextCluster   int
@@ -284,9 +285,14 @@ func (p *fakePortal) serve(w http.ResponseWriter, r *http.Request) {
 
 	case strings.HasPrefix(path, "restore/list-restore-cluster/"):
 		// a restored cluster is "processing" for its first read, then running
+		// (or restoreEndsIn, when a test sets it)
+		endsIn := p.restoreEndsIn
+		if endsIn == "" {
+			endsIn = "running"
+		}
 		for _, c := range p.restored {
 			if c["status"] == "processing" {
-				c["status"] = "running"
+				c["status"] = endsIn
 			}
 		}
 		writeJSON(w, map[string]interface{}{"code": "200", "data": p.restored, "metadata": map[string]int{"total_items": len(p.restored)}})

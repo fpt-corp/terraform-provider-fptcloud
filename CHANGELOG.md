@@ -1,3 +1,15 @@
+## [0.3.85] - 2026-10-26
+
+### Datasource
+
+- Feat: add `fptcloud_managed_kubernetes_engines_v1` to list all managed FKE clusters in a VPC.
+- Feat: `fptcloud_managed_kubernetes_engine_v1` reads clusters
+
+### Resource
+
+- Fix: `auto_upgrade_timezone` on `fptcloud_managed_kubernetes_engine_v1` is validated.
+- Fix: the documentation examples used `Asia/Bangkok` and `Asia/Ho_Chi_Minh`, which the API rejects; they now use `Asia/Saigon`
+
 ## [0.3.84] - 2026-10-24
 
 ### Resource
