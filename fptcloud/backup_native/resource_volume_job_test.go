@@ -149,17 +149,45 @@ func TestUpdateVolumeJobDisablesSchedule(t *testing.T) {
 	assert.Equal(t, "disable", api.last("POST " + volBase + "/backup-jobs/job-9/actions").Body["action"])
 }
 
-// v2 accepts actions only from a settled job; a running backup is busy.
-func TestUpdateVolumeJobWaitsForTheJobToSettleBeforeTheAction(t *testing.T) {
+func TestUpdateVolumeJobFailsAtOnceWhileABackupRuns(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9": {{Body: strings.Replace(volumeJobDetailBody, `"status":"initiated"`, `"status":"40"`, 1)}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVolumeJobSchema(), volumeJobConfig())
+	d.SetId("job-9")
+
+	diags := updateVolumeJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "cannot be updated now")
+	assert.Equal(t, 1, api.count("GET "+volBase+"/backup-jobs/job-9"), "no wait")
+	assert.Equal(t, 0, api.count("PUT "+volBase+"/backup-jobs/job-9"))
+}
+
+func TestUpdateVolumeJobFailsAtOnceWhenTheReadFails(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9": {{Status: 401, Body: `{"message":"Unauthorized Access"}`}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVolumeJobSchema(), volumeJobConfig())
+	d.SetId("job-9")
+
+	diags := updateVolumeJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Unauthorized Access")
+	assert.Equal(t, 1, api.count("GET "+volBase+"/backup-jobs/job-9"), "no retry")
+	assert.Equal(t, 0, api.count("PUT "+volBase+"/backup-jobs/job-9"))
+}
+
+// A scheduled backup starts between the update and the schedule action.
+func TestUpdateVolumeJobScheduleActionFailsAtOnceWhileABackupRuns(t *testing.T) {
 	setFastPolling(t)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + volBase + "/backup-jobs/job-9": {
-			{Body: volumeJobDetailBody}, // settle before the PUT
-			{Body: strings.Replace(volumeJobDetailBody, `"status":"initiated"`, `"status":"40"`, 1)}, // a scheduled backup starts
 			{Body: volumeJobDetailBody},
+			{Body: strings.Replace(volumeJobDetailBody, `"status":"initiated"`, `"status":"40"`, 1)},
 		},
-		"PUT " + volBase + "/backup-jobs/job-9":          {{Body: `{"message":"updated","data":[],"status":true}`}},
-		"POST " + volBase + "/backup-jobs/job-9/actions": {{Body: `{"message":"Request accepted"}`}},
+		"PUT " + volBase + "/backup-jobs/job-9": {{Body: `{"message":"updated","data":[],"status":true}`}},
 	})
 	cfg := volumeJobConfig()
 	cfg["schedule_enabled"] = false
@@ -167,26 +195,39 @@ func TestUpdateVolumeJobWaitsForTheJobToSettleBeforeTheAction(t *testing.T) {
 	d.SetId("job-9")
 
 	diags := updateVolumeJob(context.Background(), d, client)
-	require.False(t, diags.HasError(), "%v", diags)
-	assert.GreaterOrEqual(t, api.servedBefore("GET "+volBase+"/backup-jobs/job-9", "POST "+volBase+"/backup-jobs/job-9/actions"), 2,
-		"the action goes out only after the job reads as settled again")
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "cannot be updated now")
+	assert.Equal(t, 1, api.count("PUT "+volBase+"/backup-jobs/job-9"))
+	assert.Equal(t, 2, api.count("GET "+volBase+"/backup-jobs/job-9"), "no wait")
+	assert.Equal(t, 0, api.count("POST "+volBase+"/backup-jobs/job-9/actions"))
 }
 
-func TestDeleteVolumeJobWaitsForARunningBackup(t *testing.T) {
+func TestDeleteVolumeJobFailsAtOnceWhileABackupRuns(t *testing.T) {
 	setFastPolling(t)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
-		"DELETE " + volBase + "/backup-jobs/job-9": {{Status: 202, Body: `{"message":"Request accepted","status":true}`}},
-		"GET " + volBase + "/backup-jobs/job-9": {
-			{Body: strings.Replace(volumeJobDetailBody, `"status":"initiated"`, `"status":"40"`, 1)},
-			{Body: volumeJobDetailBody},
-			{Status: 400, Body: `{"message":"Backup job not found with id job-9"}`},
-		},
+		"GET " + volBase + "/backup-jobs/job-9": {{Body: strings.Replace(volumeJobDetailBody, `"status":"initiated"`, `"status":"40"`, 1)}},
 	})
 	d := schema.TestResourceDataRaw(t, resourceVolumeJobSchema(), volumeJobConfig())
 	d.SetId("job-9")
 	diags := deleteVolumeJob(context.Background(), d, client)
-	require.False(t, diags.HasError(), "%v", diags)
-	assert.Equal(t, 1, api.servedBefore("GET "+volBase+"/backup-jobs/job-9", "DELETE "+volBase+"/backup-jobs/job-9"))
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "cannot be deleted now")
+	assert.Equal(t, 1, api.count("GET "+volBase+"/backup-jobs/job-9"), "no wait")
+	assert.Equal(t, 0, api.count("DELETE "+volBase+"/backup-jobs/job-9"))
+}
+
+func TestDeleteVolumeJobFailsAtOnceWhenTheReadFails(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + volBase + "/backup-jobs/job-9": {{Status: 401, Body: `{"message":"Unauthorized Access"}`}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVolumeJobSchema(), volumeJobConfig())
+	d.SetId("job-9")
+	diags := deleteVolumeJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Unauthorized Access")
+	assert.Equal(t, 1, api.count("GET "+volBase+"/backup-jobs/job-9"), "no retry")
+	assert.Equal(t, 0, api.count("DELETE "+volBase+"/backup-jobs/job-9"))
 }
 
 func TestDeleteVolumeJobWaitsUntilGone(t *testing.T) {
@@ -206,9 +247,8 @@ func TestDeleteVolumeJobWaitsUntilGone(t *testing.T) {
 	require.False(t, diags.HasError(), "%v", diags)
 }
 
-// A job that an earlier, timed-out destroy is still deleting reads as busy and
-// then disappears while the delete waits for it to settle.
-func TestDeleteVolumeJobThatDisappearsWhileWaiting(t *testing.T) {
+// A job already deleting comes from an earlier delete that timed out.
+func TestDeleteVolumeJobWaitsForADeleteInProgress(t *testing.T) {
 	setFastPolling(t)
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + volBase + "/backup-jobs/job-9": {

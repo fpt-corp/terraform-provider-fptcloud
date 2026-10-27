@@ -47,7 +47,7 @@ func createVolumeJobRun(ctx context.Context, d *schema.ResourceData, m interface
 				return fmt.Errorf("volume backup job %s no longer exists", jobId)
 			}
 			if !jobStableStatuses[strings.ToLower(job.Status)] {
-				return jobBusyError("volume", jobId, job.Status)
+				return jobBusyError("volume", "start a backup", jobId, job.Status)
 			}
 			return nil
 		},

@@ -60,7 +60,7 @@ func TestWaitVmJobSettled(t *testing.T) {
 			{Body: `{"data":{"id":"job-1","status":"Success"}}`},
 		},
 	})
-	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToChange, time.Minute)
+	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute)
 	require.NoError(t, err)
 	assert.Equal(t, "Success", job.Status)
 }
@@ -313,40 +313,10 @@ func TestWaitVmJobSettledFailsAtOnceOnFailedBeforeAChange(t *testing.T) {
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Failed"}}`}},
 	})
-	_, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToChange, time.Minute)
+	_, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", time.Minute)
 	assert.ErrorContains(t, err, "Failed")
 	assert.ErrorContains(t, err, "until another run starts")
 	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"))
-}
-
-func TestWaitVmJobSettledBeforeAnUpdateWaitsOnlyForUpdating(t *testing.T) {
-	setFastPolling(t)
-	_, client := newFakeAPI(t, map[string][]fakeResponse{
-		"GET " + vmBase + "/detail": jobStatuses("job-1", "Updating", "Backing up"),
-	})
-	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToUpdate, time.Minute)
-	require.NoError(t, err)
-	assert.Equal(t, "Backing up", job.Status)
-}
-
-func TestWaitVmJobSettledFailsAtOnceOnFailedBeforeAnUpdate(t *testing.T) {
-	setFastPolling(t)
-	api, client := newFakeAPI(t, map[string][]fakeResponse{
-		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Failed"}}`}},
-	})
-	_, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToUpdate, time.Minute)
-	assert.ErrorContains(t, err, "until another run starts")
-	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"))
-}
-
-func TestWaitVmJobSettledTreatsFailedAsSettledBeforeADelete(t *testing.T) {
-	setFastPolling(t)
-	_, client := newFakeAPI(t, map[string][]fakeResponse{
-		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Failed"}}`}},
-	})
-	job, err := waitVmJobSettled(context.Background(), NewVmService(client), "vpc-1", "job-1", settleToDelete, time.Minute)
-	require.NoError(t, err)
-	assert.Equal(t, "Failed", job.Status)
 }
 
 // jobStatuses scripts a job detail route that answers with each status in

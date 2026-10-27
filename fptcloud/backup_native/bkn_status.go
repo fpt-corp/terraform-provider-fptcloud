@@ -11,6 +11,8 @@ const (
 	jobStatusError     = "error"
 	// jobStatusFailed is v1 only: a VM failed in the job's last run.
 	jobStatusFailed = "failed"
+	// jobStatusDeleting is the status of a job whose delete is in progress.
+	jobStatusDeleting = "deleting"
 
 	// The statuses a job reads when its delete failed.
 	vmJobStatusDeleteFailed     = "error_deleting"
@@ -21,7 +23,7 @@ const (
 // schedule switch and a manual backup: v1 update, switch_schedule and
 // start_backup (SwitchScheduleController.py:50), v2 update, actions and
 // executions. Anything else, including a percentage while a backup runs,
-// means busy, except a v1 "failed": see settlePurpose.
+// means busy, except a v1 "failed": see vmJobFailedError.
 var jobStableStatuses = map[string]bool{
 	jobStatusInitiated: true,
 	jobStatusAvailable: true,

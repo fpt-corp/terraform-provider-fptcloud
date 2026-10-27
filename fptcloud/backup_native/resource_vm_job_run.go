@@ -135,7 +135,7 @@ func createVmJobRun(ctx context.Context, d *schema.ResourceData, m interface{}) 
 				return vmJobFailedError(jobId)
 			}
 			if !jobStableStatuses[status] {
-				return jobBusyError("VM", jobId, job.Status)
+				return jobBusyError("VM", "start a backup", jobId, job.Status)
 			}
 			return nil
 		},

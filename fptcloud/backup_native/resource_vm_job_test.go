@@ -228,7 +228,6 @@ func TestDeleteVmJobWaitsUntilGone(t *testing.T) {
 	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"DELETE " + vmBase + "/job-1/delete": {{Status: 202, Body: `{"message":"Delete successfully."}`}},
 		"GET " + vmBase + "/detail": {
-			{Body: `{"data":{"id":"job-1","status":"45"}}`}, // a scheduled backup is running
 			{Body: `{"data":{"id":"job-1","status":"Success"}}`},
 			{Body: `{"data":{"id":"job-1","status":"Deleting"}}`},
 			{Body: `{}`},
@@ -238,20 +237,52 @@ func TestDeleteVmJobWaitsUntilGone(t *testing.T) {
 	d.SetId("job-1")
 	diags := deleteVmJob(context.Background(), d, client)
 	require.False(t, diags.HasError(), "%v", diags)
-	assert.Equal(t, 1, api.servedBefore("GET "+vmBase+"/detail", "DELETE "+vmBase+"/job-1/delete"), "the delete waits for the backup to finish")
-	assert.Equal(t, 4, api.count("GET "+vmBase+"/detail"))
+	assert.Equal(t, 0, api.servedBefore("GET "+vmBase+"/detail", "DELETE "+vmBase+"/job-1/delete"), "one read, no wait")
+	assert.Equal(t, 3, api.count("GET "+vmBase+"/detail"))
 	assert.Equal(t, 1, api.count(vmSyncRoute))
 }
 
-func TestDeleteVmJobThatDisappearsWhileWaiting(t *testing.T) {
+func TestDeleteVmJobFailsAtOnceWhileABackupRuns(t *testing.T) {
 	setFastPolling(t)
-	_, client := newFakeAPI(t, map[string][]fakeResponse{
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"45"}}`}}, // a scheduled backup is running
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+	diags := deleteVmJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "cannot be deleted now")
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"), "no wait")
+	assert.Equal(t, 0, api.count("DELETE "+vmBase+"/job-1/delete"))
+	assert.Equal(t, 0, api.count(vmSyncRoute))
+}
+
+func TestDeleteVmJobFailsAtOnceWhenTheReadFails(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Status: 401, Body: `{"message":"Unauthorized Access"}`}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+	diags := deleteVmJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Unauthorized Access")
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"), "no retry")
+	assert.Equal(t, 0, api.count("DELETE "+vmBase+"/job-1/delete"))
+}
+
+// A job already deleting comes from an earlier delete that timed out.
+func TestDeleteVmJobWaitsForADeleteInProgress(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
 		"GET " + vmBase + "/detail": {{Body: `{"data":{"id":"job-1","status":"Deleting"}}`}, {Body: `{}`}},
 	})
 	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
 	d.SetId("job-1")
 	diags := deleteVmJob(context.Background(), d, client)
 	require.False(t, diags.HasError(), "%v", diags)
+	assert.Equal(t, 0, api.count("DELETE "+vmBase+"/job-1/delete"))
+	assert.Equal(t, 1, api.count(vmSyncRoute))
 }
 
 func TestDeleteVmJobThatIsAlreadyGone(t *testing.T) {
@@ -309,6 +340,78 @@ func TestUpdateVmJobFailsAtOnceOnFailedJob(t *testing.T) {
 	assert.Contains(t, diags[0].Summary, "Failed")
 	assert.Equal(t, 0, api.count("PUT "+vmBase+"/job-1/update"))
 	assert.Equal(t, 0, api.count(vmSyncRoute))
+}
+
+func TestUpdateVmJobFailsAtOnceWhileAnotherUpdateRuns(t *testing.T) {
+	setFastPolling(t)
+	updating := strings.Replace(vmJobDetailBody, `"status":"Initiated"`, `"status":"Updating"`, 1)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: updating}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+
+	diags := updateVmJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Updating")
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"), "no wait")
+	assert.Equal(t, 0, api.count("PUT "+vmBase+"/job-1/update"))
+	assert.Equal(t, 0, api.count(vmSyncRoute))
+}
+
+func TestUpdateVmJobFailsAtOnceWhileABackupRuns(t *testing.T) {
+	setFastPolling(t)
+	backingUp := strings.Replace(vmJobDetailBody, `"status":"Initiated"`, `"status":"45"`, 1)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Body: backingUp}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+
+	diags := updateVmJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "cannot be updated now")
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"), "no wait")
+	assert.Equal(t, 0, api.count("PUT "+vmBase+"/job-1/update"))
+	assert.Equal(t, 0, api.count(vmSyncRoute))
+}
+
+// A scheduled backup starts between the update and the schedule switch.
+func TestUpdateVmJobScheduleSwitchFailsAtOnceWhileABackupRuns(t *testing.T) {
+	setFastPolling(t)
+	backingUp := strings.Replace(vmJobDetailBody, `"status":"Initiated"`, `"status":"45"`, 1)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail":               {{Body: vmJobDetailBody}, {Body: backingUp}},
+		"PUT " + vmBase + "/job-1/update":         {{Status: 202, Body: `{"data":{"task_id":"task-2"}}`}},
+		"GET " + vmBase + "/task/task-2/progress": {{Body: `{"state":"SUCCESS","message":"updated","status_code":200}`}},
+	})
+	cfg := vmJobConfig()
+	cfg["schedule_enabled"] = false
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), cfg)
+	d.SetId("job-1")
+
+	diags := updateVmJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "cannot be updated now")
+	assert.Equal(t, 1, api.count("PUT "+vmBase+"/job-1/update"))
+	assert.Equal(t, 2, api.count("GET "+vmBase+"/detail"), "no wait")
+	assert.Equal(t, 0, api.count("POST "+vmBase+"/switch_schedule"))
+	assert.Equal(t, 1, api.count(vmSyncRoute), "the update went through")
+}
+
+func TestUpdateVmJobFailsAtOnceWhenTheReadFails(t *testing.T) {
+	setFastPolling(t)
+	api, client := newFakeAPI(t, map[string][]fakeResponse{
+		"GET " + vmBase + "/detail": {{Status: 401, Body: `{"message":"Unauthorized Access"}`}},
+	})
+	d := schema.TestResourceDataRaw(t, resourceVmJobSchema(), vmJobConfig())
+	d.SetId("job-1")
+
+	diags := updateVmJob(context.Background(), d, client)
+	require.True(t, diags.HasError())
+	assert.Contains(t, diags[0].Summary, "Unauthorized Access")
+	assert.Equal(t, 1, api.count("GET "+vmBase+"/detail"), "no retry")
+	assert.Equal(t, 0, api.count("PUT "+vmBase+"/job-1/update"))
 }
 
 func TestDeleteVmJobProceedsFromFailed(t *testing.T) {

@@ -122,37 +122,26 @@ func waitForTask(ctx context.Context, svc VmService, vpcId, taskId, action strin
 	return raw.(*TaskProgress).Message, nil
 }
 
-// settlePurpose says what a settle wait is for. A v1 job reads "Failed" after
-// a run in which any VM failed, and keeps it until another run starts. Update,
-// switch_schedule and a manual backup refuse that state, so waiting for it to
-// change would only run out the timeout; delete accepts it. An update waits
-// only for another update to finish: v1 also accepts it while a backup or a
-// restore runs (UpdateBackupJobController.py:79-100).
-type settlePurpose int
-
-const (
-	settleToChange settlePurpose = iota
-	settleToUpdate
-	settleToDelete
-)
-
-// vmJobFailedError reports a v1 job in state Failed, which refuses every
-// change and run (see settlePurpose).
+// vmJobFailedError reports a v1 job in state Failed. A job reads "Failed"
+// after a run in which any VM failed, and keeps it until another run starts.
+// Update, switch_schedule and a manual backup refuse that state, so waiting
+// for it to change would only run out the timeout; delete accepts it.
 func vmJobFailedError(jobId string) error {
 	return fmt.Errorf("VM backup job %s is in state Failed because a VM failed in its last run. "+
 		"The API refuses to change or start the job until another run starts, either a scheduled run or a backend retry; "+
 		"check the backup history in the portal", jobId)
 }
 
-// jobBusyError reports a job that cannot start a manual backup now. A manual
-// backup reads the status once instead of waiting: the run in progress may be
-// a scheduled backup that outlasts the apply's timeout.
-func jobBusyError(kind, jobId, status string) error {
-	return fmt.Errorf("the %s backup job %s cannot start a backup now: it is in state %s, so a backup, a restore or a change of the job is still running. "+
-		"Apply again after it ends", kind, jobId, status)
+// jobBusyError reports a job that cannot take an action now, such as "start a
+// backup" or "be updated". A manual backup, an update and a delete read the
+// status once instead of waiting: the run in progress may be a scheduled
+// backup that outlasts the apply's timeout.
+func jobBusyError(kind, action, jobId, status string) error {
+	return fmt.Errorf("the %s backup job %s cannot %s now: it is in state %s, so a backup, a restore or a change of the job is still running. "+
+		"Apply again after it ends", kind, jobId, action, status)
 }
 
-func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, purpose settlePurpose, timeout time.Duration) (*VmJobDetail, error) {
+func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, timeout time.Duration) (*VmJobDetail, error) {
 	conf := newStateConf([]string{"busy"}, []string{"settled"}, func() (interface{}, string, error) {
 		job, err := svc.GetVmJob(vpcId, jobId)
 		if err != nil {
@@ -163,16 +152,7 @@ func waitVmJobSettled(ctx context.Context, svc VmService, vpcId, jobId string, p
 		}
 		status := strings.ToLower(job.Status)
 		if status == jobStatusFailed {
-			if purpose == settleToDelete {
-				return job, "settled", nil
-			}
 			return nil, "", vmJobFailedError(jobId)
-		}
-		if purpose == settleToUpdate {
-			if status == jobStatusUpdating {
-				return job, "busy", nil
-			}
-			return job, "settled", nil
 		}
 		if jobStableStatuses[status] {
 			return job, "settled", nil

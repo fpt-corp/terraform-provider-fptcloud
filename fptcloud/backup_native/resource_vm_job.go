@@ -144,10 +144,9 @@ func findVmJobByName(svc VmService, vpcId, name string) (*VmJobListItem, error) 
 	return nil, nil
 }
 
+// switchVmJob switches the schedule and waits for the task. The caller makes
+// sure the job is in a stable status first.
 func switchVmJob(ctx context.Context, svc VmService, vpcId, jobId string, enable bool, timeout time.Duration) error {
-	if _, err := waitVmJobSettled(ctx, svc, vpcId, jobId, settleToChange, timeout); err != nil {
-		return err
-	}
 	taskId, err := svc.SwitchVmJobSchedule(vpcId, jobId, enable)
 	if err != nil {
 		return err
@@ -218,6 +217,10 @@ func createVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (di
 		})
 	}
 	if !d.Get("schedule_enabled").(bool) && job.IsEnabled {
+		// A new job may still be initializing, which ends on its own.
+		if _, err := waitVmJobSettled(ctx, svc, vpcId, job.Id, timeout); err != nil {
+			return append(diags, diag.FromErr(err)...)
+		}
 		if err := switchVmJob(ctx, svc, vpcId, job.Id, false, timeout); err != nil {
 			return append(diags, diag.FromErr(err)...)
 		}
@@ -263,6 +266,20 @@ func readVmJob(_ context.Context, d *schema.ResourceData, m interface{}) diag.Di
 	})
 }
 
+// checkVmJobUpdatable fails at once unless the job is in a stable status,
+// instead of waiting for it (see jobBusyError). It guards both the update and
+// the schedule switch.
+func checkVmJobUpdatable(jobId, status string) error {
+	s := strings.ToLower(status)
+	if s == jobStatusFailed {
+		return vmJobFailedError(jobId)
+	}
+	if !jobStableStatuses[s] {
+		return jobBusyError("VM", "be updated", jobId, status)
+	}
+	return nil
+}
+
 func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
@@ -276,7 +293,14 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (di
 	}()
 
 	if vmJobNeedsUpdate(d) {
-		if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), settleToUpdate, timeout); err != nil {
+		job, err := svc.GetVmJob(vpcId, d.Id())
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		if job == nil {
+			return diag.Errorf("VM backup job %s no longer exists", d.Id())
+		}
+		if err := checkVmJobUpdatable(d.Id(), job.Status); err != nil {
 			return diag.FromErr(err)
 		}
 		payload, err := expandVmJobUpdate(d, time.Now())
@@ -304,6 +328,9 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (di
 		return diag.Errorf("VM backup job %s no longer exists", d.Id())
 	}
 	if want := d.Get("schedule_enabled").(bool); job.IsEnabled != want {
+		if err := checkVmJobUpdatable(d.Id(), job.Status); err != nil {
+			return diag.FromErr(err)
+		}
 		changed = true
 		if err := switchVmJob(ctx, svc, vpcId, d.Id(), want, timeout); err != nil {
 			return diag.FromErr(err)
@@ -312,10 +339,19 @@ func updateVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (di
 	return readVmJob(ctx, d, m)
 }
 
+// checkVmJobDeletable fails at once if the API would refuse a delete now,
+// instead of waiting for it (see jobBusyError). Delete accepts a job in state
+// Failed.
+func checkVmJobDeletable(jobId, status string) error {
+	if s := strings.ToLower(status); s == jobStatusFailed || jobStableStatuses[s] {
+		return nil
+	}
+	return jobBusyError("VM", "be deleted", jobId, status)
+}
+
 func deleteVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (diags diag.Diagnostics) {
 	svc := NewVmService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
-	// The API rejects a delete while a backup runs, so wait for it first.
 	job, err := svc.GetVmJob(vpcId, d.Id())
 	if err != nil {
 		return diag.FromErr(err)
@@ -323,15 +359,15 @@ func deleteVmJob(ctx context.Context, d *schema.ResourceData, m interface{}) (di
 	if job == nil {
 		return nil
 	}
-	if _, err := waitVmJobSettled(ctx, svc, vpcId, d.Id(), settleToDelete, d.Timeout(schema.TimeoutDelete)); err != nil {
-		// An earlier delete that timed out may finish while this one waits.
-		if job, getErr := svc.GetVmJob(vpcId, d.Id()); getErr == nil && job == nil {
-			return nil
+	// A job already deleting comes from an earlier delete that timed out, so
+	// this one only waits for it to finish.
+	if strings.ToLower(job.Status) != jobStatusDeleting {
+		if err := checkVmJobDeletable(d.Id(), job.Status); err != nil {
+			return diag.FromErr(err)
 		}
-		return diag.FromErr(err)
-	}
-	if err := svc.DeleteVmJob(vpcId, d.Id()); err != nil {
-		return diag.FromErr(err)
+		if err := svc.DeleteVmJob(vpcId, d.Id()); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 	defer syncVmJobs(svc, vpcId, &diags)
 	if err := waitVmJobGone(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {

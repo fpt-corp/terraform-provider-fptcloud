@@ -3,6 +3,7 @@ package fptcloud_backup_native
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	common "terraform-provider-fptcloud/commons"
@@ -121,10 +122,9 @@ func findVolumeJobByName(svc VolumeService, vpcId, name string) (*VolumeJobListI
 	return nil, nil
 }
 
-func applyVolumeJobUpdate(ctx context.Context, svc VolumeService, vpcId, jobId string, p VolumeJobPayload, timeout time.Duration) error {
-	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
-		return err
-	}
+// applyVolumeJobUpdate sends the update. The caller makes sure the job is in
+// a stable status first.
+func applyVolumeJobUpdate(svc VolumeService, vpcId, jobId string, p VolumeJobPayload) error {
 	failures, err := svc.UpdateVolumeJob(vpcId, jobId, p)
 	if err != nil {
 		return err
@@ -135,13 +135,30 @@ func applyVolumeJobUpdate(ctx context.Context, svc VolumeService, vpcId, jobId s
 	return nil
 }
 
-// setVolumeJobEnabled waits for a running operation to finish first, because
-// v2 accepts actions only from a settled job.
-func setVolumeJobEnabled(ctx context.Context, svc VolumeService, vpcId, jobId string, enabled bool, timeout time.Duration) error {
-	if err := waitVolumeJobSettled(ctx, svc, vpcId, jobId, timeout); err != nil {
-		return err
+// checkVolumeJobChangeable fails at once unless the job is in a stable
+// status, instead of waiting for it (see jobBusyError): v2 accepts an update,
+// an action and a delete only from a settled job.
+func checkVolumeJobChangeable(jobId, action, status string) error {
+	if !jobStableStatuses[strings.ToLower(status)] {
+		return jobBusyError("volume", action, jobId, status)
 	}
-	return svc.SetVolumeJobEnabled(vpcId, jobId, enabled)
+	return nil
+}
+
+// getUpdatableVolumeJob reads the job and fails at once unless it can be
+// updated now.
+func getUpdatableVolumeJob(svc VolumeService, vpcId, jobId string) (*VolumeJobDetail, error) {
+	job, err := svc.GetVolumeJob(vpcId, jobId)
+	if err != nil {
+		return nil, err
+	}
+	if job == nil {
+		return nil, fmt.Errorf("volume backup job %s no longer exists", jobId)
+	}
+	if err := checkVolumeJobChangeable(jobId, "be updated", job.Status); err != nil {
+		return nil, err
+	}
+	return job, nil
 }
 
 // withoutFailedVolumes drops the volumes a create could not add, so the
@@ -215,14 +232,21 @@ func createVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 		})
 	}
 
-	// v2 create does not store description; update does.
+	// v2 create does not store description; update does. A new job may still
+	// be initializing, which ends on its own, so these wait for it.
 	if payload.Description != "" {
-		if err := applyVolumeJobUpdate(ctx, svc, vpcId, job.Id, payload, timeout); err != nil {
+		if err := waitVolumeJobSettled(ctx, svc, vpcId, job.Id, timeout); err != nil {
+			return append(diags, diag.FromErr(err)...)
+		}
+		if err := applyVolumeJobUpdate(svc, vpcId, job.Id, payload); err != nil {
 			return append(diags, diag.FromErr(err)...)
 		}
 	}
 	if !d.Get("schedule_enabled").(bool) {
-		if err := setVolumeJobEnabled(ctx, svc, vpcId, job.Id, false, timeout); err != nil {
+		if err := waitVolumeJobSettled(ctx, svc, vpcId, job.Id, timeout); err != nil {
+			return append(diags, diag.FromErr(err)...)
+		}
+		if err := svc.SetVolumeJobEnabled(vpcId, job.Id, false); err != nil {
 			return append(diags, diag.FromErr(err)...)
 		}
 	}
@@ -265,10 +289,12 @@ func readVolumeJob(_ context.Context, d *schema.ResourceData, m interface{}) dia
 func updateVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	svc := NewVolumeService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
-	timeout := d.Timeout(schema.TimeoutUpdate)
 
 	if d.HasChangesExcept("schedule_enabled") {
-		if err := applyVolumeJobUpdate(ctx, svc, vpcId, d.Id(), expandVolumeJob(d), timeout); err != nil {
+		if _, err := getUpdatableVolumeJob(svc, vpcId, d.Id()); err != nil {
+			return diag.FromErr(err)
+		}
+		if err := applyVolumeJobUpdate(svc, vpcId, d.Id(), expandVolumeJob(d)); err != nil {
 			return diag.FromErr(err)
 		}
 	}
@@ -281,7 +307,10 @@ func updateVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 		return diag.Errorf("volume backup job %s no longer exists", d.Id())
 	}
 	if want := d.Get("schedule_enabled").(bool); job.IsEnabled != want {
-		if err := setVolumeJobEnabled(ctx, svc, vpcId, d.Id(), want, timeout); err != nil {
+		if err := checkVolumeJobChangeable(d.Id(), "be updated", job.Status); err != nil {
+			return diag.FromErr(err)
+		}
+		if err := svc.SetVolumeJobEnabled(vpcId, d.Id(), want); err != nil {
 			return diag.FromErr(err)
 		}
 	}
@@ -291,7 +320,6 @@ func updateVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 func deleteVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	svc := NewVolumeService(m.(*common.Client))
 	vpcId := d.Get("vpc_id").(string)
-	// The API rejects a delete while a backup runs, so wait for it first.
 	job, err := svc.GetVolumeJob(vpcId, d.Id())
 	if err != nil {
 		return diag.FromErr(err)
@@ -299,15 +327,15 @@ func deleteVolumeJob(ctx context.Context, d *schema.ResourceData, m interface{})
 	if job == nil {
 		return nil
 	}
-	if err := waitVolumeJobSettled(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {
-		// An earlier delete that timed out may finish while this one waits.
-		if job, getErr := svc.GetVolumeJob(vpcId, d.Id()); getErr == nil && job == nil {
-			return nil
+	// A job already deleting comes from an earlier delete that timed out, so
+	// this one only waits for it to finish.
+	if strings.ToLower(job.Status) != jobStatusDeleting {
+		if err := checkVolumeJobChangeable(d.Id(), "be deleted", job.Status); err != nil {
+			return diag.FromErr(err)
 		}
-		return diag.FromErr(err)
-	}
-	if err := svc.DeleteVolumeJob(vpcId, d.Id()); err != nil {
-		return diag.FromErr(err)
+		if err := svc.DeleteVolumeJob(vpcId, d.Id()); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 	if err := waitVolumeJobGone(ctx, svc, vpcId, d.Id(), d.Timeout(schema.TimeoutDelete)); err != nil {
 		return diag.FromErr(err)
