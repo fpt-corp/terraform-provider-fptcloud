@@ -899,24 +899,27 @@ func (r *resourceManagedKubernetesEngine) DiffPool(ctx context.Context, from *ma
 		return m
 	}
 	for _, pool := range from.Pools {
+		if pool == nil {
+			continue
+		}
 		fromPool[pool.WorkerPoolID.ValueString()] = pool
-		fmt.Printf("fromPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
 	}
 	for _, pool := range to.Pools {
+		if pool == nil {
+			continue
+		}
 		toPool[pool.WorkerPoolID.ValueString()] = pool
-		fmt.Printf("toPool[%s]: %+v\n", pool.WorkerPoolID.ValueString(), *pool)
 	}
 	if len(fromPool) != len(toPool) {
 		return true
 	}
-	for _, pool := range from.Pools {
-		f := fromPool[pool.WorkerPoolID.ValueString()]
-		t := toPool[pool.WorkerPoolID.ValueString()]
-
-		// Debug logging for MaxClient comparison
-		if f.MaxClient.ValueInt64() != t.MaxClient.ValueInt64() {
-			fmt.Printf("DEBUG: MaxClient changed from %d to %d for pool %s\n",
-				f.MaxClient.ValueInt64(), t.MaxClient.ValueInt64(), pool.WorkerPoolID.ValueString())
+	for name, f := range fromPool {
+		// A pool the plan does not name is being removed. Changing a pool's name
+		// is a delete plus a create, so the counts can still match; this lookup
+		// is what catches it, and dereferencing the missing side used to panic.
+		t, ok := toPool[name]
+		if !ok {
+			return true
 		}
 
 		// Skip KV comparison for system-generated labels (like nvidia.com/device-plugin.config)

@@ -1,3 +1,9 @@
+## [0.3.88] - 2026-10-28
+
+### Resource
+
+- Fix: `fptcloud_managed_kubernetes_engine_v1` ignores empty entries in the worker pool list when it compares and validates pools, instead of crashing
+
 ## [0.3.87] - 2026-10-28
 
 ### Resource

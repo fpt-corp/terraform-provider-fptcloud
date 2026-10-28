@@ -283,8 +283,9 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 
 		network := state.NetworkID.ValueString()
 		for _, pool := range state.Pools {
-			fmt.Println("pool.NetworkID.ValueString(): " + pool.NetworkID.ValueString())
-			fmt.Printf("state.Pools: %v\n", state.Pools)
+			if pool == nil {
+				continue
+			}
 			if pool.NetworkID.ValueString() != network {
 				d := diag2.NewErrorDiagnostic(
 					fmt.Sprintf("Worker network ID mismatch (%s and %s)", network, pool.NetworkID.ValueString()),
@@ -823,10 +824,6 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
 					gpuSharingClientValue = pool.GpuSharingClient.ValueString()
 				}
-
-				// Debug logging
-				fmt.Printf("DEBUG: Pool '%s' - gpu_sharing_client: '%s', max_client: %d\n",
-					pool.WorkerPoolID.ValueString(), gpuSharingClientValue, pool.MaxClient.ValueInt64())
 
 				// If gpu_sharing_client = "" (empty), skip validation
 				if gpuSharingClientValue == "timeSlicing" {
