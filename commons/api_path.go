@@ -312,6 +312,34 @@ var ApiPath = struct {
 
 	// Alert (used for the notification methods of a backup job)
 	AlertNotificationMethods func(vpcId string, level string) string
+
+	// Backup Native - v1 OSP native backup (VM jobs). User API only.
+	BackupNativeVmList                func(vpcId string, page int, pageSize int) string
+	BackupNativeVmCreate              func(vpcId string) string
+	BackupNativeVmDetail              func(vpcId string, jobId string) string
+	BackupNativeVmUpdate              func(vpcId string, jobId string) string
+	BackupNativeVmDelete              func(vpcId string, jobId string) string
+	BackupNativeVmSwitchSchedule      func(vpcId string) string
+	BackupNativeVmStartBackup         func(vpcId string) string
+	BackupNativeVmTaskProgress        func(vpcId string, taskId string) string
+	BackupNativeVmRestorePoints       func(vpcId string, vmId string) string
+	BackupNativeVmDeleteRestorePoints func(vpcId string, vmId string) string
+	BackupNativeVmHistories           func(vpcId string, historyType string, page int, pageSize int) string
+	BackupNativeVmRestore             func(vpcId string) string
+	BackupNativeVmRestoreKeep         func(vpcId string) string
+	BackupNativeVmSync                func(vpcId string) string
+	BackupNativeFloatingIps           func(vpcId string, page int, pageSize int) string
+
+	// Backup Native - v2 Backup Volume (volume jobs). User API only.
+	BackupNativeVolumeJobs                func(vpcId string, page int, pageSize int) string
+	BackupNativeVolumeJobCreate           func(vpcId string) string
+	BackupNativeVolumeJob                 func(vpcId string, jobId string) string
+	BackupNativeVolumeJobActions          func(vpcId string, jobId string) string
+	BackupNativeVolumeJobExecutions       func(vpcId string, jobId string) string
+	BackupNativeVolumeRestorePoints       func(vpcId string, volumeId string) string
+	BackupNativeVolumeRestore             func(vpcId string, volumeId string) string
+	BackupNativeVolumeHistory             func(vpcId string, page int, pageSize int) string
+	BackupNativeVolumeDeleteRestorePoints func(vpcId string, volumeId string) string
 }{
 	SSH: "/v1/user/sshs",
 	Storage: func(vpcId string) string {
@@ -1350,5 +1378,93 @@ var ApiPath = struct {
 			level = "VPC"
 		}
 		return fmt.Sprintf("/v1/vmware/vpc/%s/alert/alarm-notification/list?level=%s", vpcId, url.QueryEscape(level))
+	},
+
+	// Backup Native - v1. The list needs both page and page_size; omitting
+	// either makes the backend fail with HTTP 500 (ListBackupController.py:22).
+	BackupNativeVmList: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/list?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	BackupNativeVmCreate: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/create", vpcId)
+	},
+	BackupNativeVmDetail: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/detail?backup_id=%s", vpcId, url.QueryEscape(jobId))
+	},
+	BackupNativeVmUpdate: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/%s/update", vpcId, jobId)
+	},
+	BackupNativeVmDelete: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/%s/delete", vpcId, jobId)
+	},
+	BackupNativeVmSwitchSchedule: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/switch_schedule", vpcId)
+	},
+	BackupNativeVmStartBackup: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/start_backup", vpcId)
+	},
+	BackupNativeVmTaskProgress: func(vpcId string, taskId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/task/%s/progress", vpcId, taskId)
+	},
+	BackupNativeVmRestorePoints: func(vpcId string, vmId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/restore_points/list?vm_id=%s", vpcId, url.QueryEscape(vmId))
+	},
+	// Deletes every restore point of the VM, under any job (blueprint.py:1350).
+	BackupNativeVmDeleteRestorePoints: func(vpcId string, vmId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/instance/%s/restore_points", vpcId, vmId)
+	},
+	// Rows come back newest first only when both page and page_size are set
+	// (ListHistoryController.py:17-73).
+	BackupNativeVmHistories: func(vpcId string, historyType string, page int, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/histories/list?type=%s&page=%d&page_size=%d",
+			vpcId, url.QueryEscape(historyType), page, pageSize)
+	},
+	BackupNativeVmRestore: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/restore", vpcId)
+	},
+	// The portal calls this "Restore keep"; the route is restore-new.
+	BackupNativeVmRestoreKeep: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/restore-new", vpcId)
+	},
+	// The portal's backup list calls this every minute. Without full=true the
+	// sync updates and removes records but adds none.
+	BackupNativeVmSync: func(vpcId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/osp_native_backup/sync", vpcId)
+	},
+	// is_all=false leaves out floating IPs that are already in use, as the
+	// portal's restore dialog does.
+	BackupNativeFloatingIps: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/ip-address?page=%d&page_size=%d&is_all=false", vpcId, page, pageSize)
+	},
+
+	// Backup Native - v2
+	BackupNativeVolumeJobs: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backup-jobs?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	BackupNativeVolumeJobCreate: func(vpcId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backup-jobs", vpcId)
+	},
+	BackupNativeVolumeJob: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backup-jobs/%s", vpcId, jobId)
+	},
+	BackupNativeVolumeJobActions: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backup-jobs/%s/actions", vpcId, jobId)
+	},
+	BackupNativeVolumeJobExecutions: func(vpcId string, jobId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backup-jobs/%s/executions", vpcId, jobId)
+	},
+	BackupNativeVolumeRestorePoints: func(vpcId string, volumeId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/backups?volume_id=%s", vpcId, url.QueryEscape(volumeId))
+	},
+	BackupNativeVolumeRestore: func(vpcId string, volumeId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/volumes/%s/restore", vpcId, volumeId)
+	},
+	BackupNativeVolumeHistory: func(vpcId string, page int, pageSize int) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/history/combined-history?page=%d&page_size=%d", vpcId, page, pageSize)
+	},
+	// Deletes every restore point of the volume, under any job
+	// (user_api.py:571). The route says volume, not volumes.
+	BackupNativeVolumeDeleteRestorePoints: func(vpcId string, volumeId string) string {
+		return fmt.Sprintf("/v2/vpc/%s/backup-volume/volume/%s/restore_points", vpcId, volumeId)
 	},
 }

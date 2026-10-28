@@ -1,3 +1,30 @@
+## [0.3.87] - 2026-10-28
+
+### Resource
+
+- Feat: add `fptcloud_backup_native_vm_job` to manage VM backup jobs of the Backup Native service: the instances, the retention (1-1000 restore points per instance), the EMAIL notification methods and a `daily`, `weekly` or `monthly` schedule at a time of day in a time zone. `schedule_enabled = false` turns the schedule off. Import with `vpc/<vpc_id>/backup_native_vm_job/<job_id>`
+- Feat: add `fptcloud_backup_native_volume_job` to manage backup jobs of FKE persistent volumes (names starting with `pv-fke`), with the same arguments. Import with `vpc/<vpc_id>/backup_native_volume_job/<job_id>`
+- Feat: add `fptcloud_backup_native_vm_job_run` and `fptcloud_backup_native_volume_job_run` to run a backup job once, outside its schedule, and wait for the run to end. A job that is still running a backup, a restore or a change fails the apply without starting a run
+- Feat: add `fptcloud_backup_native_vm_restore` to restore a VM onto itself (`overwrite`) or into a new VM (`keep`) and wait for the restore to finish. `restore_point_created_at` takes the `created_at` of a restore point; the backend picks the closest one within 10 minutes
+- Feat: add `fptcloud_backup_native_volume_restore` to restore a volume restore point into a new volume and wait for the restore to finish
+- Feat: add `fptcloud_backup_native_vm_restore_points_purge` to delete every restore point of a VM, under any job, past or current, and free their backup quota; the VM's next backup is a full backup. It waits while a backup or a restore of the VM runs, retries while the API answers busy, waits for the deletion to end and warns when restore points remain. `restore_point_count = 0` means there was nothing to delete and no request was sent
+- Feat: add `fptcloud_backup_native_volume_restore_points_purge` to do the same for a volume: it deletes every restore point of the volume, under any job, and the volume's next backup is a full backup. It waits, retries and warns as the VM purge does
+- Feat: the job runs, the restores and the purges run again when a value in `triggers` changes. Any string works; the time of the request, for example `2026-10-26 09:00:00`, is recommended so the state records it. Avoid `timestamp()`: it changes on every plan and repeats the action on every apply. Destroying these resources only removes them from the state
+- Feat: once a job run, a restore or a purge has started, it is saved whatever the outcome, and the next apply does not run it again. A failure, a timeout or an interrupted apply (Ctrl+C) ends the apply with a warning, not an error. `status` keeps the API's value (`Success`, `Failed`, `success`, `error`, `failed`), or `tf_timeout`, `tf_interrupted` or `tf_failed` when the API has none; `message` says why. Each later plan or apply checks `tf_timeout` and `tf_interrupted` once and stores the API's outcome when the action has ended. A job run's synced status may come from a later scheduled run of the job. Press Ctrl+C only once: a second one stops Terraform before it saves, and the next apply runs the action again
+- Feat: after each VM action the API accepts (job create, update or delete, manual backup, restore, purge), the provider asks the portal to sync the VM backups once, so the portal shows the change. It does not wait for the sync, and a failed sync is a warning. The volume API has no sync
+- Feat: a VM backup job can be updated while a backup or a restore runs; the update waits only for another update to finish
+- Feat: creating a job retries the lookup of the new job by name, so a passing read error does not leave a created job out of the state
+- Feat: API errors carry a hint when there is something to do: Backup Native not enabled for the VPC, backup quota exhausted, a VM or volume already in another job, a volume that is not an FKE persistent volume, a busy job or restore point
+
+### Datasource
+
+- Feat: add `fptcloud_backup_native_vm_jobs` and `fptcloud_backup_native_volume_jobs` to list the backup jobs of a VPC, or only the job with a given `name`
+- Feat: add `fptcloud_backup_native_vm_restore_points` and `fptcloud_backup_native_volume_restore_points` to list restore points, newest first. Restore points of a deleted volume backup job are listed too
+
+### Docs
+
+- Add docs and examples for every Backup Native resource and data source, and a runnable configuration in `examples/backup_native` to try them against a real VPC
+
 ## [0.3.86] - 2026-10-27
 
 ### Datasource
