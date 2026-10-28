@@ -1,3 +1,11 @@
+## [0.3.88] - 2026-10-28
+
+### Resource
+
+- Fix: `fptcloud_managed_kubernetes_engine_v1` no longer crashes the provider (`panic: nil pointer dereference` in `DiffPool`) when an update removes a worker pool and adds one with a different name. Changing a pool's `name` deletes the pool and creates a new one; the pool count stays the same, so the old pool was looked up in the plan, not found, and dereferenced. A pool missing from the plan is now reported as a pool change and the worker pools are updated. The crash was already present in earlier versions
+- Fix: empty entries in the worker pool list are skipped when pools are compared and validated, instead of crashing
+- Remove the debug output that printed every worker pool to the console during `plan` and `apply`
+
 ## [0.3.87] - 2026-10-28
 
 ### Resource

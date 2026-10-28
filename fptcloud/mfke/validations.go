@@ -21,6 +21,9 @@ func validatePool(pools []*managedKubernetesEnginePool) *diag2.ErrorDiagnostic {
 
 	groupNames := map[string]bool{}
 	for _, pool := range pools {
+		if pool == nil {
+			continue
+		}
 		name := pool.WorkerPoolID.ValueString()
 		if name == "worker-new" {
 			d := diag2.NewErrorDiagnostic("Invalid worker group name", "Worker group name \"worker-new\" is reserved")
@@ -283,8 +286,9 @@ func validateNetwork(state *managedKubernetesEngine, platform string) *diag2.Err
 
 		network := state.NetworkID.ValueString()
 		for _, pool := range state.Pools {
-			fmt.Println("pool.NetworkID.ValueString(): " + pool.NetworkID.ValueString())
-			fmt.Printf("state.Pools: %v\n", state.Pools)
+			if pool == nil {
+				continue
+			}
 			if pool.NetworkID.ValueString() != network {
 				d := diag2.NewErrorDiagnostic(
 					fmt.Sprintf("Worker network ID mismatch (%s and %s)", network, pool.NetworkID.ValueString()),
@@ -637,19 +641,25 @@ func validateImmutableInt64Field(fieldName string, plan, state types.Int64) diag
 }
 
 func validateImmutablePoolStringField(planPools, statePools []*managedKubernetesEnginePool) diag2.Diagnostic {
-	// if len(planPools) != len(statePools) {
-	// return diag2.NewErrorDiagnostic(
-	// "Pool count mismatch",
-	// "The number of pools in plan and state do not match.",
-	// )
-	// }
-	for i := range planPools {
-		if i >= len(statePools) {
+	// Pools are matched by name: the list order is not stable, and a pool whose
+	// name changes is deleted and created again, so it has nothing to compare.
+	stateByName := map[string]*managedKubernetesEnginePool{}
+	for _, pool := range statePools {
+		if pool != nil {
+			stateByName[pool.WorkerPoolID.ValueString()] = pool
+		}
+	}
+	for _, planPool := range planPools {
+		if planPool == nil {
+			continue
+		}
+		statePool, ok := stateByName[planPool.WorkerPoolID.ValueString()]
+		if !ok {
 			// New pool, nothing to check
 			continue
 		}
-		planVal := planPools[i].ContainerRuntime
-		stateVal := statePools[i].ContainerRuntime
+		planVal := planPool.ContainerRuntime
+		stateVal := statePool.ContainerRuntime
 		if !planVal.IsNull() && !planVal.IsUnknown() && planVal.ValueString() != "" &&
 			!stateVal.IsNull() && !stateVal.IsUnknown() && stateVal.ValueString() != "" &&
 			planVal.ValueString() != stateVal.ValueString() {
@@ -658,6 +668,24 @@ func validateImmutablePoolStringField(planPools, statePools []*managedKubernetes
 				"The 'container_runtime' field in worker pool is immutable and cannot be updated.",
 			)
 		}
+	}
+	return nil
+}
+
+// validatePoolNamesUnique rejects a duplicate pool name. validatePool does this
+// on create; on update DiffPool and the pool request key pools by name, so two
+// pools with one name would overwrite each other.
+func validatePoolNamesUnique(pools []*managedKubernetesEnginePool) diag2.Diagnostic {
+	seen := map[string]bool{}
+	for _, pool := range pools {
+		if pool == nil || pool.WorkerPoolID.IsNull() || pool.WorkerPoolID.IsUnknown() {
+			continue
+		}
+		name := pool.WorkerPoolID.ValueString()
+		if seen[name] {
+			return diag2.NewErrorDiagnostic("Duplicate worker group name", "Worker group name "+name+" is used twice")
+		}
+		seen[name] = true
 	}
 	return nil
 }
@@ -715,8 +743,16 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 		return false
 	}
 
+	if diag := validatePoolNamesUnique(plan.Pools); diag != nil {
+		response.Diagnostics.Append(diag)
+		return false
+	}
+
 	// Validate taints configuration for worker pools during update
 	for _, pool := range plan.Pools {
+		if pool == nil {
+			continue
+		}
 		// Validate scale_max >= scale_min
 		if pool.ScaleMax.ValueInt64() < pool.ScaleMin.ValueInt64() {
 			response.Diagnostics.AddError(
@@ -823,10 +859,6 @@ func ValidateUpdate(state, plan *managedKubernetesEngine, response *resource.Upd
 				if !pool.GpuSharingClient.IsNull() && !pool.GpuSharingClient.IsUnknown() {
 					gpuSharingClientValue = pool.GpuSharingClient.ValueString()
 				}
-
-				// Debug logging
-				fmt.Printf("DEBUG: Pool '%s' - gpu_sharing_client: '%s', max_client: %d\n",
-					pool.WorkerPoolID.ValueString(), gpuSharingClientValue, pool.MaxClient.ValueInt64())
 
 				// If gpu_sharing_client = "" (empty), skip validation
 				if gpuSharingClientValue == "timeSlicing" {
