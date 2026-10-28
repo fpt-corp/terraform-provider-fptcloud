@@ -10,10 +10,10 @@ volume_id = "your_pv_fke_volume_id"
 # Runs, restores and the purges take any value, a request time is recommended;
 # a new value repeats the action. Clear the restores before a run or a purge: they follow
 # the newest restore point.
-# vm_backup_run           = "2026-10-26 09:00:00"
-# volume_backup_run       = "2026-10-26 09:00:00"
-# vm_restore              = "2026-10-26 09:30:00"
-# volume_restore          = "2026-10-26 09:30:00"
+# vm_backup_run               = "2026-10-26 09:00:00"
+# volume_backup_run           = "2026-10-26 09:00:00"
+# vm_restore                  = "2026-10-26 09:30:00"
+# volume_restore              = "2026-10-26 09:30:00"
 # vm_restore_points_purge     = "2026-10-26 10:00:00"
 # volume_restore_points_purge = "2026-10-26 10:00:00"
 
@@ -24,4 +24,5 @@ vm_restore_flavor_id          = "your_flavor_id"
 vm_restore_subnet_id          = "your_subnet_id"
 vm_restore_security_group_ids = []
 
+# Volume restore: size of the new volume, at least the size of volume_id.
 volume_restore_size_gb = 20

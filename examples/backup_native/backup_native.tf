@@ -39,7 +39,7 @@ variable "notification_method_ids" {
 # skip its action.
 
 variable "run_timeout" {
-  description = "How long an apply waits for a manual backup or a purge. A short value ends the wait before the action does, to try the saved outcome: the apply warns, status is tf_timeout, and the next plan reads the real status. Set 60m to wait for the action."
+  description = "How long an apply waits for a manual backup, a restore or a purge. A short value ends the wait before the action does, to try the saved outcome: the apply warns, status is tf_timeout, and the next plan reads the real status. Set 60m to wait for the action."
   type        = string
   default     = "5s"
 }
@@ -115,6 +115,12 @@ resource "fptcloud_backup_native_vm_job" "example" {
   }
 }
 
+# A manual backup runs the job once, outside its schedule. Destroying the
+# resource only removes it from state.
+#
+# Each run creates a restore point, and the restore below uses the newest one:
+# clear vm_restore before running a backup, or the next apply runs the restore
+# again.
 resource "fptcloud_backup_native_vm_job_run" "example" {
   count = var.vm_id != "" && var.vm_backup_run != "" ? 1 : 0
 
@@ -127,9 +133,42 @@ resource "fptcloud_backup_native_vm_job_run" "example" {
   }
 }
 
+# Restore points exist only after the job has run at least once. Set
+# vm_restore after this data source lists a restore point.
+data "fptcloud_backup_native_vm_restore_points" "example" {
+  count = var.vm_id == "" ? 0 : 1
+
+  vpc_id = data.fptcloud_vpc.this.id
+  vm_id  = var.vm_id
+}
+
+# A restore runs once, on create. A new vm_restore value or a newer restore
+# point runs it again; destroying the resource only removes it from state.
+resource "fptcloud_backup_native_vm_restore" "example" {
+  count = var.vm_id != "" && var.vm_restore != "" ? 1 : 0
+
+  vpc_id                   = data.fptcloud_vpc.this.id
+  vm_id                    = var.vm_id
+  restore_point_created_at = data.fptcloud_backup_native_vm_restore_points.example[0].restore_points[0].created_at
+  mode                     = var.vm_restore_mode
+  triggers                 = { restore = var.vm_restore }
+
+  instance_name      = var.vm_restore_mode == "keep" ? "tf-example-restored" : null
+  flavor_id          = var.vm_restore_mode == "keep" ? var.vm_restore_flavor_id : null
+  subnet_id          = var.vm_restore_mode == "keep" ? var.vm_restore_subnet_id : null
+  security_group_ids = var.vm_restore_mode == "keep" ? var.vm_restore_security_group_ids : null
+
+  timeouts {
+    create = var.run_timeout
+  }
+}
+
 # Deletes every restore point of vm_id, under any job, for good. The VM's next
 # backup is a full backup. restore_point_count = 0 means there was nothing to
 # delete and no request was sent.
+#
+# The restore above reads the newest restore point: clear vm_restore before a
+# purge, or the plan fails once no restore point is left.
 resource "fptcloud_backup_native_vm_restore_points_purge" "example" {
   count = var.vm_id != "" && var.vm_restore_points_purge != "" ? 1 : 0
 
@@ -142,10 +181,46 @@ resource "fptcloud_backup_native_vm_restore_points_purge" "example" {
   }
 }
 
+data "fptcloud_backup_native_vm_jobs" "all" {
+  vpc_id     = data.fptcloud_vpc.this.id
+  depends_on = [fptcloud_backup_native_vm_job.example]
+}
+
+output "vm_jobs" {
+  value = data.fptcloud_backup_native_vm_jobs.all.jobs
+}
+
+output "vm_restore_points" {
+  value = try(data.fptcloud_backup_native_vm_restore_points.example[0].restore_points, [])
+}
+
+output "vm_job_run" {
+  value = try({
+    status      = fptcloud_backup_native_vm_job_run.example[0].status
+    message     = fptcloud_backup_native_vm_job_run.example[0].message
+    started_at  = fptcloud_backup_native_vm_job_run.example[0].started_at
+    finished_at = fptcloud_backup_native_vm_job_run.example[0].finished_at
+  }, null)
+}
+
+output "vm_restore_status" {
+  value = try(fptcloud_backup_native_vm_restore.example[0].status, null)
+}
+
+output "vm_restore_points_purge" {
+  value = try({
+    restore_point_count = fptcloud_backup_native_vm_restore_points_purge.example[0].restore_point_count
+    status              = fptcloud_backup_native_vm_restore_points_purge.example[0].status
+    message             = fptcloud_backup_native_vm_restore_points_purge.example[0].message
+    started_at          = fptcloud_backup_native_vm_restore_points_purge.example[0].started_at
+    finished_at         = fptcloud_backup_native_vm_restore_points_purge.example[0].finished_at
+  }, null)
+}
+
 # Volume backup (v2)
 
 variable "volume_id" {
-  description = "ID of an FKE persistent volume (name starts with pv-fke) that is not in another backup job. Leave empty to skip the volume job and purge."
+  description = "ID of an FKE persistent volume (name starts with pv-fke) that is not in another backup job. Leave empty to skip the volume job, restore and purge."
   type        = string
   default     = ""
 }
@@ -154,6 +229,18 @@ variable "volume_backup_run" {
   description = "Any value runs a manual backup of the volume job, and a new value runs it again; the request time is recommended. Leave empty to skip."
   type        = string
   default     = ""
+}
+
+variable "volume_restore" {
+  description = "Any value restores the newest restore point of volume_id into a new volume, and a new value restores again; the request time is recommended. Leave empty to skip."
+  type        = string
+  default     = ""
+}
+
+variable "volume_restore_size_gb" {
+  description = "Size of the restored volume in GB, at least the size of volume_id."
+  type        = number
+  default     = 20
 }
 
 variable "volume_restore_points_purge" {
@@ -182,6 +269,12 @@ resource "fptcloud_backup_native_volume_job" "example" {
   }
 }
 
+# A manual backup runs the job once, outside its schedule. Destroying the
+# resource only removes it from state.
+#
+# Each run creates a restore point, and the restore below uses the newest one:
+# clear volume_restore before running a backup, or the next apply runs the
+# restore again.
 resource "fptcloud_backup_native_volume_job_run" "example" {
   count = var.volume_id != "" && var.volume_backup_run != "" ? 1 : 0
 
@@ -194,9 +287,39 @@ resource "fptcloud_backup_native_volume_job_run" "example" {
   }
 }
 
+# Restore points exist only after the job has run at least once. Set
+# volume_restore after this data source lists a restore point.
+data "fptcloud_backup_native_volume_restore_points" "example" {
+  count = var.volume_id == "" ? 0 : 1
+
+  vpc_id    = data.fptcloud_vpc.this.id
+  volume_id = var.volume_id
+}
+
+# A restore runs once, on create, into a new volume. A new volume_restore
+# value or a newer restore point runs it again; destroying the resource only
+# removes it from state.
+resource "fptcloud_backup_native_volume_restore" "example" {
+  count = var.volume_id != "" && var.volume_restore != "" ? 1 : 0
+
+  vpc_id           = data.fptcloud_vpc.this.id
+  volume_id        = var.volume_id
+  restore_point_id = data.fptcloud_backup_native_volume_restore_points.example[0].restore_points[0].id
+  name             = "tf-example-restored"
+  size_gb          = var.volume_restore_size_gb
+  triggers         = { restore = var.volume_restore }
+
+  timeouts {
+    create = var.run_timeout
+  }
+}
+
 # Deletes every restore point of volume_id, under any job, for good. The
 # volume's next backup is a full backup. restore_point_count = 0 means there
 # was nothing to delete and no request was sent.
+#
+# The restore above reads the newest restore point: clear volume_restore
+# before a purge, or the plan fails once no restore point is left.
 resource "fptcloud_backup_native_volume_restore_points_purge" "example" {
   count = var.volume_id != "" && var.volume_restore_points_purge != "" ? 1 : 0
 
@@ -207,4 +330,40 @@ resource "fptcloud_backup_native_volume_restore_points_purge" "example" {
   timeouts {
     create = var.run_timeout
   }
+}
+
+data "fptcloud_backup_native_volume_jobs" "all" {
+  vpc_id     = data.fptcloud_vpc.this.id
+  depends_on = [fptcloud_backup_native_volume_job.example]
+}
+
+output "volume_jobs" {
+  value = data.fptcloud_backup_native_volume_jobs.all.jobs
+}
+
+output "volume_restore_points" {
+  value = try(data.fptcloud_backup_native_volume_restore_points.example[0].restore_points, [])
+}
+
+output "volume_job_run" {
+  value = try({
+    status      = fptcloud_backup_native_volume_job_run.example[0].status
+    message     = fptcloud_backup_native_volume_job_run.example[0].message
+    started_at  = fptcloud_backup_native_volume_job_run.example[0].started_at
+    finished_at = fptcloud_backup_native_volume_job_run.example[0].finished_at
+  }, null)
+}
+
+output "volume_restore_status" {
+  value = try(fptcloud_backup_native_volume_restore.example[0].status, null)
+}
+
+output "volume_restore_points_purge" {
+  value = try({
+    restore_point_count = fptcloud_backup_native_volume_restore_points_purge.example[0].restore_point_count
+    status              = fptcloud_backup_native_volume_restore_points_purge.example[0].status
+    message             = fptcloud_backup_native_volume_restore_points_purge.example[0].message
+    started_at          = fptcloud_backup_native_volume_restore_points_purge.example[0].started_at
+    finished_at         = fptcloud_backup_native_volume_restore_points_purge.example[0].finished_at
+  }, null)
 }
