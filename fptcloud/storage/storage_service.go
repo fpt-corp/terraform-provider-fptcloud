@@ -140,6 +140,7 @@ type StorageService interface {
 	UpdateTags(vpcId string, storageId string, tagIds []string) (*common.SimpleResponse, error)
 	UpdateAttachedInstance(vpcId string, storageId string, instanceId *string) (*common.SimpleResponse, error)
 	DeleteStorage(vpcId string, storageId string) (*common.SimpleResponse, error)
+	DeleteStorageAsync(vpcId string, storageId string) error
 }
 
 // StorageServiceImpl is the implementation of StorageServiceImpl
@@ -451,6 +452,38 @@ func (s *StorageServiceImpl) DeleteStorage(vpcId string, storageId string) (*com
 	}
 
 	return result, nil
+}
+
+// ErrStorageDeleteRefused marks a delete the API turned down (snapshots, permissions, ...): sending it again does not help
+var ErrStorageDeleteRefused = errors.New("the API refused to delete the storage")
+
+// DeleteStorageAsync queues the delete through the console endpoint and returns once it is queued, not deleted
+func (s *StorageServiceImpl) DeleteStorageAsync(vpcId string, storageId string) error {
+	// an empty object, not null: the console sends no body and the endpoint reads its arguments from the path
+	resp, err := s.client.SendPostRequest(common.ApiPath.DeleteStorageAsync(vpcId, storageId), map[string]interface{}{})
+	if err != nil {
+		var httpErr common.HTTPError
+		if errors.As(err, &httpErr) {
+			message := apiMessage([]byte(httpErr.Reason))
+			if httpErr.Code >= 400 && httpErr.Code < 500 && httpErr.Code != http.StatusRequestTimeout && httpErr.Code != http.StatusTooManyRequests {
+				return fmt.Errorf("%w (HTTP %d): %s", ErrStorageDeleteRefused, httpErr.Code, message)
+			}
+			return fmt.Errorf("delete storage request failed (HTTP %d): %s", httpErr.Code, message)
+		}
+		return common.DecodeError(err)
+	}
+
+	var deleteResponse struct {
+		Status  bool   `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(resp, &deleteResponse); err != nil {
+		return fmt.Errorf("delete storage returned an unreadable response: %s", string(resp))
+	}
+	if !deleteResponse.Status {
+		return fmt.Errorf("%w: %s", ErrStorageDeleteRefused, apiMessage(resp))
+	}
+	return nil
 }
 
 func (s *StorageServiceImpl) UpdateAttachedInstance(vpcId string, storageId string, instanceId *string) (*common.SimpleResponse, error) {
