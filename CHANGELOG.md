@@ -1,3 +1,11 @@
+## [0.3.90] - 2026-11-04
+
+### Docs
+
+- Update: rewrite the docs of the compute, storage and networking resources and data sources (instance, instance group, SSH key, snapshot, flavor, image, vGPU, storage, storage policy, VPC, subnet, security group, security group rule, floating IP, tagging) with use-case examples, and state for every argument whether a change is applied in place or replaces the resource
+- Update: rewrite the provider page: credentials, environment variables, regions and the `timeout` argument
+- Add guides: Getting Started, Deploy a Public Web Server, Scaling and Resizing Instances
+
 ## [0.3.89] - 2026-11-03
 
 ### Resource
