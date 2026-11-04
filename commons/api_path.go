@@ -12,6 +12,7 @@ var ApiPath = struct {
 	Storage                    func(vpcId string) string
 	CreateStorageAsync         func(vpcId string) string
 	ResizeStorage              func(vpcId string) string
+	DeleteStorageAsync         func(vpcId string, storageId string) string
 	StorageUpdateAttached      func(vpcId string, storageId string) string
 	UpdateStorageTags          func(vpcId string, storageId string) string
 	StoragePolicy              func(vpcId string) string
@@ -353,6 +354,9 @@ var ApiPath = struct {
 	},
 	ResizeStorage: func(vpcId string) string {
 		return fmt.Sprintf("/v1/vmware/vpc/%s/resize-storage", vpcId)
+	},
+	DeleteStorageAsync: func(vpcId string, storageId string) string {
+		return fmt.Sprintf("/v1/vmware/vpc/%s/storage/%s/delete-storage", vpcId, storageId)
 	},
 	StorageUpdateAttached: func(vpcId string, storageId string) string {
 		return fmt.Sprintf("/v2/vpc/%s/storage/%s/update-attached", vpcId, storageId)

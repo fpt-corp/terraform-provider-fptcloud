@@ -1,3 +1,9 @@
+## [0.3.89] - 2026-11-03
+
+### Resource
+
+- Update: an external `fptcloud_storage` is deleted through the backend delete API, so destroying several disks at once no longer hangs. The disk is detached, deleted, and checked every 5 seconds until it is gone, for up to 15 minutes. Passing errors are retried; a delete the API refuses fails at once with its message
+
 ## [0.3.88] - 2026-10-28
 
 ### Resource

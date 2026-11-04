@@ -490,7 +490,7 @@ func resourceStorageUpdate(ctx context.Context, d *schema.ResourceData, m interf
 }
 
 // function to delete the Storage
-func resourceStorageDelete(_ context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+func resourceStorageDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	apiClient := m.(*common.Client)
 	storageService := NewStorageService(apiClient)
 
@@ -502,7 +502,22 @@ func resourceStorageDelete(_ context.Context, d *schema.ResourceData, m interfac
 		return diag.Errorf("[ERR] Vpc id is required")
 	}
 
-	_, err := storageService.DeleteStorage(vpcId.(string), d.Id())
+	var platform string
+	var err error
+	if d.Get("type").(string) == External {
+		platform, err = GetVpcPlatform(ctx, apiClient, vpcId.(string))
+	}
+	if err != nil {
+		tflog.Warn(ctx, fmt.Sprintf(
+			"could not read the platform of vpc %s (%s), using the legacy delete endpoint", vpcId, err))
+	} else if platform == PlatformOsp {
+		if err := deleteStorageQueued(ctx, storageService, vpcId.(string), d.Id(), queuedDeleteTimeout); err != nil {
+			return diag.Errorf("[ERR] An error occurred while trying to delete the storage %s: %s", d.Id(), err)
+		}
+		return nil
+	}
+
+	_, err = storageService.DeleteStorage(vpcId.(string), d.Id())
 
 	if err != nil {
 		return diag.Errorf("[ERR] An error occurred while trying to delete the storage %s", err)
