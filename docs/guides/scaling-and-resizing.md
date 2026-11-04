@@ -101,17 +101,9 @@ The root disk can only grow. If you set a smaller value, `terraform plan` stops 
 before anything is changed. FPT Cloud also refuses to grow the root disk while the instance has a
 snapshot, is suspended, or has a GPU attached.
 
-After the apply, the disk is larger but the partition and file system inside the instance are not.
-Extend them from the operating system. On a typical Ubuntu image with an ext4 root file system:
-
-```shell
-lsblk                     # find the root disk and partition, for example vda and vda1
-sudo growpart /dev/vda 1  # grow partition 1 to the end of the disk
-sudo resize2fs /dev/vda1  # grow the ext4 file system
-df -h /                   # check the new size
-```
-
-For an XFS file system, use `sudo xfs_growfs /` instead of `resize2fs`.
+After the apply, go into the operating system of the instance to expand the corresponding
+partition: FPT Cloud increases the capacity of the disk, not the partition on it. See
+[Manage storage disks](https://docs.fptcloud.com/docs/fpt-cloud-server/instance/guides/guide-storage-disk/) in the FPT Cloud documentation.
 
 You can also move the root disk to another performance tier by changing `storage_policy_id`.
 
@@ -126,12 +118,8 @@ resource "fptcloud_storage" "app_data" {
 }
 ```
 
-Then extend the file system inside the instance. For an ext4 file system created directly on the
-disk (without a partition), for example on `/dev/vdb`:
-
-```shell
-sudo resize2fs /dev/vdb
-```
+Then, as for the root disk, go into the operating system of the instance to expand the
+corresponding partition.
 
 Storage disks can only grow; FPT Cloud does not reduce the size of a disk.
 

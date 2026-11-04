@@ -233,25 +233,19 @@ terraform plan
 terraform apply
 ```
 
-When the apply finishes, connect to the instance with the public IP. The login user depends on the
-image (for example `ubuntu` on Ubuntu images):
+When the apply finishes, connect to the instance with SSH on the public IP, using the default user
+name of the image (see the documentation of the image):
 
 ```shell
-ssh ubuntu@$(terraform output -raw public_ip)
+ssh <user>@$(terraform output -raw public_ip)
 ```
 
 The instance resource has no option to run a start-up script, so install the web server software
-after you connect, or with your configuration management tool. For example, on Ubuntu:
+after you connect, or with your configuration management tool. Then open `http://<public_ip>` in
+your browser.
 
-```shell
-sudo apt-get update && sudo apt-get install -y nginx
-```
-
-Then open `http://<public_ip>` in your browser.
-
-The data disk is attached as a new, empty block device. Format and mount it once from inside the
-instance before you use it, for example with `lsblk` to find the device, then `mkfs.ext4` and an
-entry in `/etc/fstab`.
+The data disk is attached as a new, empty disk. Before you use it, format it inside the instance as
+described in [Storage Disks troubleshooting](https://docs.fptcloud.com/docs/fpt-cloud-server/storage-disks/troubleshooting/) (section *Newly Attached Disk Does Not Appear Inside the Instance*).
 
 ## Clean up
 

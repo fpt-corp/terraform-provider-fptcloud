@@ -11,10 +11,6 @@ Manages an instance snapshot. A snapshot captures every disk attached to an inst
 disk and the data disks, at one point in time. Take one before a risky change, such as an operating
 system upgrade, so that you can go back to the saved state.
 
-The snapshot is crash-consistent: the disks are captured as they are at that moment, without
-pausing or flushing the file systems inside the instance. For the most reliable result, stop
-writes in your applications, or power the instance off, before you take the snapshot.
-
 Each `fptcloud_snapshot` resource is one snapshot. Terraform takes it when the resource is created
 and deletes it when the resource is destroyed. A snapshot cannot be renamed or moved: changing
 `vpc_id`, `instance_id`, `name` or `include_ram` deletes the snapshot and takes a new one. Only

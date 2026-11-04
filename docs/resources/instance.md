@@ -393,8 +393,8 @@ refused because of the power state, set `status = "POWERED_OFF"` and apply, then
 ### Growing the root disk
 
 Increase `storage_size_gb` and apply. The disk is grown in place and Terraform waits until it
-reports the new size. After that, extend the partition and file system from inside the operating
-system (for example with `growpart` and `resize2fs` on Linux). FPT Cloud refuses a root disk resize
+reports the new size. After that, go into the operating system of the instance to expand the
+corresponding partition (see [Manage storage disks](https://docs.fptcloud.com/docs/fpt-cloud-server/instance/guides/guide-storage-disk/) in the FPT Cloud documentation). FPT Cloud refuses a root disk resize
 when the instance has a snapshot, is suspended, or has a GPU attached.
 
 The root disk belongs to `fptcloud_instance`. Do not declare a [`fptcloud_storage`](storage)

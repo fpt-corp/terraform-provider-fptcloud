@@ -251,8 +251,8 @@ when you change an argument of an existing disk.
 ### Growing a disk
 
 Increase `size_gb` and apply. In a General VPC, Terraform waits until the disk reports the new
-size. After that, extend the partition and file system from inside the operating system (for
-example with `growpart` and `resize2fs` on Linux). The
+size. After that, go into the operating system of the instance to expand the corresponding
+partition (see [Manage storage disks](https://docs.fptcloud.com/docs/fpt-cloud-server/instance/guides/guide-storage-disk/) in the FPT Cloud documentation). The
 [Scaling and Resizing](../guides/scaling-and-resizing) guide shows a full walkthrough.
 
 ### Changing the storage policy
@@ -285,9 +285,8 @@ resource "fptcloud_storage" "app_data" {
 To move an `EXTERNAL` disk, set `instance_id` to the ID of the other instance and apply. To detach
 it, remove `instance_id` and apply. The data on the disk is preserved in both cases.
 
-~> **Important:** Unmount the disk inside the operating system before you move or detach it (for
-example `sudo umount /dev/vdb` on Linux). Detaching a disk that is still mounted can cause data
-loss.
+~> **Important:** Unmount the disk inside the operating system before you move or detach it, as
+recommended in [Storage Disks troubleshooting](https://docs.fptcloud.com/docs/fpt-cloud-server/storage-disks/troubleshooting/) in the FPT Cloud documentation.
 
 ### Changing an attached disk in a Specific VPC
 
