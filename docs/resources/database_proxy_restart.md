@@ -10,9 +10,9 @@ description: |-
 
 Restarts a DB proxy and waits until it is running again. Creating the resource, or changing `triggers`, restarts the proxy; connections through it are dropped.
 
-Resource dạng "action": tạo resource hoặc đổi `triggers` thì restart proxy và **đợi** về `running`. Proxy phải `running` hoặc `warning`
-(portal không tự kiểm tra trạng thái nên provider kiểm tra). Đổi `proxy_id` hoặc `vpc_id` chỉ cập nhật state và báo cảnh báo; muốn restart lại
-mà không đổi `triggers` thì dùng `terraform apply -replace=...`. Xoá resource không gọi API. Không có `ForceNew`.
+An "action" resource: creating the resource or changing `triggers` restarts the proxy and **waits** until it is `running` again. The proxy must be `running` or `warning`
+(the portal does not check the status itself, so the provider does). Changing `proxy_id` or `vpc_id` only updates the state and shows a warning; to restart again
+without changing `triggers`, use `terraform apply -replace=...`. Deleting the resource does not call the API. No argument forces a replacement.
 
 ## Schema
 

@@ -10,22 +10,22 @@ description: |-
 
 Manages the DB proxy of a FPT Cloud database cluster: MaxScale for MariaDB, MySQL Router for MySQL.
 
-Không có thay đổi nào làm Terraform xoá và tạo lại proxy. Sửa tại chỗ chỉ có **resize** (`node_cpu`, `node_ram`, `flavor`, `flavor_id`);
-các argument còn lại không đổi được sau khi tạo: plan báo lỗi kèm giá trị hiện tại trên portal, không bao giờ replace.
-Không quản lý start/stop proxy; `status` chỉ đọc nên proxy bị dừng ngoài Terraform không tạo diff.
+No change makes Terraform destroy and recreate the proxy. The only in-place change is a **resize** (`node_cpu`, `node_ram`, `flavor`, `flavor_id`);
+the other arguments cannot be changed after creation: the plan fails and shows the current value on the portal, it never replaces the proxy.
+Starting and stopping the proxy is not managed; `status` is read only, so a proxy stopped outside of Terraform does not produce a diff.
 
-> **Resize tạo lại mọi node của proxy**: kết nối qua proxy bị ngắt trong lúc resize (khoảng 3 phút). Resize chỉ được khi proxy `running` hoặc `warning`
-> (plan báo lỗi nếu không); provider không tự start proxy.
+> **A resize recreates every node of the proxy**: connections through the proxy are dropped during the resize (about 3 minutes). A resize is only possible
+> while the proxy is `running` or `warning` (otherwise the plan fails); the provider does not start the proxy for you.
 
-Provider kiểm tra trước khi gọi API: cluster cha `running`, `lb_type` nằm trong `fptcloud_database_proxy_types`, tên chưa dùng trong cluster,
-`node_cpu`/`node_ram` khớp một flavor của VPC (hoặc `flavor`/`flavor_id` đã đặt). API của portal không tự kiểm tra các điều này.
+Before calling the API, the provider checks that the parent cluster is `running`, that `lb_type` is in `fptcloud_database_proxy_types`, that the name is not
+already used in the cluster, and that `node_cpu`/`node_ram` match a flavor of the VPC (or that `flavor`/`flavor_id` is set). The portal API does not check these itself.
 
-- **Tạo**: đợi `running` **và** có `end_point` (portal báo `running` trước khi có node). Proxy thường mất khoảng 5 phút, HA khoảng 9 phút.
-  Provider sync VM của VPC trong lúc đợi. Proxy được ghi vào state ngay khi portal nhận, nên lỗi hoặc timeout sau đó không làm mất proxy.
-- **Xoá**: đợi proxy rảnh rồi mới gọi xoá, vì portal bỏ qua lệnh xoá gửi lúc proxy đang bận. Xoá được cả proxy `stopped` hoặc `failed`. Nếu portal nhận lệnh xoá rồi đưa proxy về `failed`, provider gửi lại lệnh xoá (tối đa 3 lần) trước khi báo lỗi.
-- **Drift**: lần Read nào thấy `node_cpu`, `node_ram` hoặc `flavor` trên portal khác giá trị Terraform đã áp dụng thì báo cảnh báo cho từng attribute;
-  lần apply tiếp theo đặt lại giá trị trong `.tf`.
-- **Import**: `terraform import fptcloud_database_proxy.db <lb_cluster_id>`; `vpc_id` được lấy từ cluster cha.
+- **Create**: waits for `running` **and** an `end_point` (the portal reports `running` before the nodes exist). A proxy usually takes about 5 minutes, about 9 minutes with HA.
+  The provider syncs the VMs of the VPC while waiting. The proxy is written to the state as soon as the portal accepts it, so a later error or timeout does not lose it.
+- **Delete**: waits until the proxy is idle before deleting it, because the portal ignores a delete sent while the proxy is busy. A `stopped` or `failed` proxy can also be deleted. If the portal accepts the delete and then moves the proxy to `failed`, the provider sends the delete again (up to 3 times) before reporting an error.
+- **Drift**: whenever a Read finds that `node_cpu`, `node_ram` or `flavor` on the portal differs from the value Terraform applied, it reports a warning for each attribute;
+  the next apply sets the value from the `.tf` again.
+- **Import**: `terraform import fptcloud_database_proxy.db <lb_cluster_id>`; `vpc_id` is taken from the parent cluster.
 
 ## Schema
 
