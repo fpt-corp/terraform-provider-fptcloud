@@ -1,0 +1,5 @@
+{
+  "error_code": 180004,
+  "message": "To resize this load balancer, please choose a different flavor.",
+  "type": "error"
+}

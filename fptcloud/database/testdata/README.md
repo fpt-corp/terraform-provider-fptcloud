@@ -30,3 +30,15 @@ exists, or a second `runnow` while one runs were all accepted. The provider must
 `runnow` sets `is_run_now = 1` (job stays `ready`) and the action log shows `Run full backup` as `pending`; a run
 of an empty database took 46 seconds. Retention of a diff job follows the full job. The action log
 (`list-backup-request`) task `status` values seen: `successful`, `pending`.
+
+# DB proxy fixtures (`proxy_*.json`)
+
+Real responses from `load-balancing/*` (region `saigon-02-vn`, 2026-11-05), org, VDC and IP addresses replaced.
+Base path is `/v1/xplat/database/load-balancing/`. See `examples/test-database-proxy-p0/README.md` for the full probe log.
+
+1. `create` returns `data: []`, **no `lb_cluster_id`**: find the proxy by name in `list`.
+2. `create` takes `flavor` as the flavor name (`2C4G`) and no `flavor_id`; `resize` takes both.
+3. `list` returns `is_lb_cluster` as `"True"`/`"False"` and has `vm_sync`; `detail` returns a boolean and no `vm_sync`.
+4. A proxy reports `running` before it has nodes and an `end_point`; wait for the end point too.
+5. A business error is HTTP 200 with `{error_code, message, type: "error"}`. An unknown id is HTTP 400, not 404.
+6. The API does not check the status for `resize` and `restart`, nor the name, `lb_type` or length on `create`.

@@ -52,3 +52,7 @@ tf.sh
 .specstory/**
 *.sh
 .claude
+
+# Output and working files of manual tests against a real environment
+examples/test-*/
+tf.log

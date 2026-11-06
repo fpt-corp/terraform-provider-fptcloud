@@ -1,3 +1,14 @@
+## [0.3.91] - 2026-11-05
+
+### Resource
+
+- Feat: add `fptcloud_database_proxy` to manage the DB proxy of a database cluster (MaxScale for MariaDB, MySQL Router for MySQL), with high availability (2 nodes) as an option. It waits for the proxy to be running and to have an `end_point`, syncing the VPC VMs while it waits. A change of `node_cpu`, `node_ram`, `flavor` or `flavor_id` resizes the proxy in place and waits for the new size; the resize rebuilds every node, so connections through the proxy are dropped. Nothing replaces the proxy: a change to `db_cluster_id`, `vpc_id`, `name`, `lb_type`, `high_availability` or `storage_profile` fails at plan, with the value the portal has. A resize of a proxy that is not `running` or `warning` also fails at plan. The plan checks the name (8-25 characters), `lb_type` against the cluster and the size against the flavors of the VPC, because the portal checks none of them. A change made on the portal to the size is reported as a warning on the next read, and the next apply sets it back. Import with the proxy Id (`lb_cluster_id`). Destroying waits until the proxy is idle before the delete is sent, and sends the delete again (up to 3 times) when the portal puts the proxy back to `failed`
+- Feat: add `fptcloud_database_proxy_restart` to restart a proxy and wait for it to be running again. Creating it, or changing `triggers`, restarts the proxy; destroying it calls no API
+
+### Data source
+
+- Feat: add `fptcloud_database_proxies` to list the proxies of a database cluster and `fptcloud_database_proxy_types` to list the `lb_type` values a cluster accepts
+
 ## [0.3.90] - 2026-11-04
 
 ### Docs

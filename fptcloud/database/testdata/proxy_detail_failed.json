@@ -1,0 +1,33 @@
+{
+  "code": "200",
+  "message": "Successful",
+  "data": {
+    "cluster": {
+      "db_cluster_id": "DB0001",
+      "lb_cluster_id": "LB0002",
+      "lb_cluster_name": "proxy-example",
+      "is_lb_cluster": false,
+      "lb_type": "mysqlrouter",
+      "node_cpu": 2,
+      "node_ram": 4,
+      "node_core": 0,
+      "data_disk_size": 10,
+      "master_count": 1,
+      "slave_count": 0,
+      "storage_profile": "Premium-SSD-6000",
+      "end_point": null,
+      "status": "failed",
+      "flavor": "2C4G",
+      "zone": null,
+      "credential_id": 1000,
+      "created_at": "2026-11-05T10:00:12",
+      "updated_at": "2026-11-05T10:00:12",
+      "lb_uuid": "00000000-0000-4000-8000-000000000001"
+    },
+    "nodes": {
+      "total": 0,
+      "items": []
+    }
+  },
+  "type": "success"
+}

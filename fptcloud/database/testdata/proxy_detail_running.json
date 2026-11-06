@@ -1,0 +1,57 @@
+{
+  "code": "200",
+  "message": "Successful",
+  "data": {
+    "cluster": {
+      "db_cluster_id": "DB0003",
+      "lb_cluster_id": "LB0009",
+      "lb_cluster_name": "proxy-example",
+      "is_lb_cluster": false,
+      "lb_type": "maxscale",
+      "node_cpu": 2,
+      "node_ram": 4,
+      "node_core": 0,
+      "data_disk_size": 10,
+      "master_count": 1,
+      "slave_count": 0,
+      "storage_profile": "Premium-SSD",
+      "end_point": "R-W ://10.0.0.10:4006/, \nR-O ://10.0.0.10:4008/",
+      "status": "running",
+      "flavor": "2C4G",
+      "zone": null,
+      "credential_id": 1000,
+      "created_at": "2026-11-05T13:40:33",
+      "updated_at": "2026-11-05T13:40:33",
+      "lb_uuid": "00000000-0000-4000-8000-000000000008"
+    },
+    "nodes": {
+      "total": 1,
+      "items": [
+        {
+          "vmw_id": "00000000-0000-4000-8000-000000000009",
+          "network_name": "10.0.0.10",
+          "name": "example-dbproxy-node",
+          "database_role": "true",
+          "vdc_name": "example-vdc",
+          "status": "POWERED_ON",
+          "is_deployed": true,
+          "id": "00000000-0000-4000-8000-000000000010",
+          "guest_os": "Ubuntu Linux (64-bit)",
+          "platform": "OSP",
+          "org_name": "example-org",
+          "ip_address": "10.0.0.10",
+          "ip_private": "10.1.0.10",
+          "vpc_id": "00000000-0000-4000-8000-000000000005",
+          "number_of_cpus": 2,
+          "created_at": "2026-11-05T13:45:43",
+          "cluster_id": "DB0010",
+          "data_disk_size": 10,
+          "updated_at": "2026-11-05T13:45:43",
+          "cluster_name": "proxy-example",
+          "memory_mb": 4096
+        }
+      ]
+    }
+  },
+  "type": "success"
+}

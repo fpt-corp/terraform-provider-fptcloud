@@ -1,0 +1,62 @@
+{
+  "code": "200",
+  "message": "Success",
+  "data": [
+    {
+      "lb_cluster_id": "LB0006",
+      "lb_cluster_name": "proxy-example",
+      "is_lb_cluster": "False",
+      "lb_type": "mysqlrouter",
+      "node_cpu": 2,
+      "node_ram": 4,
+      "node_core": 0,
+      "storage_profile": "Premium-SSD",
+      "slave_count": 0,
+      "master_count": 1,
+      "vm_sync": true,
+      "status": "running",
+      "db_cluster_id": "DB0001",
+      "created_at": "2026-11-05 13:40:39",
+      "updated_at": "2026-11-05 13:40:39"
+    },
+    {
+      "lb_cluster_id": "LB0007",
+      "lb_cluster_name": "ab",
+      "is_lb_cluster": "False",
+      "lb_type": "mysqlrouter",
+      "node_cpu": 2,
+      "node_ram": 4,
+      "node_core": 0,
+      "storage_profile": "Premium-SSD-6000",
+      "slave_count": 0,
+      "master_count": 1,
+      "vm_sync": false,
+      "status": "failed",
+      "db_cluster_id": "DB0001",
+      "created_at": "2026-11-05 10:14:57",
+      "updated_at": "2026-11-05 10:24:40"
+    },
+    {
+      "lb_cluster_id": "LB0008",
+      "lb_cluster_name": "proxy-example",
+      "is_lb_cluster": "False",
+      "lb_type": "maxscale",
+      "node_cpu": 2,
+      "node_ram": 4,
+      "node_core": 0,
+      "storage_profile": "Premium-SSD-6000",
+      "slave_count": 0,
+      "master_count": 1,
+      "vm_sync": false,
+      "status": "failed",
+      "db_cluster_id": "DB0001",
+      "created_at": "2026-11-05 10:14:52",
+      "updated_at": "2026-11-05 10:24:42"
+    }
+  ],
+  "metadata": {
+    "current_page": 1,
+    "page_size": 50,
+    "total_items": 3
+  }
+}

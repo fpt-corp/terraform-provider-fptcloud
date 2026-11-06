@@ -90,6 +90,14 @@ var ApiPath = struct {
 	DatabaseRestoredClusters func(clusterId string, page, pageSize int) string
 	DatabaseRestoreCreate    func() string
 
+	DatabaseProxyList    func(clusterId string, page, pageSize int) string
+	DatabaseProxyDetail  func(lbClusterId string) string
+	DatabaseProxyTypes   func(clusterId string) string
+	DatabaseProxyCreate  func() string
+	DatabaseProxyRestart func() string
+	DatabaseProxyResize  func(lbClusterId string) string
+	DatabaseProxyDelete  func(lbClusterId string) string
+
 	VpcSyncInstances  func(vpcId string) string
 	VpcSyncStorages   func(vpcId string) string
 	VpcSyncStoragesV2 func(vpcId string) string
@@ -575,6 +583,28 @@ var ApiPath = struct {
 	},
 	DatabaseRestoreCreate: func() string {
 		return "/v1/xplat/database/restore/create"
+	},
+
+	DatabaseProxyList: func(clusterId string, page, pageSize int) string {
+		return fmt.Sprintf("/v1/xplat/database/load-balancing/list/%s?page=%d&page_size=%d", clusterId, page, pageSize)
+	},
+	DatabaseProxyDetail: func(lbClusterId string) string {
+		return fmt.Sprintf("/v1/xplat/database/load-balancing/detail/%s", lbClusterId)
+	},
+	DatabaseProxyTypes: func(clusterId string) string {
+		return fmt.Sprintf("/v1/xplat/database/load-balancing/get-lb-type?cluster_id=%s", clusterId)
+	},
+	DatabaseProxyCreate: func() string {
+		return "/v1/xplat/database/load-balancing/create"
+	},
+	DatabaseProxyRestart: func() string {
+		return "/v1/xplat/database/load-balancing/restart"
+	},
+	DatabaseProxyResize: func(lbClusterId string) string {
+		return fmt.Sprintf("/v1/xplat/database/load-balancing/%s/resize", lbClusterId)
+	},
+	DatabaseProxyDelete: func(lbClusterId string) string {
+		return fmt.Sprintf("/v1/xplat/database/load-balancing/delete/%s", lbClusterId)
 	},
 
 	VpcSyncInstances: func(vpcId string) string {
