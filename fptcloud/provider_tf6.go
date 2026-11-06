@@ -175,6 +175,8 @@ func (x *xplatProvider) DataSources(ctx context.Context) []func() datasource.Dat
 		fptcloud_database.NewDataSourceDatabaseRestorePoints,
 		fptcloud_database.NewDataSourceDatabaseRestoredClusters,
 		fptcloud_database.NewDataSourceDatabaseResources,
+		fptcloud_database.NewDataSourceDatabaseProxies,
+		fptcloud_database.NewDataSourceDatabaseProxyTypes,
 	}
 }
 
@@ -189,5 +191,7 @@ func (x *xplatProvider) Resources(ctx context.Context) []func() resource.Resourc
 		fptcloud_database.NewResourceDatabaseBackup,
 		fptcloud_database.NewResourceDatabaseBackupRunNow,
 		fptcloud_database.NewResourceDatabaseRestore,
+		fptcloud_database.NewResourceDatabaseProxy,
+		fptcloud_database.NewResourceDatabaseProxyRestart,
 	}
 }

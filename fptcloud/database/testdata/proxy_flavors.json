@@ -1,0 +1,147 @@
+{
+  "code": "200",
+  "message": "Successful",
+  "data": [
+    {
+      "flavor_name": "2C4G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 2,
+      "vpc_id": null,
+      "flavor_id": "0b3eef91-acbf-40d7-a0fd-70e800f2c5bc",
+      "flavor_ram": 4096,
+      "is_scale": 1,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "Medium-8",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 2,
+      "vpc_id": null,
+      "flavor_id": "45e2afc8-edbc-4705-bd50-b0c3ddaed342",
+      "flavor_ram": 8192,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "Medium-12",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 2,
+      "vpc_id": null,
+      "flavor_id": "ffa44bcd-e087-4499-bce5-07c9402cfda5",
+      "flavor_ram": 16384,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "2C18G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 2,
+      "vpc_id": null,
+      "flavor_id": "339b0f05-5d33-4c4e-83b0-882ff60ddf31",
+      "flavor_ram": 18432,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "Large-4",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "a29d573a-5466-4b14-a963-4890ff7980ca",
+      "flavor_ram": 4096,
+      "is_scale": 1,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "4C6G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "35b673be-a58d-490c-bce4-f5f350ff7a6c",
+      "flavor_ram": 6144,
+      "is_scale": 1,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "4C8G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "3f0f99be-656c-42f6-ba30-2ae7a933b2fc",
+      "flavor_ram": 8192,
+      "is_scale": 1,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "4C10G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "7c732ac6-0200-4a41-84b8-498c69067a39",
+      "flavor_ram": 10240,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "4C12G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "491b5054-d88d-4c07-b94e-ac51b4ba5fb4",
+      "flavor_ram": 12288,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "4C14G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "e8c15cb2-58f0-4204-8ee5-1193c4b2d7f3",
+      "flavor_ram": 14336,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "Large-16",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "90d02085-0488-4da0-beaa-0e37b0f8beaa",
+      "flavor_ram": 16384,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "Large-24",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "47a97100-d0eb-474b-bd0b-a85086989fae",
+      "flavor_ram": 24576,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "4C32G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "b632d95e-f621-41e0-b754-5754939b9a34",
+      "flavor_ram": 32768,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    },
+    {
+      "flavor_name": "4C40G",
+      "flavor_site": "https://vsfx2c1.fptcloud.com:5000/v3",
+      "flavor_vcpu": 4,
+      "vpc_id": null,
+      "flavor_id": "cf4eaddc-602e-46ea-8ce1-99e9bbf2c8d5",
+      "flavor_ram": 40960,
+      "is_scale": null,
+      "charging_type": "postpaid"
+    }
+  ],
+  "type": "success"
+}

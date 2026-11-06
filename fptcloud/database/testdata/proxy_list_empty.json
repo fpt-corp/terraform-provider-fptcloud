@@ -1,0 +1,10 @@
+{
+  "code": "200",
+  "message": "Success",
+  "data": [],
+  "metadata": {
+    "current_page": 1,
+    "page_size": 50,
+    "total_items": 0
+  }
+}
